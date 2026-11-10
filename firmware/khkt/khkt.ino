@@ -14,6 +14,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include "clock_styles.h"
+#include "melody.h"
 
 #define TFT_CS   21
 #define TFT_DC   19
@@ -1924,6 +1925,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       isAlarmActive = false;
       isBuzzing = false;
       stopMorsePlayback();
+      melodyStop();
       stopBuzzer();
       digitalWrite(LED_PIN, LOW);
       addLog("ALARM", ">>> DA GIAI DUNG! TAT CHUONG.");
@@ -1946,6 +1948,16 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       startMorsePlayback(pattern, unitMs, freq);
     } else if (action == "morse_stop") {
       stopMorsePlayback();
+    } else if (action == "melody_play") {
+      stopMorsePlayback();
+      if (melodyStart(SAMPLE_MELODY_MID, sizeof(SAMPLE_MELODY_MID))) {
+        addLog("MELODY", "Phat giai dieu mau (" + String(melodyCount) + " not)");
+      } else {
+        addLog("MELODY", "Loi doc file MIDI");
+      }
+    } else if (action == "melody_stop") {
+      melodyStop();
+      stopBuzzer();
     } else {
       unsigned long d = doc["duration"] | 250;
       triggerBuzz(d, true);
@@ -2965,6 +2977,7 @@ void loop() {
 
   // 3. Non-blocking Morse playback
   updateMorsePlayback();
+  melodyUpdate(buzzerEnabled);
 
   if (ledBlinkMode) {
     if (millis() - lastLedBlinkTime >= LED_BLINK_INTERVAL) {
