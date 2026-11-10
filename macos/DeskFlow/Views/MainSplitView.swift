@@ -1,25 +1,6 @@
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
-#endif
-#if canImport(CoreImage)
-import CoreImage
-
-func generateQRCodeImage(from string: String) -> NSImage? {
-    let context = CIContext()
-    guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
-    filter.setValue(Data(string.utf8), forKey: "inputMessage")
-    filter.setValue("H", forKey: "inputCorrectionLevel")
-    if let outputImage = filter.outputImage {
-        let transform = CGAffineTransform(scaleX: 8, y: 8)
-        let scaledImage = outputImage.transformed(by: transform)
-        if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
-            return NSImage(cgImage: cgImage, size: NSSize(width: 170, height: 170))
-        }
-    }
-    return nil
-}
-#endif
 
 extension Color {
     func toHex() -> String? {
@@ -54,6 +35,25 @@ extension Color {
             opacity: Double(a) / 255
         )
     }
+}
+#endif
+
+#if canImport(CoreImage)
+import CoreImage
+
+func generateQRCodeImage(from string: String) -> NSImage? {
+    let context = CIContext()
+    guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+    filter.setValue(Data(string.utf8), forKey: "inputMessage")
+    filter.setValue("H", forKey: "inputCorrectionLevel")
+    if let outputImage = filter.outputImage {
+        let transform = CGAffineTransform(scaleX: 8, y: 8)
+        let scaledImage = outputImage.transformed(by: transform)
+        if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
+            return NSImage(cgImage: cgImage, size: NSSize(width: 170, height: 170))
+        }
+    }
+    return nil
 }
 #endif
 
@@ -411,6 +411,7 @@ public struct MainSplitView: View {
             }
         }
     }
+}
 }
 
 public struct MacPairingGateView: View {
