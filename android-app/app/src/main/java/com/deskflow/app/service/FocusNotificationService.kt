@@ -57,17 +57,56 @@ class FocusNotificationService : Service() {
         }
 
         startBackgroundStatusSync()
+        showOverlay()
 
         return START_STICKY
     }
 
+    private var overlayView: android.view.View? = null
+
+    private fun showOverlay() {
+        if (overlayView != null) return
+        if (!android.provider.Settings.canDrawOverlays(this)) return
+        val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+        val tv = android.widget.TextView(this).apply {
+            text = getString(R.string.overlay_banner)
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 12f
+            setPadding(32, 12, 32, 12)
+            setBackgroundColor(0xCC000000.toInt())
+        }
+        val params = android.view.WindowManager.LayoutParams(
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else @Suppress("DEPRECATION") android.view.WindowManager.LayoutParams.TYPE_PHONE,
+            android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            android.graphics.PixelFormat.TRANSLUCENT
+        ).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL }
+        try {
+            wm.addView(tv, params)
+            overlayView = tv
+        } catch (_: Exception) {}
+    }
+
+    private fun hideOverlay() {
+        overlayView?.let {
+            try { (getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager).removeView(it) } catch (_: Exception) {}
+        }
+        overlayView = null
+    }
+
     override fun onDestroy() {
+        hideOverlay()
         super.onDestroy()
         syncJob?.cancel()
         serviceScope.cancel()
     }
 
     private fun stopFocusService() {
+        hideOverlay()
         syncJob?.cancel()
         syncJob = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

@@ -325,4 +325,14 @@
     <string name="morse_error_empty">Vui lòng nhập văn bản hoặc mã Morse cần dịch</string>
     <string name="subcat_morse">Bộ chuyển đổi mã Morse</string>
     <string name="subcat_morse_desc">Dịch mã Morse và phát âm thanh trên còi chip trạm</string>
+    <string name="pair_scan_qr">Quét mã QR</string>
+    <string name="device_rename_label">Đổi tên thiết bị</string>
+    <string name="device_rename_button">Lưu tên</string>
+    <string name="device_rename_success">Đã đổi tên thiết bị</string>
+    <string name="device_rename_failed">Không thể đổi tên thiết bị</string>
+    <string name="overlay_title">Hiển thị trên các ứng dụng khác</string>
+    <string name="overlay_desc">Hiện banner trên các ứng dụng khác khi Chế độ tập trung đang bật.</string>
+    <string name="overlay_grant">Cấp quyền</string>
+    <string name="overlay_granted">Đã cấp quyền</string>
+    <string name="overlay_banner">Chế độ tập trung đang bật</string>
 </resources>

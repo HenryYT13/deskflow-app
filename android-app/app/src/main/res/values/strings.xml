@@ -325,4 +325,14 @@
     <string name="morse_error_empty">Please enter text or Morse code to convert</string>
     <string name="subcat_morse">Morse Converter</string>
     <string name="subcat_morse_desc">Translate and transmit Morse code on ESP32 buzzer</string>
+    <string name="pair_scan_qr">Scan QR code</string>
+    <string name="device_rename_label">Rename device</string>
+    <string name="device_rename_button">Save name</string>
+    <string name="device_rename_success">Device renamed</string>
+    <string name="device_rename_failed">Could not rename device</string>
+    <string name="overlay_title">Display over other apps</string>
+    <string name="overlay_desc">Shows a banner over other apps while Focus Mode is active.</string>
+    <string name="overlay_grant">Grant permission</string>
+    <string name="overlay_granted">Permission granted</string>
+    <string name="overlay_banner">Focus Mode is active</string>
 </resources>

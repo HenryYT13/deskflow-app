@@ -698,6 +698,65 @@ fun SettingsScreen(
                 }
             }
 
+            // ================= DEVICE RENAME + OVERLAY =================
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var renameText by remember { mutableStateOf(securePreferences.deviceName) }
+            var renameStatus by remember { mutableStateOf<String?>(null) }
+            var overlayGranted by remember { mutableStateOf(android.provider.Settings.canDrawOverlays(ctx)) }
+            val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                    if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        overlayGranted = android.provider.Settings.canDrawOverlays(ctx)
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(obs)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+            }
+            val renameOk = stringResource(R.string.device_rename_success)
+            val renameFail = stringResource(R.string.device_rename_failed)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it; renameStatus = null },
+                        label = { Text(stringResource(R.string.device_rename_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                renameStatus = if (repository.renameDevice(renameText) is com.deskflow.app.data.repository.ApiResult.Success) renameOk else renameFail
+                            }
+                        },
+                        enabled = renameText.isNotBlank() && renameText.trim() != securePreferences.deviceName
+                    ) { Text(stringResource(R.string.device_rename_button)) }
+                    renameStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(stringResource(R.string.overlay_title), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.overlay_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (overlayGranted) {
+                        Text(stringResource(R.string.overlay_granted), style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Button(onClick = {
+                            ctx.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:" + ctx.packageName)
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }) { Text(stringResource(R.string.overlay_grant)) }
+                    }
+                }
+            }
+
             // ================= 6. ABOUT =================
             Card(
                 modifier = Modifier.fillMaxWidth(),

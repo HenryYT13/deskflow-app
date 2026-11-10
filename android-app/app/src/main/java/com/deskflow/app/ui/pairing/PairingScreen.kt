@@ -20,6 +20,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.deskflow.app.R
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
 import kotlinx.coroutines.launch
@@ -35,6 +38,18 @@ fun PairingScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
+
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val raw = result.contents ?: return@rememberLauncherForActivityResult
+        val code = Regex("(?i)code=([A-Za-z0-9]{8})").find(raw)?.groupValues?.get(1)
+            ?: Regex("(?<![A-Za-z0-9])[A-Za-z0-9]{8}(?![A-Za-z0-9])").find(raw)?.value
+        if (code != null) {
+            pairingCode = code.uppercase()
+            errorMessage = null
+        } else {
+            errorMessage = "QR không hợp lệ / Invalid QR"
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -81,6 +96,25 @@ fun PairingScreen(
             )
 
             Spacer(modifier = Modifier.height(32.dp))
+
+            OutlinedButton(
+                onClick = {
+                    scanLauncher.launch(
+                        ScanOptions()
+                            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            .setBeepEnabled(false)
+                            .setOrientationLocked(false)
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.pair_scan_qr))
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Pairing Code Input Field
             OutlinedTextField(

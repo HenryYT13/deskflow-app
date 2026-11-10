@@ -315,6 +315,23 @@ class FocusRepository(
         }
     }
 
+    suspend fun renameDevice(newName: String): ApiResult<Boolean> {
+        val id = securePreferences.deviceId
+        val name = newName.trim()
+        if (id.isNullOrBlank() || name.isEmpty()) return ApiResult.Error("invalid_input", "Missing device id or name")
+        return try {
+            val response = apiService.renameDevice(id, mapOf("name" to name))
+            if (response.isSuccessful) {
+                securePreferences.deviceName = name
+                ApiResult.Success(true)
+            } else {
+                ApiResult.Error("http_${response.code()}", response.message())
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "")
+        }
+    }
+
     suspend fun unpairDevice(): ApiResult<Boolean> {
         return try {
             val response = apiService.unpair()

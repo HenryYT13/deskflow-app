@@ -42,6 +42,12 @@ interface FocusApiService {
     @GET("api/focus/devices")
     suspend fun getDevices(): Response<DevicesResponse>
 
+    @POST("api/focus/devices/{id}/rename")
+    suspend fun renameDevice(
+        @Path("id") id: String,
+        @Body body: Map<String, String>
+    ): Response<ActionSuccessResponse>
+
     @POST("api/focus/unpair")
     suspend fun unpair(
         @Body body: Map<String, String> = emptyMap()
