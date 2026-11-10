@@ -912,7 +912,7 @@ public sealed partial class MainWindow : Window
         if (GateSubtitleText != null) GateSubtitleText.Text = isVi ? "Để sử dụng Trung tâm điều khiển DeskFlow, bạn phải ghép nối máy tính này với tài khoản hệ sinh thái." : "To access the DeskFlow Control Center, you must pair this PC with your DeskFlow ecosystem.";
         if (GateInstructionsText != null) GateInstructionsText.Text = isVi ? "Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã ghép nối 8 ký tự:" : "Type /app pair in Discord or open the DeskFlow mobile app to get your 8-char pairing code:";
         if (GatePairButton != null) GatePairButton.Content = isVi ? "Ghép nối thiết bị" : "Pair Device";
-        if (GateServerUrlText != null) GateServerUrlText.Text = isVi ? $"Máy chủ: {_client.Settings.ServerUrl}" : $"Server: {_client.Settings.ServerUrl}";
+        if (GateServerUrlText != null) GateServerUrlText.Text = isVi ? $"Máy chủ: {_client.Settings.ApiUrl}" : $"Server: {_client.Settings.ApiUrl}";
 
         UpdatePairingStatusLabel();
     }

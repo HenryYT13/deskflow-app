@@ -461,7 +461,7 @@ public struct MacPairingGateView: View {
                         VStack(spacing: 24) {
                             HStack(alignment: .top, spacing: 32) {
                                 VStack(spacing: 12) {
-                                    let qrPayload = "deskflow://pair?server=\(client.apiBaseUrl)&name=\(client.deviceName)"
+                                    let qrPayload = "deskflow://pair?server=\(client.apiUrl)&name=\(client.deviceName)"
                                     #if canImport(CoreImage)
                                     if let qrImg = generateQRCodeImage(from: qrPayload) {
                                         Image(nsImage: qrImg)
@@ -563,7 +563,7 @@ public struct MacPairingGateView: View {
                                     }
 
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(client.appLanguage == "vi" ? "Máy chủ: \(client.apiBaseUrl)" : "Server: \(client.apiBaseUrl)")
+                                        Text(client.appLanguage == "vi" ? "Máy chủ: \(client.apiUrl)" : "Server: \(client.apiUrl)")
                                             .font(.system(size: 11, design: .monospaced))
                                             .foregroundColor(.secondary)
                                     }
