@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Deskflow
+Comment=Smart Desk Control Center, Focus Mode & ESP32 Companion
+Exec=deskflow
+Icon=com.deskflow.Station
+Terminal=false
+Type=Application
+Categories=Utility;Office;Development;GTK;GNOME;
+Keywords=DeskFlow;Focus;Pomodoro;ESP32;Notes;Morse;
+StartupNotify=true
+StartupWMClass=com.deskflow.Station

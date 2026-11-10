@@ -1,0 +1,75 @@
+{
+  "broker": "127.0.0.1:1883",
+  "topics": {
+    "deskflow/command": {
+      "direction": "backend_to_esp32",
+      "actions": [
+        "set_view",
+        "lamp_color",
+        "lamp_off",
+        "dim_level",
+        "led_on",
+        "led_off",
+        "led_toggle",
+        "led_blink",
+        "buzz",
+        "morse_play",
+        "morse_stop",
+        "pomodoro_start",
+        "pomodoro_stop",
+        "focus_start",
+        "focus_off",
+        "close_tkb",
+        "dark_mode",
+        "set_clock"
+      ]
+    },
+    "deskflow/display": {
+      "direction": "backend_to_esp32",
+      "actions": [
+        "sticky_note",
+        "clear_sticky_note",
+        "sync_notes",
+        "exam_countdown",
+        "sync_countdowns",
+        "sync_alarms",
+        "ai_quote",
+        "weather_alert",
+        "weather_forecast",
+        "server_stats",
+        "clock_config"
+      ]
+    },
+    "deskflow/telemetry": {
+      "direction": "esp32_to_backend",
+      "fields": [
+        "voltage",
+        "battery_pct",
+        "wifi_rssi",
+        "uptime_sec",
+        "free_heap",
+        "current_view",
+        "clock_style",
+        "clock_config_version"
+      ]
+    },
+    "deskflow/clock_style_ack": {
+      "direction": "esp32_to_backend",
+      "fields": [
+        "device_id",
+        "config_version",
+        "status",
+        "style",
+        "time_format",
+        "show_seconds",
+        "show_date",
+        "show_ampm",
+        "language",
+        "animation_enabled",
+        "animation_speed",
+        "accent_color",
+        "error"
+      ]
+    }
+  }
+}

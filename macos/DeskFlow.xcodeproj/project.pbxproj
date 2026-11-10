@@ -1,0 +1,158 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000010000000000000001 /* DeskFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* DeskFlowApp.swift */; };
+		A10000020000000000000001 /* ApiModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000001 /* ApiModels.swift */; };
+		A10000030000000000000001 /* DeskFlowApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000001 /* DeskFlowApiClient.swift */; };
+		A10000040000000000000001 /* MainSplitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000001 /* MainSplitView.swift */; };
+		A10000050000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000050000000000000001 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000010000000000000001 /* DeskFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskFlow/DeskFlowApp.swift; sourceTree = "<group>"; };
+		A20000020000000000000001 /* ApiModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskFlow/Models/ApiModels.swift; sourceTree = "<group>"; };
+		A20000030000000000000001 /* DeskFlowApiClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskFlow/Services/DeskFlowApiClient.swift; sourceTree = "<group>"; };
+		A20000040000000000000001 /* MainSplitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskFlow/Views/MainSplitView.swift; sourceTree = "<group>"; };
+		A20000050000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000060000000000000001 /* DeskFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeskFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		A30000010000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000001 /* DeskFlowApp.swift */,
+				A20000020000000000000001 /* ApiModels.swift */,
+				A20000030000000000000001 /* DeskFlowApiClient.swift */,
+				A20000040000000000000001 /* MainSplitView.swift */,
+				A20000050000000000000001 /* Assets.xcassets */,
+				A20000060000000000000001 /* DeskFlow.app */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A40000010000000000000001 /* DeskFlow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000010000000000000001 /* Build configuration list for PBXNativeTarget "DeskFlow" */;
+			buildPhases = (
+				A50000010000000000000001 /* Sources */,
+				A50000020000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeskFlow;
+			productName = DeskFlow;
+			productReference = A20000060000000000000001 /* DeskFlow.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A60000010000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = A70000020000000000000001 /* Build configuration list for PBXProject "DeskFlow" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				vi,
+			);
+			mainGroup = A30000010000000000000001;
+			productRefGroup = A30000010000000000000001;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A40000010000000000000001 /* DeskFlow */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A50000020000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000050000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A50000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000001 /* DeskFlowApp.swift in Sources */,
+				A10000020000000000000001 /* ApiModels.swift in Sources */,
+				A10000030000000000000001 /* DeskFlowApiClient.swift in Sources */,
+				A10000040000000000000001 /* MainSplitView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A80000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.deskflow.Station;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		A80000020000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.deskflow.Station;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70000010000000000000001 /* Build configuration list for PBXNativeTarget "DeskFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000010000000000000001 /* Debug */,
+				A80000020000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000020000000000000001 /* Build configuration list for PBXProject "DeskFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000010000000000000001 /* Debug */,
+				A80000020000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A60000010000000000000001 /* Project object */;
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.deskflow.Station</id>
+  <name>Deskflow</name>
+  <summary>Native GTK4 + Libadwaita control center for Deskflow &amp; ESP32 Station</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      DeskFlow Station is a native GNOME/GTK4 + Libadwaita desktop application for managing
+      Focus Mode, Sticky Notes, Exam Countdowns, 24-Hour Weather Forecasts, Morse Code
+      hardware playback, and ESP32 OLED display controls.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.deskflow.Station.desktop</launchable>
+  <releases>
+    <release version="1.0.0" date="2026-11-07"/>
+  </releases>
+</component>

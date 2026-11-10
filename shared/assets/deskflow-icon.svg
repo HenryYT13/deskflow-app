@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="dfGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+    <linearGradient id="dfInner" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#e0e7ff" />
+    </linearGradient>
+  </defs>
+  <!-- Background rounded squircle -->
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#dfGrad)" />
+  <!-- Focus clock ring -->
+  <circle cx="64" cy="64" r="36" fill="none" stroke="url(#dfInner)" stroke-width="8" stroke-linecap="round" />
+  <!-- Center lock / timer hand -->
+  <path d="M64 42v22l14 8" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Small dot in center -->
+  <circle cx="64" cy="64" r="4.5" fill="#ffffff" />
+</svg>

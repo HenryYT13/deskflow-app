@@ -1,0 +1,2343 @@
+"""Native GTK4 + Libadwaita Main Window for DeskFlow Linux Desktop."""
+
+from __future__ import annotations
+
+import threading
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, GLib, Gtk
+
+from .api_client import ApiResult, DeskFlowApiClient, logger
+from .models import (
+    AlarmItem,
+    ConfigStore,
+    CountdownItem,
+    MorseCodeConverter,
+    NoteItem,
+    PairedDeviceItem,
+    ScheduledDarkModeEvaluator,
+    WeatherInterval,
+)
+
+
+CUSTOM_CSS = """
+.deskflow-card {
+    background-color: alpha(@card_bg_color, 0.96);
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid alpha(@borders, 0.45);
+}
+.deskflow-badge-online {
+    background-color: alpha(#10B981, 0.18);
+    color: #10B981;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-weight: 700;
+}
+.deskflow-badge-offline {
+    background-color: alpha(#EF4444, 0.18);
+    color: #EF4444;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-weight: 700;
+}
+.deskflow-badge-pinned {
+    background-color: alpha(#F59E0B, 0.22);
+    color: #F59E0B;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-weight: 700;
+}
+.deskflow-mono {
+    font-family: "JetBrains Mono", "Monospace", monospace;
+}
+.oled-bezel {
+    background-color: #060911;
+    border: 2px solid #00E5FF;
+    border-radius: 12px;
+    padding: 14px;
+}
+.oled-glass {
+    background-color: #030509;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid rgba(0, 229, 255, 0.3);
+}
+.oled-text-large {
+    color: #00E5FF;
+    font-size: 24px;
+    font-weight: 800;
+    font-family: monospace;
+}
+.oled-text-mid {
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: monospace;
+}
+.oled-text-sub {
+    color: #94A3B8;
+    font-size: 10px;
+    font-family: monospace;
+}
+.oled-mini-box {
+    background-color: #0A0E17;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 6px 10px;
+}
+"""
+
+
+class DeskFlowMainWindow(Adw.ApplicationWindow):
+    """Primary GTK4 + Libadwaita window with full DeskFlow ecosystem control."""
+
+    PAGES = [
+        ("dashboard", "Giám sát hệ thống & Đo từ xa", "computer-symbolic"),
+        ("station", "Phần cứng & Trạm ESP32", "preferences-desktop-display-symbolic"),
+        ("spotify", "Spotify & Âm nhạc", "audio-x-generic-symbolic"),
+        ("alarms", "Báo thức & Còi báo", "alarm-symbolic"),
+        ("tools", "Công cụ & Groq AI", "document-edit-symbolic"),
+        ("settings", "Cài đặt & Giao diện", "emblem-system-symbolic"),
+    ]
+
+    DISPLAY_VIEWS = [
+        ("main", "Main Dashboard (Default)", "Authoritative default: Clock, Weather, Music & Quotes"),
+        ("clock", "Clock Face", "Digital clock with date & day"),
+        ("weather", "Weather", "Ha Long temperature & forecast"),
+        ("notes", "Sticky Note", "Pinned reminder on station"),
+        ("countdown", "Countdown", "Exam deadline countdown"),
+        ("focus", "Focus Mode", "Active Pomodoro timer"),
+        ("stats", "Server Stats", "Host CPU & RAM utilization"),
+        ("tkb", "Timetable", "Class schedule & uniform"),
+        ("lyrics", "Spotify", "Live lyrics & now playing"),
+    ]
+
+    CLOCK_STYLES = [
+        (1, "digital_classic", "Digital Classic", "Bold digits with seconds & date", "12:30 :45"),
+        (2, "digital_minimal", "Minimalist", "Clean borderless typography", "12:30:45"),
+        (3, "digital_neon", "Neon Cyber", "Cyber rounded neon frame", "[ 12:30 ]"),
+        (4, "analog", "Analog Dial", "Round 3-hand analog clock", "(● 12:30)"),
+        (5, "flip", "Flip Clock", "Retro split-card flip display", "[ 12 ]:[ 30 ]"),
+        (6, "binary", "Binary Matrix", "BCD 4×4 LED matrix", ":: :: :: ::"),
+        (7, "word", "Word Clock", "Spelled out text clock", "TWELVE 30"),
+    ]
+
+    def __init__(
+        self,
+        application: Adw.Application,
+        config_store: Optional[ConfigStore] = None,
+        api_client: Optional[DeskFlowApiClient] = None,
+    ) -> None:
+        super().__init__(application=application)
+        self.set_title("Deskflow")
+        self.set_default_size(1120, 740)
+        self.set_icon_name("com.deskflow.Station")
+
+        self.config_store = config_store or ConfigStore()
+        self.api_client = api_client or DeskFlowApiClient(self.config_store)
+        self._active_challenge_id: Optional[str] = None
+        self._deleting_note_ids: set[str] = set()
+        self._deleting_countdown_ids: set[str] = set()
+        self.preview_oled_view: str = "clock"
+        self.preview_clock_style: int = 1
+
+        self._load_css()
+        self._build_ui()
+        self.apply_theme_preference()
+
+        # Periodic timer (every 15s) to evaluate Scheduled Dark Mode boundaries
+        GLib.timeout_add_seconds(15, self._on_theme_timer_tick)
+
+    def _load_css(self) -> None:
+        provider = Gtk.CssProvider()
+        provider.load_from_string(CUSTOM_CSS)
+        display = Gdk.Display.get_default()
+        if display is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+
+    def _build_ui(self) -> None:
+        self.toast_overlay = Adw.ToastOverlay()
+        self.set_content(self.toast_overlay)
+
+        root_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.toast_overlay.set_child(root_box)
+
+        # HeaderBar
+        self.header_bar = Adw.HeaderBar()
+        self.title_widget = Adw.WindowTitle(
+            title="Deskflow",
+            subtitle=self._connection_subtitle(),
+        )
+        self.header_bar.set_title_widget(self.title_widget)
+
+        self.theme_badge_label = Gtk.Label(label="")
+        self.theme_badge_label.add_css_class("caption")
+        self.header_bar.pack_start(self.theme_badge_label)
+
+        refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Refresh All Station Data (Ctrl+R)")
+        refresh_btn.connect("clicked", lambda *_: self.refresh_all_async())
+        self.header_bar.pack_end(refresh_btn)
+
+        root_box.append(self.header_bar)
+
+        # Split layout: Sidebar + Content Stack
+        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        paned.set_position(250)
+        paned.set_shrink_start_child(False)
+        paned.set_shrink_end_child(False)
+        paned.set_vexpand(True)
+        root_box.append(paned)
+
+        # Sidebar
+        sidebar_scroll = Gtk.ScrolledWindow()
+        sidebar_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        sidebar_scroll.set_size_request(240, -1)
+
+        self.sidebar_list = Gtk.ListBox()
+        self.sidebar_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.sidebar_list.add_css_class("navigation-sidebar")
+        self.sidebar_list.connect("row-selected", self._on_sidebar_row_selected)
+        sidebar_scroll.set_child(self.sidebar_list)
+        paned.set_start_child(sidebar_scroll)
+
+        # Content stack
+        self.content_stack = Gtk.Stack()
+        self.content_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.content_stack.set_transition_duration(180)
+        self.content_stack.set_hexpand(True)
+        self.content_stack.set_vexpand(True)
+        paned.set_end_child(self.content_stack)
+
+        # Build pages
+        self.content_stack.add_named(self._build_dashboard_page(), "dashboard")
+        self.content_stack.add_named(self._build_station_page(), "station")
+        self.content_stack.add_named(self._build_spotify_page(), "spotify")
+        self.content_stack.add_named(self._build_alarms_page(), "alarms")
+        self.content_stack.add_named(self._build_tools_page(), "tools")
+        self.content_stack.add_named(self._build_settings_page(), "settings")
+        # Direct aliases
+        self.content_stack.add_named(self._build_weather_page(), "weather")
+        self.content_stack.add_named(self._build_notes_page(), "notes")
+        self.content_stack.add_named(self._build_countdowns_page(), "countdowns")
+        self.content_stack.add_named(self._build_morse_page(), "morse")
+        self.content_stack.add_named(self._build_focus_page(), "focus")
+
+        for page_id, title, icon_name in self.PAGES:
+            row = Gtk.ListBoxRow()
+            row.page_id = page_id  # type: ignore[attr-defined]
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            box.set_margin_top(10)
+            box.set_margin_bottom(10)
+            box.set_margin_start(12)
+            box.set_margin_end(12)
+            icon = Gtk.Image.new_from_icon_name(icon_name)
+            lbl = Gtk.Label(label=title, xalign=0.0)
+            lbl.set_hexpand(True)
+            box.append(icon)
+            box.append(lbl)
+            row.set_child(box)
+            self.sidebar_list.append(row)
+
+        first_row = self.sidebar_list.get_row_at_index(0)
+        if first_row is not None:
+            self.sidebar_list.select_row(first_row)
+
+        # Strict 1-second background telemetry reporting loop
+        GLib.timeout_add_seconds(1, self._on_telemetry_tick)
+
+    def _on_telemetry_tick(self) -> bool:
+        cpu = 0.0
+        ram = 0.0
+        bat = 100
+        try:
+            import psutil
+            cpu = float(psutil.cpu_percent(interval=None))
+            ram = float(psutil.virtual_memory().percent)
+            sensors = psutil.sensors_battery()
+            if sensors:
+                bat = int(sensors.percent)
+        except Exception:
+            pass
+
+        def _do_telemetry():
+            try:
+                self.api_client.report_telemetry(cpu=cpu, ram_pct=ram, battery=bat)
+            except Exception:
+                pass
+
+            try:
+                res = self.api_client.get_station_status()
+                if res.ok and isinstance(res.data, dict):
+                    data = res.data.get("data") if ("data" in res.data and isinstance(res.data["data"], dict)) else res.data
+                    station = data.get("station") or {}
+                    server = data.get("server") or {}
+                    computer = data.get("computer") or data.get("laptop") or {}
+
+                    bat_pct = station.get("battery_pct", 100)
+                    volt = station.get("voltage", 4.12)
+                    rssi = station.get("wifi_rssi", -55)
+                    esp_sub = f"Pin: {bat_pct}% ({volt}V) • Sóng Wi-Fi: {rssi} dBm • View: {station.get('current_view', 'N/A')}"
+
+                    srv_cpu = server.get("cpu", 0.0)
+                    srv_ram = server.get("ram_pct", 0.0)
+                    srv_disk = server.get("disk_str") or f"{server.get('disk_used_gb', 0)} / {server.get('disk_total_gb', 20)}GB"
+                    srv_sub = f"CPU: {srv_cpu}% • RAM: {srv_ram}% • Dung lượng: {srv_disk} • Uptime: {server.get('uptime', 'N/A')}"
+
+                    comp_name = computer.get("device_name", self.config_store.config.device_name)
+                    comp_cpu = computer.get("cpu", cpu)
+                    comp_ram = computer.get("ram", ram)
+                    comp_bat = computer.get("battery", bat)
+                    comp_on = "Online" if computer.get("online", True) else "Offline"
+                    comp_sub = f"Thiết bị: {comp_name} • CPU: {comp_cpu}% • RAM: {comp_ram}% • Pin: {comp_bat}% • Trạng thái: {comp_on}"
+
+                    def _update_ui():
+                        self.esp_status_row.set_subtitle(esp_sub)
+                        self.server_status_row.set_subtitle(srv_sub)
+                        self.computer_status_row.set_subtitle(comp_sub)
+                        return False
+
+                    GLib.idle_add(_update_ui)
+
+                    # Spotify telemetry poll
+                    try:
+                        res_sp = self.api_client.get_spotify_status()
+                        if res_sp.ok and isinstance(res_sp.data, dict):
+                            sp_data = res_sp.data.get("data") if ("data" in res_sp.data and isinstance(res_sp.data["data"], dict)) else res_sp.data
+                            GLib.idle_add(lambda: (self._apply_spotify_data(sp_data), False)[1])
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        threading.Thread(target=_do_telemetry, daemon=True).start()
+        return True
+
+    def _connection_subtitle(self) -> str:
+        cfg = self.config_store.config
+        if cfg.is_paired:
+            return f"Paired ({cfg.device_name}) • {cfg.api_url}"
+        return f"Unpaired (Inspection Mode) • {cfg.api_url}"
+
+    def show_toast(self, message: str) -> None:
+        toast = Adw.Toast.new(message)
+        toast.set_timeout(2)
+        self.toast_overlay.add_toast(toast)
+        GLib.timeout_add(1500, toast.dismiss)
+
+    def _run_bg(
+        self,
+        worker: Callable[[], Any],
+        on_done: Callable[[Any], None],
+    ) -> None:
+        def _target() -> None:
+            result = worker()
+            GLib.idle_add(lambda: (on_done(result), False)[1])
+
+        threading.Thread(target=_target, daemon=True).start()
+
+    def _on_sidebar_row_selected(self, _listbox: Gtk.ListBox, row: Optional[Gtk.ListBoxRow]) -> None:
+        if row is None:
+            return
+        page_id = getattr(row, "page_id", "dashboard")
+        self.content_stack.set_visible_child_name(page_id)
+
+    # =========================================================================
+    # Theme & Scheduled Dark Mode Management
+    # =========================================================================
+    def _on_theme_timer_tick(self) -> bool:
+        if self.config_store.config.app_theme == "scheduled":
+            self.apply_theme_preference()
+        return True
+
+    def apply_theme_preference(self) -> bool:
+        """Applies System, Light, Dark, or Scheduled Dark Mode via Adw.StyleManager."""
+        cfg = self.config_store.config
+        style_mgr = Adw.StyleManager.get_default()
+        mode = ScheduledDarkModeEvaluator.normalize_theme(cfg.app_theme)
+
+        if mode == "light":
+            style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+            is_dark = False
+            badge = "Theme: Light"
+        elif mode == "dark":
+            style_mgr.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+            is_dark = True
+            badge = "Theme: Dark"
+        elif mode == "scheduled":
+            now = datetime.now()
+            now_min = now.hour * 60 + now.minute
+            is_dark = ScheduledDarkModeEvaluator.is_scheduled_dark_active(
+                now_min, cfg.dark_mode_start, cfg.dark_mode_end, False
+            )
+            style_mgr.set_color_scheme(
+                Adw.ColorScheme.FORCE_DARK if is_dark else Adw.ColorScheme.FORCE_LIGHT
+            )
+            state_str = "Dark Active" if is_dark else "Light Active"
+            badge = f"Scheduled ({cfg.dark_mode_start}–{cfg.dark_mode_end}: {state_str})"
+        else:
+            style_mgr.set_color_scheme(Adw.ColorScheme.DEFAULT)
+            is_dark = style_mgr.get_dark()
+            badge = "Theme: System"
+
+        self.theme_badge_label.set_text(badge)
+        if hasattr(self, "schedule_status_row"):
+            self.schedule_status_row.set_subtitle(
+                f"Window {cfg.dark_mode_start} → {cfg.dark_mode_end} • Currently {'DARK' if is_dark else 'LIGHT'}"
+            )
+        return is_dark
+
+    # =========================================================================
+    # Page 1: Dashboard & Telemetry + Pairing
+    # =========================================================================
+    def _build_dashboard_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        # Pairing group
+        pair_group = Adw.PreferencesGroup(
+            title="Device Authentication &amp; Pairing",
+            description="Pair this Linux workstation with the DeskFlow backend using a pairing code from Discord (/pair).",
+        )
+        page.add(pair_group)
+
+        self.pair_status_row = Adw.ActionRow(
+            title="Pairing Status",
+            subtitle=GLib.markup_escape_text(self._connection_subtitle()),
+        )
+        self.unpair_btn = Gtk.Button(label="Unpair", valign=Gtk.Align.CENTER)
+        self.unpair_btn.add_css_class("destructive-action")
+        self.unpair_btn.set_sensitive(self.config_store.config.is_paired)
+        self.unpair_btn.connect("clicked", self._on_unpair_clicked)
+        self.pair_status_row.add_suffix(self.unpair_btn)
+        pair_group.add(self.pair_status_row)
+
+        self.pair_code_entry = Adw.EntryRow(title="Pairing Code (from Discord /pair)")
+        self.pair_code_entry.connect("entry-activated", self._on_pair_clicked)
+        self.pair_btn = Gtk.Button(label="Pair Device", valign=Gtk.Align.CENTER)
+        self.pair_btn.add_css_class("suggested-action")
+        self.pair_btn.connect("clicked", self._on_pair_clicked)
+        self.pair_code_entry.add_suffix(self.pair_btn)
+        pair_group.add(self.pair_code_entry)
+
+        # Available Feature Categories (Features 8 & 10)
+        cat_group = Adw.PreferencesGroup(
+            title="Available Feature Categories",
+            description="Quickly navigate into the DeskFlow ecosystem categories.",
+        )
+        page.add(cat_group)
+
+        cat_row = Adw.ActionRow(
+            title="Hardware &amp; Station",
+            subtitle="LED ring lighting, OLED display switcher, and buzzer.",
+        )
+        cat_btn = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        cat_btn.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("station"))
+        cat_row.add_suffix(cat_btn)
+        cat_group.add(cat_row)
+
+        alarm_cat_row = Adw.ActionRow(
+            title="Alarms &amp; Sound",
+            subtitle="Math alarms, scheduling, and emergency stop.",
+        )
+        alarm_btn = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        alarm_btn.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("alarms"))
+        alarm_cat_row.add_suffix(alarm_btn)
+        cat_group.add(alarm_cat_row)
+
+        tools_cat_row = Adw.ActionRow(
+            title="Productivity &amp; AI Tools",
+            subtitle="Sticky notes, countdowns, AI motivational quotes, and Morse studio.",
+        )
+        tools_btn = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        tools_btn.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("notes"))
+        tools_cat_row.add_suffix(tools_btn)
+        cat_group.add(tools_cat_row)
+
+        cfg_cat_row = Adw.ActionRow(
+            title="Remote Configuration",
+            subtitle="Appearance, independent ESP32 dark mode, language, and display devices.",
+        )
+        cfg_btn = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+        cfg_btn.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("settings"))
+        cfg_cat_row.add_suffix(cfg_btn)
+        cat_group.add(cfg_cat_row)
+
+        # Telemetry group
+        telemetry_group = Adw.PreferencesGroup(
+            title="Live Ecosystem Telemetry",
+            description="Real-time metrics from ESP32 Station, Server, and Focus Engine.",
+        )
+        page.add(telemetry_group)
+
+        self.esp_status_row = Adw.ActionRow(
+            title="Thông số ESP32 Station",
+            subtitle="Đang tải Pin &amp; Sóng Wi-Fi từ trạm ESP32...",
+        )
+        telemetry_group.add(self.esp_status_row)
+
+        self.server_status_row = Adw.ActionRow(
+            title="Thông số Server Companion",
+            subtitle="Đang tải CPU, RAM &amp; Dung lượng (? / 20GB) máy chủ...",
+        )
+        telemetry_group.add(self.server_status_row)
+
+        self.computer_status_row = Adw.ActionRow(
+            title="Thông số Máy tính (đang đặt để show spec)",
+            subtitle="Đang đồng bộ CPU, RAM &amp; Pin máy tính...",
+        )
+        telemetry_group.add(self.computer_status_row)
+
+        # Spotify Now Playing Mini Player
+        sp_mini_group = Adw.PreferencesGroup(
+            title="Đang phát nhạc (Spotify)",
+            description="Trạng thái bài hát và điều khiển Spotify Desktop.",
+        )
+        page.add(sp_mini_group)
+
+        self.sp_mini_row = Adw.ActionRow(
+            title="Chưa phát nhạc",
+            subtitle="Spotify Desktop • Tạm dừng",
+        )
+        sp_icon = Gtk.Image.new_from_icon_name("audio-x-generic-symbolic")
+        sp_icon.set_pixel_size(32)
+        self.sp_mini_row.add_prefix(sp_icon)
+
+        btn_mini_prev = Gtk.Button(icon_name="media-skip-backward-symbolic", valign=Gtk.Align.CENTER)
+        btn_mini_prev.connect(
+            "clicked",
+            lambda *_: self._run_bg(
+                lambda: self.api_client.control_spotify("previous"),
+                lambda _: None,
+            ),
+        )
+        self.sp_mini_row.add_suffix(btn_mini_prev)
+
+        self.sp_mini_play_btn = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER)
+        def _mini_toggle(*_):
+            cmd = "pause" if getattr(self, "_sp_is_playing", False) else "play"
+            self._run_bg(lambda: self.api_client.control_spotify(cmd), lambda _: None)
+        self.sp_mini_play_btn.connect("clicked", _mini_toggle)
+        self.sp_mini_row.add_suffix(self.sp_mini_play_btn)
+
+        btn_mini_next = Gtk.Button(icon_name="media-skip-forward-symbolic", valign=Gtk.Align.CENTER)
+        btn_mini_next.connect(
+            "clicked",
+            lambda *_: self._run_bg(
+                lambda: self.api_client.control_spotify("next"),
+                lambda _: None,
+            ),
+        )
+        self.sp_mini_row.add_suffix(btn_mini_next)
+
+        btn_open_sp = Gtk.Button(label="Mở Spotify Studio", valign=Gtk.Align.CENTER)
+        btn_open_sp.add_css_class("suggested-action")
+        btn_open_sp.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("spotify"))
+        self.sp_mini_row.add_suffix(btn_open_sp)
+        sp_mini_group.add(self.sp_mini_row)
+
+        self.focus_dash_row = Adw.ActionRow(
+            title="Focus Mode Engine",
+            subtitle="Status: Idle",
+        )
+        telemetry_group.add(self.focus_dash_row)
+
+        return page
+
+    def _on_pair_clicked(self, _widget: Gtk.Widget) -> None:
+        code = self.pair_code_entry.get_text().strip()
+        logger.info(
+            "[UI] Pair button clicked (code_length=%d, api_url=%s)",
+            len(code),
+            self.api_client.base_url,
+        )
+        if not code:
+            logger.warning("[UI] Pairing aborted: empty pairing code input.")
+            self.pair_status_row.set_subtitle(
+                GLib.markup_escape_text("Error: Pairing code cannot be empty.")
+            )
+            self.show_toast("Pairing code cannot be empty. Generate a code in Discord (/pair).")
+            return
+        self.pair_btn.set_sensitive(False)
+        self.pair_status_row.set_subtitle("Pairing with DeskFlow backend...")
+
+        def _done(res: ApiResult) -> None:
+            self.pair_btn.set_sensitive(True)
+            if res.ok:
+                self.pair_code_entry.set_text("")
+                self.pair_status_row.set_subtitle(
+                    GLib.markup_escape_text(self._connection_subtitle())
+                )
+                self.title_widget.set_subtitle(self._connection_subtitle())
+                self.unpair_btn.set_sensitive(True)
+                self.show_toast("Device paired with DeskFlow backend!")
+                self.refresh_all_async()
+            else:
+                self.pair_status_row.set_subtitle(
+                    GLib.markup_escape_text(f"Pairing failed: {res.error_message}")
+                )
+                self.show_toast(f"Pairing failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.pair_device(code), _done)
+
+    def _on_unpair_clicked(self, _btn: Gtk.Button) -> None:
+        def _done(_res: ApiResult) -> None:
+            self.pair_status_row.set_subtitle(self._connection_subtitle())
+            self.title_widget.set_subtitle(self._connection_subtitle())
+            self.unpair_btn.set_sensitive(False)
+            self.show_toast("Device unpaired.")
+
+        self._run_bg(self.api_client.unpair_device, _done)
+
+    # =========================================================================
+    # Page: Spotify & Media Studio
+    # =========================================================================
+    def _build_spotify_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        player_group = Adw.PreferencesGroup(
+            title="Trình phát Spotify (Spotify Studio)",
+            description="Điều khiển phát nhạc, danh sách phát Lo-fi và đồng bộ lời bài hát thời gian thực.",
+        )
+        page.add(player_group)
+
+        self.sp_track_row = Adw.ActionRow(
+            title="Chưa phát nhạc",
+            subtitle="Spotify Desktop Client",
+        )
+        self.sp_track_icon = Gtk.Image.new_from_icon_name("audio-x-generic-symbolic")
+        self.sp_track_icon.set_pixel_size(48)
+        self.sp_track_row.add_prefix(self.sp_track_icon)
+
+        self.sp_status_badge = Gtk.Label(label="TẠM DỪNG")
+        self.sp_status_badge.add_css_class("badge")
+        self.sp_track_row.add_suffix(self.sp_status_badge)
+        player_group.add(self.sp_track_row)
+
+        progress_row = Adw.ActionRow(title="Tiến trình bài hát")
+        self.sp_progress_bar = Gtk.ProgressBar()
+        self.sp_progress_bar.set_fraction(0.0)
+        self.sp_progress_bar.set_hexpand(True)
+        self.sp_progress_bar.set_valign(Gtk.Align.CENTER)
+        progress_row.add_suffix(self.sp_progress_bar)
+
+        self.sp_time_label = Gtk.Label(label="00:00 / 00:00")
+        self.sp_time_label.add_css_class("monospace")
+        progress_row.add_suffix(self.sp_time_label)
+        player_group.add(progress_row)
+
+        ctrl_row = Adw.ActionRow(title="Điều khiển phát nhạc")
+        btn_prev = Gtk.Button(icon_name="media-skip-backward-symbolic", valign=Gtk.Align.CENTER)
+        btn_prev.connect(
+            "clicked",
+            lambda *_: self._run_bg(
+                lambda: self.api_client.control_spotify("previous"),
+                lambda r: self.show_toast("Spotify: Previous" if r.ok else r.error_message),
+            ),
+        )
+        ctrl_row.add_suffix(btn_prev)
+
+        self.sp_play_btn = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER)
+        self.sp_play_btn.add_css_class("suggested-action")
+        def _toggle_play(*_):
+            cmd = "pause" if getattr(self, "_sp_is_playing", False) else "play"
+            self._run_bg(
+                lambda: self.api_client.control_spotify(cmd),
+                lambda r: self.show_toast(f"Spotify: {cmd}" if r.ok else r.error_message),
+            )
+        self.sp_play_btn.connect("clicked", _toggle_play)
+        ctrl_row.add_suffix(self.sp_play_btn)
+
+        btn_next = Gtk.Button(icon_name="media-skip-forward-symbolic", valign=Gtk.Align.CENTER)
+        btn_next.connect(
+            "clicked",
+            lambda *_: self._run_bg(
+                lambda: self.api_client.control_spotify("next"),
+                lambda r: self.show_toast("Spotify: Next" if r.ok else r.error_message),
+            ),
+        )
+        ctrl_row.add_suffix(btn_next)
+
+        btn_refresh = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER)
+        btn_refresh.connect("clicked", lambda *_: self._refresh_spotify_ui())
+        ctrl_row.add_suffix(btn_refresh)
+        player_group.add(ctrl_row)
+
+        vol_row = Adw.ActionRow(title="Âm lượng Spotify (0 - 100%)")
+        self.sp_vol_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 5)
+        self.sp_vol_scale.set_value(50)
+        self.sp_vol_scale.set_size_request(180, -1)
+        self.sp_vol_scale.set_valign(Gtk.Align.CENTER)
+        self.sp_vol_scale.connect(
+            "value-changed",
+            lambda s: self._run_bg(
+                lambda: self.api_client.set_spotify_volume(int(s.get_value())),
+                lambda _: None,
+            ),
+        )
+        vol_row.add_suffix(self.sp_vol_scale)
+        player_group.add(vol_row)
+
+        lyrics_group = Adw.PreferencesGroup(
+            title="Lời bài hát thời gian thực (Synced Lyrics)",
+            description="Đồng bộ lời bài hát từ Spotify và cơ sở dữ liệu LRCLIB.",
+        )
+        page.add(lyrics_group)
+
+        self.sp_curr_lyric_row = Adw.ActionRow(
+            title="Lời hiện tại",
+            subtitle="Đang chờ bài hát có lời...",
+        )
+        lyrics_group.add(self.sp_curr_lyric_row)
+
+        self.sp_next_lyric_row = Adw.ActionRow(
+            title="Câu tiếp theo",
+            subtitle="...",
+        )
+        lyrics_group.add(self.sp_next_lyric_row)
+
+        return page
+
+    def _refresh_spotify_ui(self) -> None:
+        def _fetch():
+            res = self.api_client.get_spotify_status()
+            if res.ok and isinstance(res.data, dict):
+                data = res.data.get("data") if ("data" in res.data and isinstance(res.data["data"], dict)) else res.data
+                self._apply_spotify_data(data)
+        self._run_bg(_fetch, lambda _: None)
+
+    def _apply_spotify_data(self, data: dict) -> None:
+        if not data:
+            return
+        track = data.get("track") or "Chưa phát nhạc"
+        artist = data.get("artist") or "Spotify Desktop"
+        album = data.get("album") or ""
+        is_playing = bool(data.get("is_playing", False))
+        self._sp_is_playing = is_playing
+        progress_ms = int(data.get("progress_ms") or 0)
+        duration_ms = max(1, int(data.get("duration_ms") or 1))
+        pct = max(0.0, min(1.0, float(progress_ms) / float(duration_ms)))
+        cur_lyric = data.get("lyric_curr") or "Đang chờ bài hát có lời..."
+        next_lyric = data.get("lyric_next") or ""
+
+        def _fmt(ms: int) -> str:
+            sec = max(0, ms // 1000)
+            return f"{sec // 60:02d}:{sec % 60:02d}"
+
+        time_str = f"{_fmt(progress_ms)} / {_fmt(duration_ms)}"
+
+        if hasattr(self, "sp_track_row"):
+            self.sp_track_row.set_title(track)
+            self.sp_track_row.set_subtitle(f"{artist} • {album}" if album else artist)
+            self.sp_status_badge.set_text("ĐANG PHÁT" if is_playing else "TẠM DỪNG")
+            self.sp_play_btn.set_icon_name("media-playback-pause-symbolic" if is_playing else "media-playback-start-symbolic")
+            self.sp_progress_bar.set_fraction(pct)
+            self.sp_time_label.set_text(time_str)
+            self.sp_curr_lyric_row.set_subtitle(cur_lyric)
+            self.sp_next_lyric_row.set_subtitle(next_lyric)
+
+        if hasattr(self, "sp_mini_row"):
+            self.sp_mini_row.set_title(track)
+            self.sp_mini_row.set_subtitle(f"{artist} • {'Đang phát' if is_playing else 'Tạm dừng'}")
+            self.sp_mini_play_btn.set_icon_name("media-playback-pause-symbolic" if is_playing else "media-playback-start-symbolic")
+
+    # =========================================================================
+    # Page: Unified Tools & Groq AI (Notes, Countdowns, Morse, Focus)
+    # =========================================================================
+    def _build_tools_page(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        switcher = Adw.ViewSwitcher()
+        switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        stack = Adw.ViewStack()
+        switcher.set_stack(stack)
+        box.append(switcher)
+
+        stack.add_titled_with_icon(self._build_notes_page(), "notes", "Ghi chú & AI", "document-edit-symbolic")
+        stack.add_titled_with_icon(self._build_countdowns_page(), "countdowns", "Đếm ngược", "x-office-calendar-symbolic")
+        stack.add_titled_with_icon(self._build_morse_page(), "morse", "Mã Morse Studio", "audio-speakers-symbolic")
+        stack.add_titled_with_icon(self._build_focus_page(), "focus", "Chế độ Tập trung", "preferences-system-time-symbolic")
+
+        box.append(stack)
+        return box
+
+    # =========================================================================
+    # Page 2: Focus Mode & Math Challenge
+    # =========================================================================
+    def _build_focus_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        session_group = Adw.PreferencesGroup(
+            title="Focus Mode Control",
+            description="Synchronizes website blocking across the browser extension, ESP32 OLED, and Android.",
+        )
+        page.add(session_group)
+
+        self.focus_state_row = Adw.ActionRow(
+            title="Current Focus Session",
+            subtitle="Inactive — Ready to start.",
+        )
+        session_group.add(self.focus_state_row)
+
+        self.focus_duration_spin = Adw.SpinRow.new_with_range(5, 180, 5)
+        self.focus_duration_spin.set_title("Session Duration (Minutes)")
+        self.focus_duration_spin.set_value(25)
+        session_group.add(self.focus_duration_spin)
+
+        self.focus_reason_entry = Adw.EntryRow(title="Session Goal / Reason")
+        self.focus_reason_entry.set_text("Deep Work Session")
+        start_focus_btn = Gtk.Button(label="Start Focus", valign=Gtk.Align.CENTER)
+        start_focus_btn.add_css_class("suggested-action")
+        start_focus_btn.connect("clicked", self._on_start_focus_clicked)
+        self.focus_reason_entry.add_suffix(start_focus_btn)
+        session_group.add(self.focus_reason_entry)
+
+        # Challenge unlock group
+        challenge_group = Adw.PreferencesGroup(
+            title="Early Unlock Math Challenge",
+            description="When Focus Mode is active, solving an arithmetic challenge is required to unlock.",
+        )
+        page.add(challenge_group)
+
+        self.challenge_question_row = Adw.ActionRow(
+            title="Active Math Challenge",
+            subtitle="No active challenge. Click 'Request Challenge' to generate one.",
+        )
+        req_ch_btn = Gtk.Button(label="Request Challenge", valign=Gtk.Align.CENTER)
+        req_ch_btn.connect("clicked", self._on_request_challenge_clicked)
+        self.challenge_question_row.add_suffix(req_ch_btn)
+        challenge_group.add(self.challenge_question_row)
+
+        self.challenge_answer_entry = Adw.EntryRow(title="Challenge Answer (Integer)")
+        verify_btn = Gtk.Button(label="Verify & Unlock", valign=Gtk.Align.CENTER)
+        verify_btn.add_css_class("suggested-action")
+        verify_btn.connect("clicked", self._on_verify_challenge_clicked)
+        self.challenge_answer_entry.add_suffix(verify_btn)
+        challenge_group.add(self.challenge_answer_entry)
+
+        # History group
+        self.focus_history_group = Adw.PreferencesGroup(
+            title="Recent Focus History",
+            description="Completed and interrupted Focus sessions.",
+        )
+        page.add(self.focus_history_group)
+        self._focus_history_rows: List[Gtk.Widget] = []
+
+        return page
+
+    def _on_start_focus_clicked(self, _btn: Gtk.Button) -> None:
+        mins = int(self.focus_duration_spin.get_value())
+        reason = self.focus_reason_entry.get_text().strip() or "Deep Work"
+
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.focus_state_row.set_subtitle(f"ACTIVE • {mins} min ({reason})")
+                self.focus_dash_row.set_subtitle(f"ACTIVE • {mins} min ({reason})")
+                self.show_toast(f"Focus Mode enabled for {mins} minutes!")
+            else:
+                self.show_toast(f"Could not start Focus Mode: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.enable_focus(mins, reason), _done)
+
+    def _on_request_challenge_clicked(self, _btn: Gtk.Button) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok and isinstance(res.data, dict):
+                self._active_challenge_id = str(res.data.get("challenge_id") or "")
+                q = str(res.data.get("question") or "")
+                exp = res.data.get("expires_in", 120)
+                self.challenge_question_row.set_subtitle(f"Question: {q} (Expires in {exp}s)")
+                self.show_toast("Math challenge generated.")
+            else:
+                self.show_toast(f"Challenge request failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.request_challenge(force_new=True), _done)
+
+    def _on_verify_challenge_clicked(self, _btn: Gtk.Button) -> None:
+        if not self._active_challenge_id:
+            self.show_toast("Request a challenge first.")
+            return
+        raw_ans = self.challenge_answer_entry.get_text().strip()
+        try:
+            ans = int(raw_ans)
+        except ValueError:
+            self.show_toast("Answer must be an integer.")
+            return
+
+        cid = self._active_challenge_id
+
+        def _done(res: ApiResult) -> None:
+            if res.ok and isinstance(res.data, dict):
+                if res.data.get("correct"):
+                    self._active_challenge_id = None
+                    self.challenge_answer_entry.set_text("")
+                    self.challenge_question_row.set_subtitle("Solved! Focus Mode unlocked.")
+                    self.focus_state_row.set_subtitle("Inactive — Unlocked via Math Challenge.")
+                    self.show_toast("Correct! Focus Mode unlocked.")
+                else:
+                    new_ch = res.data.get("new_challenge") or {}
+                    if isinstance(new_ch, dict) and new_ch.get("challenge_id"):
+                        self._active_challenge_id = str(new_ch["challenge_id"])
+                        self.challenge_question_row.set_subtitle(
+                            f"Incorrect! New Question: {new_ch.get('question')}"
+                        )
+                    self.show_toast("Incorrect answer. Try the new question.")
+            else:
+                self.show_toast(f"Verification failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.verify_challenge(cid, ans), _done)
+
+    # =========================================================================
+    # Page: Alarms (Backend-Authoritative)
+    # =========================================================================
+    def _build_alarms_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        self.alarms_list_group = Adw.PreferencesGroup(
+            title="Backend-Authoritative Alarms",
+            description="Persistent alarms stored on server and synchronized across all ecosystem devices.",
+        )
+        page.add(self.alarms_list_group)
+
+        self.alarms_list_box = Gtk.ListBox()
+        self.alarms_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.alarms_list_box.add_css_class("boxed-list")
+        self.alarms_list_group.add(self.alarms_list_box)
+
+        # Create Alarm Group
+        create_group = Adw.PreferencesGroup(
+            title="Create New Alarm",
+            description="Schedule an alarm with recurring days and acoustic duration.",
+        )
+        page.add(create_group)
+
+        self.alarm_time_entry = Adw.EntryRow(title="Alarm Time (24h HH:MM)")
+        self.alarm_time_entry.set_text("07:00")
+        create_group.add(self.alarm_time_entry)
+
+        self.alarm_label_entry = Adw.EntryRow(title="Label")
+        self.alarm_label_entry.set_text("Morning Alarm")
+        create_group.add(self.alarm_label_entry)
+
+        # Repeat days row
+        days_row = Adw.ActionRow(
+            title="Repeat Schedule",
+            subtitle="Select days to repeat (uncheck all for one-time)",
+        )
+        self.repeat_cbs: List[Gtk.CheckButton] = []
+        days_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        for i, dname in enumerate(day_names):
+            cb = Gtk.CheckButton(label=dname)
+            cb.set_active(i < 5)
+            self.repeat_cbs.append(cb)
+            days_box.append(cb)
+        days_row.add_suffix(days_box)
+        create_group.add(days_row)
+
+        self.alarm_dur_spin = Adw.SpinRow.new_with_range(50, 1000, 50)
+        self.alarm_dur_spin.set_title("Buzzer Duration (ms)")
+        self.alarm_dur_spin.set_value(250)
+        create_group.add(self.alarm_dur_spin)
+
+        save_btn = Gtk.Button(label="Save Alarm", valign=Gtk.Align.CENTER)
+        save_btn.add_css_class("suggested-action")
+        save_btn.connect("clicked", self._on_save_alarm_clicked)
+        self.alarm_dur_spin.add_suffix(save_btn)
+
+        return page
+
+    def _render_alarms_list(self, alarms: List[Dict[str, Any]]) -> None:
+        child = self.alarms_list_box.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            self.alarms_list_box.remove(child)
+            child = nxt
+
+        if not alarms:
+            empty_row = Adw.ActionRow(
+                title="No Alarms Configured",
+                subtitle="Use the form below to create a persistent alarm.",
+            )
+            self.alarms_list_box.append(empty_row)
+            return
+
+        day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        for a in alarms:
+            aid = str(a.get("id", ""))
+            atime = str(a.get("time", "07:00"))
+            alabel = str(a.get("label", "Alarm"))
+            aenabled = bool(a.get("enabled", True))
+            rep_days = a.get("repeat_days", [])
+            if rep_days:
+                rep_str = ", ".join(day_labels[d] for d in rep_days if 0 <= d < 7)
+            else:
+                rep_str = "Once"
+
+            row = Adw.ActionRow(
+                title=f"{atime} — {alabel}",
+                subtitle=f"Repeat: {rep_str} • Buzzer: {a.get('buzzer_duration', 250)}ms",
+            )
+
+            sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+            sw.set_active(aenabled)
+            sw.connect("notify::active", lambda s, _p, alarm_id=aid: self._on_toggle_alarm(alarm_id, s.get_active()))
+            row.add_suffix(sw)
+
+            del_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+            del_btn.add_css_class("destructive-action")
+            del_btn.connect("clicked", lambda _b, alarm_id=aid: self._on_delete_alarm(alarm_id))
+            row.add_suffix(del_btn)
+
+            self.alarms_list_box.append(row)
+
+    def _on_save_alarm_clicked(self, _btn: Gtk.Button) -> None:
+        time_str = self.alarm_time_entry.get_text().strip()
+        label = self.alarm_label_entry.get_text().strip() or "Alarm"
+        dur = int(self.alarm_dur_spin.get_value())
+        days = [i for i, cb in enumerate(self.repeat_cbs) if cb.get_active()]
+
+        def _worker() -> ApiResult:
+            return self.api_client.save_alarm(time_str=time_str, label=label, repeat_days=days, buzzer_duration=dur)
+
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.show_toast(f"Alarm {time_str} saved!")
+                self.refresh_alarms_async()
+            else:
+                self.show_toast(f"Failed to save alarm: {res.error_message}")
+
+        self._run_bg(_worker, _done)
+
+    def _on_toggle_alarm(self, alarm_id: str, active: bool) -> None:
+        self._run_bg(
+            lambda: self.api_client.toggle_alarm(alarm_id, active),
+            lambda r: self.show_toast("Alarm updated!" if r.ok else r.error_message),
+        )
+
+    def _on_delete_alarm(self, alarm_id: str) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.show_toast("Alarm deleted.")
+                self.refresh_alarms_async()
+            else:
+                self.show_toast(f"Delete failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.delete_alarm(alarm_id), _done)
+
+    def refresh_alarms_async(self) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok and isinstance(res.data, dict):
+                alarms = res.data.get("alarms", [])
+                self._render_alarms_list(alarms)
+
+        self._run_bg(self.api_client.get_alarms, _done)
+
+    # =========================================================================
+    # Page 3: Sticky Notes (CRUD + Pin + Confirmation Dialog + Authoritative Delete)
+    # =========================================================================
+    def _build_notes_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        create_group = Adw.PreferencesGroup(
+            title="Create Sticky Note",
+            description="Notes persist on the server and can be pinned to the ESP32 OLED screen.",
+        )
+        page.add(create_group)
+
+        self.note_input_entry = Adw.EntryRow(title="Note Content (max 200 chars)")
+        add_btn = Gtk.Button(label="Add Note", valign=Gtk.Align.CENTER)
+        add_btn.add_css_class("suggested-action")
+        add_btn.connect("clicked", self._on_create_note_clicked)
+        self.note_input_entry.add_suffix(add_btn)
+        create_group.add(self.note_input_entry)
+
+        unpin_row = Adw.ActionRow(
+            title="Station Pinned Note Controls",
+            subtitle="Clear the currently pinned sticky note on the ESP32 OLED display.",
+        )
+        unpin_btn = Gtk.Button(label="Unpin Station Note", valign=Gtk.Align.CENTER)
+        unpin_btn.connect("clicked", self._on_unpin_note_clicked)
+        unpin_row.add_suffix(unpin_btn)
+        refresh_notes_btn = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER)
+        refresh_notes_btn.connect("clicked", lambda *_: self.refresh_notes_async())
+        unpin_row.add_suffix(refresh_notes_btn)
+        create_group.add(unpin_row)
+
+        self.notes_list_group = Adw.PreferencesGroup(
+            title="Saved Sticky Notes",
+            description="Pin a note to display it on ESP32, or delete it (with confirmation).",
+        )
+        page.add(self.notes_list_group)
+        self._note_rows: List[Gtk.Widget] = []
+        self._render_notes_list(self.api_client.notes)
+
+        # Motivational AI Quote Generator (Feature 9)
+        quote_group = Adw.PreferencesGroup(
+            title="Motivational AI Quote",
+            description="Generate inspiring study &amp; productivity quotes from Groq AI.",
+        )
+        page.add(quote_group)
+
+        self.quote_display_row = Adw.ActionRow(
+            title="Current Motivational Quote",
+            subtitle="“Kiên trì hôm nay, thành công ngày mai!”",
+        )
+        self.quote_gen_btn = Gtk.Button(label="Generate AI Quote", valign=Gtk.Align.CENTER)
+        self.quote_gen_btn.add_css_class("suggested-action")
+        self.quote_gen_btn.connect("clicked", self._on_generate_quote_clicked)
+        self.quote_display_row.add_suffix(self.quote_gen_btn)
+        quote_group.add(self.quote_display_row)
+
+        return page
+
+    def _render_notes_list(self, notes: List[NoteItem]) -> None:
+        for row in self._note_rows:
+            self.notes_list_group.remove(row)
+        self._note_rows.clear()
+
+        if not notes:
+            empty_row = Adw.ActionRow(
+                title="No sticky notes saved",
+                subtitle="Add a note above to display it here and on your ESP32 Station.",
+            )
+            self.notes_list_group.add(empty_row)
+            self._note_rows.append(empty_row)
+            return
+
+        for note in notes:
+            title_txt = note.content or "(Empty note)"
+            sub_txt = f"ID: {note.id}"
+            if note.pinned:
+                sub_txt += " • PINNED ON ESP32"
+            row = Adw.ActionRow(title=title_txt, subtitle=sub_txt)
+
+            pin_btn = Gtk.Button(
+                label="Pinned" if note.pinned else "Pin to ESP32",
+                valign=Gtk.Align.CENTER,
+            )
+            if note.pinned:
+                pin_btn.add_css_class("suggested-action")
+            pin_btn.connect("clicked", lambda _b, nid=note.id: self._on_pin_note_clicked(nid))
+            row.add_suffix(pin_btn)
+
+            del_btn = Gtk.Button(
+                icon_name="user-trash-symbolic",
+                valign=Gtk.Align.CENTER,
+                tooltip_text="Delete Note",
+            )
+            del_btn.add_css_class("destructive-action")
+            is_deleting = note.id in self._deleting_note_ids
+            del_btn.set_sensitive(not is_deleting)
+            del_btn.connect("clicked", lambda _b, n=note: self._confirm_delete_note(n))
+            row.add_suffix(del_btn)
+
+            self.notes_list_group.add(row)
+            self._note_rows.append(row)
+
+    def refresh_notes_async(self) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._render_notes_list(self.api_client.notes)
+            else:
+                self.show_toast(f"Failed to load notes: {res.error_message}")
+
+        self._run_bg(self.api_client.get_notes, _done)
+
+    def _on_create_note_clicked(self, _btn: Gtk.Button) -> None:
+        text = self.note_input_entry.get_text().strip()
+        if not text:
+            self.show_toast("Note content cannot be empty.")
+            return
+
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.note_input_entry.set_text("")
+                self._render_notes_list(self.api_client.notes)
+                self.show_toast("Sticky note created and synced!")
+            else:
+                self.show_toast(f"Create note failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.create_note(text), _done)
+
+    def _on_pin_note_clicked(self, note_id: str) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._render_notes_list(self.api_client.notes)
+                self.show_toast("Note pinned to ESP32 OLED!")
+            else:
+                self.show_toast(f"Pin failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.pin_note(note_id), _done)
+
+    def _on_unpin_note_clicked(self, _btn: Gtk.Button) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._render_notes_list(self.api_client.notes)
+                self.show_toast("Cleared pinned note on ESP32.")
+            else:
+                self.show_toast(f"Unpin failed: {res.error_message}")
+
+        self._run_bg(self.api_client.unpin_note, _done)
+
+    def _on_generate_quote_clicked(self, _btn: Gtk.Button) -> None:
+        self.quote_gen_btn.set_sensitive(False)
+        self.quote_display_row.set_subtitle("Đang tạo danh ngôn từ Groq AI...")
+        def _done(res: ApiResult) -> None:
+            self.quote_gen_btn.set_sensitive(True)
+            if res.ok and isinstance(res.data, dict):
+                quote = res.data.get("quote") or res.data.get("data", {}).get("quote", "")
+                if quote:
+                    self.quote_display_row.set_subtitle(f"“{quote}”")
+                    self.show_toast("Quote sent to ESP32 Station!")
+                    return
+            self.show_toast(f"Quote generation failed: {res.error_message}")
+            self.quote_display_row.set_subtitle("Could not generate quote.")
+        self._run_bg(lambda: self.api_client.generate_quote(), _done)
+
+    def _confirm_delete_note(self, note: NoteItem) -> None:
+        if note.id in self._deleting_note_ids:
+            return
+        dialog = Adw.AlertDialog(
+            heading="Delete Sticky Note?",
+            body=f"Are you sure you want to permanently delete \"{note.content}\"?\nIf pinned, it will also be cleared from the ESP32 Station.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect(
+            "response",
+            lambda _d, resp: self._execute_delete_note(note.id) if resp == "delete" else None,
+        )
+        dialog.present(self)
+
+    def _execute_delete_note(self, note_id: str) -> None:
+        if note_id in self._deleting_note_ids:
+            return
+        self._deleting_note_ids.add(note_id)
+        self._render_notes_list(self.api_client.notes)
+
+        def _done(res: ApiResult) -> None:
+            self._deleting_note_ids.discard(note_id)
+            # Authoritative update: only reflects backend state after HTTP 200
+            self._render_notes_list(self.api_client.notes)
+            if res.ok:
+                self.show_toast("Sticky note deleted.")
+            else:
+                self.show_toast(f"Delete failed ({res.status_code}): {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.delete_note(note_id), _done)
+
+    # =========================================================================
+    # Page 4: Exam Countdowns
+    # =========================================================================
+    def _build_countdowns_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        create_group = Adw.PreferencesGroup(
+            title="Add Exam / Event Countdown",
+            description="Create a countdown and pin it to the ESP32 Station.",
+        )
+        page.add(create_group)
+
+        self.cd_name_entry = Adw.EntryRow(title="Event Name (e.g., THPT Quốc Gia)")
+        create_group.add(self.cd_name_entry)
+
+        self.cd_date_entry = Adw.EntryRow(title="Target Date (YYYY-MM-DD or DD/MM)")
+        add_cd_btn = Gtk.Button(label="Add Countdown", valign=Gtk.Align.CENTER)
+        add_cd_btn.add_css_class("suggested-action")
+        add_cd_btn.connect("clicked", self._on_create_countdown_clicked)
+        self.cd_date_entry.add_suffix(add_cd_btn)
+        create_group.add(self.cd_date_entry)
+
+        self.countdowns_list_group = Adw.PreferencesGroup(
+            title="Active Countdowns",
+            description="Manage saved countdowns.",
+        )
+        page.add(self.countdowns_list_group)
+        self._countdown_rows: List[Gtk.Widget] = []
+        self._render_countdowns_list(self.api_client.countdowns)
+
+        return page
+
+    def _render_countdowns_list(self, items: List[CountdownItem]) -> None:
+        for row in self._countdown_rows:
+            self.countdowns_list_group.remove(row)
+        self._countdown_rows.clear()
+
+        if not items:
+            empty = Adw.ActionRow(
+                title="No countdowns configured",
+                subtitle="Add an event above to track remaining days.",
+            )
+            self.countdowns_list_group.add(empty)
+            self._countdown_rows.append(empty)
+            return
+
+        for item in items:
+            sub = f"Target: {item.target_date} • {item.days_left} days left"
+            if item.pinned:
+                sub += " • PINNED ON ESP32"
+            row = Adw.ActionRow(title=item.name, subtitle=sub)
+
+            pin_btn = Gtk.Button(
+                label="Pinned" if item.pinned else "Pin",
+                valign=Gtk.Align.CENTER,
+            )
+            pin_btn.connect("clicked", lambda _b, cid=item.id: self._on_pin_countdown_clicked(cid))
+            row.add_suffix(pin_btn)
+
+            del_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+            del_btn.add_css_class("destructive-action")
+            del_btn.connect("clicked", lambda _b, c=item: self._execute_delete_countdown(c.id))
+            row.add_suffix(del_btn)
+
+            self.countdowns_list_group.add(row)
+            self._countdown_rows.append(row)
+
+    def _on_create_countdown_clicked(self, _btn: Gtk.Button) -> None:
+        name = self.cd_name_entry.get_text().strip()
+        dt = self.cd_date_entry.get_text().strip()
+        if not name or not dt:
+            self.show_toast("Please enter both event name and target date.")
+            return
+
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.cd_name_entry.set_text("")
+                self.cd_date_entry.set_text("")
+                self._render_countdowns_list(self.api_client.countdowns)
+                self.show_toast("Countdown created!")
+            else:
+                self.show_toast(f"Failed to create countdown: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.create_countdown(name, dt), _done)
+
+    def _on_pin_countdown_clicked(self, countdown_id: str) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._render_countdowns_list(self.api_client.countdowns)
+                self.show_toast("Countdown pinned to ESP32!")
+            else:
+                self.show_toast(f"Pin countdown failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.pin_countdown(countdown_id), _done)
+
+    def _execute_delete_countdown(self, countdown_id: str) -> None:
+        def _done(res: ApiResult) -> None:
+            self._render_countdowns_list(self.api_client.countdowns)
+            if res.ok:
+                self.show_toast("Countdown deleted.")
+            else:
+                self.show_toast(f"Delete countdown failed: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.delete_countdown(countdown_id), _done)
+
+    # =========================================================================
+    # Page 5: Weather Forecast
+    # =========================================================================
+    def _build_weather_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        ctrl_group = Adw.PreferencesGroup(
+            title="24-Hour Weather Forecast (3-Hour Intervals)",
+            description="OpenWeatherMap 5-day/3h forecast unified across Backend, Android, and Desktop.",
+        )
+        page.add(ctrl_group)
+
+        self.weather_city_entry = Adw.EntryRow(title="City Override (optional, e.g., Ho Chi Minh)")
+        fetch_btn = Gtk.Button(label="Fetch Forecast", valign=Gtk.Align.CENTER)
+        fetch_btn.add_css_class("suggested-action")
+        fetch_btn.connect("clicked", lambda *_: self.refresh_weather_async())
+        self.weather_city_entry.add_suffix(fetch_btn)
+        ctrl_group.add(self.weather_city_entry)
+
+        self.weather_list_group = Adw.PreferencesGroup(title="Upcoming Intervals")
+        page.add(self.weather_list_group)
+        self._weather_rows: List[Gtk.Widget] = []
+
+        return page
+
+    def refresh_weather_async(self) -> None:
+        city = self.weather_city_entry.get_text().strip() or None
+
+        def _done(pair: Any) -> None:
+            res, intervals = pair
+            for r in self._weather_rows:
+                self.weather_list_group.remove(r)
+            self._weather_rows.clear()
+
+            if not res.ok:
+                row = Adw.ActionRow(
+                    title="Forecast unavailable",
+                    subtitle=res.error_message,
+                )
+                self.weather_list_group.add(row)
+                self._weather_rows.append(row)
+                return
+
+            if not intervals:
+                row = Adw.ActionRow(title="No forecast intervals returned", subtitle="")
+                self.weather_list_group.add(row)
+                self._weather_rows.append(row)
+                return
+
+            for iv in intervals:
+                rain_tag = "🌧 RAIN ALERT" if iv.is_rain else f"Rain prob: {iv.rain_prob:.0f}%"
+                row = Adw.ActionRow(
+                    title=f"{iv.time} — {iv.temp:.1f}°C ({iv.description})",
+                    subtitle=rain_tag,
+                )
+                self.weather_list_group.add(row)
+                self._weather_rows.append(row)
+
+        self._run_bg(lambda: self.api_client.get_weather_forecast(city), _done)
+
+    # =========================================================================
+    # Page 6: Morse Code Studio & ESP32 Buzzer Playback
+    # =========================================================================
+    def _build_morse_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        conv_group = Adw.PreferencesGroup(
+            title="Live Bidirectional Morse Code Converter",
+            description="Real-time live conversion between text and Morse code with ESP32 hardware playback.",
+        )
+        page.add(conv_group)
+
+        self._is_updating_morse = False
+
+        self.morse_text_entry = Adw.EntryRow(title="Plain Text Input")
+        self.morse_text_entry.set_text("SOS DESKFLOW")
+        self.morse_text_entry.connect("changed", self._on_text_changed_live)
+        to_morse_btn = Gtk.Button(label="Text → Morse", valign=Gtk.Align.CENTER)
+        to_morse_btn.connect("clicked", self._on_text_to_morse)
+        self.morse_text_entry.add_suffix(to_morse_btn)
+        conv_group.add(self.morse_text_entry)
+
+        self.morse_pattern_entry = Adw.EntryRow(title="Morse Pattern (. - /)")
+        self.morse_pattern_entry.set_text("... --- ... / -.. . ... -.- ..-. .-.. --- .--")
+        self.morse_pattern_entry.connect("changed", self._on_morse_changed_live)
+        to_text_btn = Gtk.Button(label="Morse → Text", valign=Gtk.Align.CENTER)
+        to_text_btn.connect("clicked", self._on_morse_to_text)
+        self.morse_pattern_entry.add_suffix(to_text_btn)
+        conv_group.add(self.morse_pattern_entry)
+
+        keypad_row = Adw.ActionRow(
+            title="Quick Morse Keypad",
+            subtitle="Tap buttons to append Morse symbols in real time.",
+        )
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        for label, symbol in [("• (Dot)", "."), ("— (Dash)", "-"), ("[Ký tự]", " "), ("/ [Từ]", " / ")]:
+            btn = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
+            btn.connect("clicked", lambda _b, s=symbol: self._append_morse_symbol(s))
+            box.append(btn)
+        clear_btn = Gtk.Button(label="Clear", valign=Gtk.Align.CENTER)
+        clear_btn.connect("clicked", lambda _b: self._clear_morse())
+        box.append(clear_btn)
+        keypad_row.add_suffix(box)
+        conv_group.add(keypad_row)
+
+        hw_group = Adw.PreferencesGroup(
+            title="ESP32 Hardware Buzzer Playback",
+            description="Transmits Morse pattern via Backend → MQTT (deskflow/command) → ESP32 GPIO26 buzzer.",
+        )
+        page.add(hw_group)
+
+        self.morse_unit_spin = Adw.SpinRow.new_with_range(30, 300, 10)
+        self.morse_unit_spin.set_title("Dot Unit Duration (ms)")
+        self.morse_unit_spin.set_value(80)
+        hw_group.add(self.morse_unit_spin)
+
+        self.morse_freq_spin = Adw.SpinRow.new_with_range(500, 4500, 100)
+        self.morse_freq_spin.set_title("Tone Frequency (Hz)")
+        self.morse_freq_spin.set_value(2400)
+        hw_group.add(self.morse_freq_spin)
+
+        action_row = Adw.ActionRow(
+            title="Hardware Playback Controls",
+            subtitle="Play or immediately stop Morse audio on the physical ESP32 Station.",
+        )
+        play_btn = Gtk.Button(label="Play on ESP32", valign=Gtk.Align.CENTER)
+        play_btn.add_css_class("suggested-action")
+        play_btn.connect("clicked", self._on_play_morse_clicked)
+        stop_btn = Gtk.Button(label="Stop Playback", valign=Gtk.Align.CENTER)
+        stop_btn.add_css_class("destructive-action")
+        stop_btn.connect("clicked", self._on_stop_morse_clicked)
+        action_row.add_suffix(play_btn)
+        action_row.add_suffix(stop_btn)
+        hw_group.add(action_row)
+
+        return page
+
+    def _on_text_changed_live(self, _entry: Any) -> None:
+        if getattr(self, "_is_updating_morse", False):
+            return
+        self._is_updating_morse = True
+        try:
+            txt = self.morse_text_entry.get_text()
+            encoded = MorseCodeConverter.text_to_morse(txt)
+            self.morse_pattern_entry.set_text(encoded)
+        finally:
+            self._is_updating_morse = False
+
+    def _on_morse_changed_live(self, _entry: Any) -> None:
+        if getattr(self, "_is_updating_morse", False):
+            return
+        self._is_updating_morse = True
+        try:
+            pattern = self.morse_pattern_entry.get_text()
+            decoded = MorseCodeConverter.morse_to_text(pattern)
+            self.morse_text_entry.set_text(decoded)
+        finally:
+            self._is_updating_morse = False
+
+    def _append_morse_symbol(self, sym: str) -> None:
+        current = self.morse_pattern_entry.get_text()
+        self.morse_pattern_entry.set_text(current + sym)
+
+    def _clear_morse(self) -> None:
+        self._is_updating_morse = True
+        self.morse_text_entry.set_text("")
+        self.morse_pattern_entry.set_text("")
+        self._is_updating_morse = False
+
+    def _on_text_to_morse(self, _btn: Gtk.Button) -> None:
+        txt = self.morse_text_entry.get_text()
+        encoded = MorseCodeConverter.text_to_morse(txt)
+        self.morse_pattern_entry.set_text(encoded)
+
+    def _on_morse_to_text(self, _btn: Gtk.Button) -> None:
+        pattern = self.morse_pattern_entry.get_text()
+        decoded = MorseCodeConverter.morse_to_text(pattern)
+        self.morse_text_entry.set_text(decoded)
+
+    def _on_play_morse_clicked(self, _btn: Gtk.Button) -> None:
+        pattern = self.morse_pattern_entry.get_text().strip()
+        unit_ms = int(self.morse_unit_spin.get_value())
+        freq = int(self.morse_freq_spin.get_value())
+        if not pattern:
+            self.show_toast("Morse pattern cannot be empty.")
+            return
+
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.show_toast("Morse pattern sent to ESP32 Station!")
+            else:
+                self.show_toast(f"Morse play error: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.play_morse(pattern, unit_ms, freq), _done)
+
+    def _on_stop_morse_clicked(self, _btn: Gtk.Button) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.show_toast("Morse playback stopped.")
+            else:
+                self.show_toast(f"Morse stop error: {res.error_message}")
+
+        self._run_bg(self.api_client.stop_morse, _done)
+
+    # =========================================================================
+    # Page 7: ESP32 Station Display, Clock Studio, Lamp, Spotify & Timetable
+    # =========================================================================
+    def _build_station_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        # 1. Live ESP32 OLED Display Monitor (128x64 preview)
+        monitor_group = Adw.PreferencesGroup(
+            title="Live ESP32 OLED Display Monitor (128×64)",
+            description="High-contrast preview of the screen or watch face before dispatching to ESP32 silicon.",
+        )
+        page.add(monitor_group)
+
+        monitor_bezel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        monitor_bezel.add_css_class("oled-bezel")
+
+        top_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        dot_label = Gtk.Label(label="●")
+        dot_label.add_css_class("deskflow-badge-online")
+        title_label = Gtk.Label(label="128×64 SSD1306 OLED MONITOR", xalign=0.0)
+        title_label.add_css_class("oled-text-sub")
+        self.oled_mode_badge = Gtk.Label(label="CLOCK FACE", xalign=1.0, hexpand=True)
+        self.oled_mode_badge.add_css_class("oled-title")
+        top_header.append(dot_label)
+        top_header.append(title_label)
+        top_header.append(self.oled_mode_badge)
+        monitor_bezel.append(top_header)
+
+        # OLED Screen Glass
+        self.oled_glass = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.oled_glass.add_css_class("oled-glass")
+        self.oled_glass.set_size_request(280, 96)
+
+        self.oled_screen_title = Gtk.Label(label="DESKFLOW CLOCK", xalign=0.5)
+        self.oled_screen_title.add_css_class("oled-text-sub")
+        self.oled_screen_main = Gtk.Label(label="12:30 :45", xalign=0.5)
+        self.oled_screen_main.add_css_class("oled-text-large")
+        self.oled_screen_sub = Gtk.Label(label="SUN 08 NOV • 28°C HCM", xalign=0.5)
+        self.oled_screen_sub.add_css_class("oled-text-sub")
+
+        self.oled_glass.append(self.oled_screen_title)
+        self.oled_glass.append(self.oled_screen_main)
+        self.oled_glass.append(self.oled_screen_sub)
+        monitor_bezel.append(self.oled_glass)
+
+        bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        hint_label = Gtk.Label(
+            label="Click any watch face or view below to preview. Click Apply to send to ESP32.",
+            xalign=0.0,
+            hexpand=True,
+        )
+        hint_label.add_css_class("caption")
+        apply_btn = Gtk.Button(label="Apply to Station OLED")
+        apply_btn.add_css_class("suggested-action")
+        apply_btn.connect("clicked", self._on_apply_oled_preview)
+        bottom_bar.append(hint_label)
+        bottom_bar.append(apply_btn)
+        monitor_bezel.append(bottom_bar)
+
+        monitor_group.add(monitor_bezel)
+
+        # 2. Clock Face Studio (7 Watch Face Styles with Visual Cards)
+        clock_group = Adw.PreferencesGroup(
+            title="Clock Face Studio (7 Watch Face Styles)",
+            description="Select and preview clock faces for the ESP32 OLED display.",
+        )
+        page.add(clock_group)
+
+        clock_flow = Gtk.FlowBox()
+        clock_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        clock_flow.set_max_children_per_line(4)
+        clock_flow.set_column_spacing(10)
+        clock_flow.set_row_spacing(10)
+
+        for style_id, _code, name, desc, sample in self.CLOCK_STYLES:
+            card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            card_box.set_size_request(150, 75)
+            card_box.set_margin_top(4)
+            card_box.set_margin_bottom(4)
+            card_box.set_margin_start(6)
+            card_box.set_margin_end(6)
+
+            mini_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            mini_box.add_css_class("oled-mini-box")
+            sample_lbl = Gtk.Label(label=sample, xalign=0.5)
+            sample_lbl.add_css_class("oled-text-sub")
+            mini_box.append(sample_lbl)
+
+            lbl_title = Gtk.Label(label=f"{style_id}. {name}", xalign=0.0)
+            lbl_title.add_css_class("heading")
+            lbl_desc = Gtk.Label(label=desc, xalign=0.0)
+            lbl_desc.add_css_class("caption")
+            lbl_desc.set_wrap(True)
+
+            card_box.append(mini_box)
+            card_box.append(lbl_title)
+            card_box.append(lbl_desc)
+
+            btn = Gtk.Button()
+            btn.set_child(card_box)
+            btn.connect("clicked", lambda _b, sid=style_id: self._select_clock_style(sid))
+            clock_flow.append(btn)
+
+        clock_group.add(clock_flow)
+
+        # 3. OLED Display View Switcher (8 Views with Visual Cards)
+        view_group = Adw.PreferencesGroup(
+            title="ESP32 OLED Display View Switcher (Clock Page System)",
+            description="Switch the active screen on the 128×64 SSD1306 OLED.",
+        )
+        page.add(view_group)
+
+        view_flow = Gtk.FlowBox()
+        view_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        view_flow.set_max_children_per_line(4)
+        view_flow.set_column_spacing(10)
+        view_flow.set_row_spacing(10)
+        for view_key, view_label, view_desc in self.DISPLAY_VIEWS:
+            card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            card_box.set_size_request(140, 65)
+            card_box.set_margin_top(6)
+            card_box.set_margin_bottom(6)
+            card_box.set_margin_start(8)
+            card_box.set_margin_end(8)
+            lbl_title = Gtk.Label(label=view_label, xalign=0.0)
+            lbl_title.add_css_class("heading")
+            lbl_desc = Gtk.Label(label=view_desc, xalign=0.0)
+            lbl_desc.add_css_class("caption")
+            lbl_desc.set_wrap(True)
+            card_box.append(lbl_title)
+            card_box.append(lbl_desc)
+
+            btn = Gtk.Button()
+            btn.set_child(card_box)
+            btn.set_tooltip_text(f"Display {view_label} on station: {view_desc}")
+            btn.connect("clicked", lambda _b, vk=view_key: self._select_oled_view(vk))
+            view_flow.append(btn)
+        view_group.add(view_flow)
+
+        # Initialize OLED preview
+        self._update_oled_preview()
+
+        # Custom LED Lighting
+        lamp_group = Adw.PreferencesGroup(
+            title="WS2812B NeoPixel LED Lighting",
+            description="Control ambient lamp color, hex palettes, and brightness.",
+        )
+        page.add(lamp_group)
+
+        self.lamp_hex_entry = Adw.EntryRow(title="Lamp Hex Color (#RRGGBB)")
+        self.lamp_hex_entry.set_text("#8B5CF6")
+
+        presets_row = Adw.ActionRow(
+            title="Color Presets",
+            subtitle="One-click hardware ambiance.",
+        )
+        for name, hx in [("Purple", "#8B5CF6"), ("Emerald", "#10B981"), ("Cyan", "#06B6D4"), ("Amber", "#F59E0B"), ("Red", "#EF4444"), ("White", "#FFFFFF")]:
+            btn = Gtk.Button(label=name, valign=Gtk.Align.CENTER)
+            btn.connect("clicked", lambda _b, color=hx: self._apply_lamp_color(color))
+            presets_row.add_suffix(btn)
+        lamp_group.add(presets_row)
+
+        apply_color_btn = Gtk.Button(label="Set Custom Color", valign=Gtk.Align.CENTER)
+        apply_color_btn.add_css_class("suggested-action")
+        apply_color_btn.connect("clicked", lambda *_: self._apply_lamp_color(self.lamp_hex_entry.get_text().strip()))
+        self.lamp_hex_entry.add_suffix(apply_color_btn)
+
+        try:
+            color_dialog = Gtk.ColorDialog()
+            self.color_dialog_btn = Gtk.ColorDialogButton(dialog=color_dialog)
+            self.color_dialog_btn.set_valign(Gtk.Align.CENTER)
+            self.color_dialog_btn.set_tooltip_text("Mở bảng màu tuỳ biến (Color Palette)")
+            def _on_color_notify(btn, _pspec):
+                rgba = btn.get_rgba()
+                hex_val = f"#{int(rgba.red * 255):02X}{int(rgba.green * 255):02X}{int(rgba.blue * 255):02X}"
+                self._apply_lamp_color(hex_val)
+            self.color_dialog_btn.connect("notify::rgba", _on_color_notify)
+            self.lamp_hex_entry.add_suffix(self.color_dialog_btn)
+        except Exception:
+            pass
+
+        off_btn = Gtk.Button(label="Lamp Off", valign=Gtk.Align.CENTER)
+        off_btn.connect("clicked", lambda *_: self._run_bg(self.api_client.turn_lamp_off, lambda r: self.show_toast("Lamp turned off." if r.ok else r.error_message)))
+        self.lamp_hex_entry.add_suffix(off_btn)
+        lamp_group.add(self.lamp_hex_entry)
+
+        # Custom Beep & Hardware Buzzer (Phase 4)
+        buzzer_group = Adw.PreferencesGroup(
+            title="Custom Beep &amp; Hardware Buzzer",
+            description="Acoustic alerting with duration control and emergency stop.",
+        )
+        page.add(buzzer_group)
+
+        self.buzzer_duration_spin = Adw.SpinRow.new_with_range(10, 1000, 10)
+        self.buzzer_duration_spin.set_title("Buzzer Duration (ms)")
+        self.buzzer_duration_spin.set_value(40)
+        buzzer_group.add(self.buzzer_duration_spin)
+
+        buzz_presets_row = Adw.ActionRow(
+            title="Duration Presets",
+            subtitle="Android Custom Beep presets.",
+        )
+        for dur in [40, 80, 150, 250, 500]:
+            bb = Gtk.Button(label=f"{dur}ms", valign=Gtk.Align.CENTER)
+            bb.connect("clicked", lambda _b, d=dur: self._on_buzz_preset_clicked(d))
+            buzz_presets_row.add_suffix(bb)
+        buzzer_group.add(buzz_presets_row)
+
+        test_buzz_row = Adw.ActionRow(
+            title="Buzzer Hardware Actions",
+            subtitle="Trigger acoustic test or silence sounding alarms.",
+        )
+        test_buzz_btn = Gtk.Button(label="Test Buzzer", valign=Gtk.Align.CENTER)
+        test_buzz_btn.add_css_class("suggested-action")
+        test_buzz_btn.connect(
+            "clicked",
+            lambda *_: self._run_bg(
+                lambda: self.api_client.trigger_buzz(int(self.buzzer_duration_spin.get_value())),
+                lambda r: self.show_toast(f"Buzz ({int(self.buzzer_duration_spin.get_value())}ms) triggered!" if r.ok else r.error_message),
+            ),
+        )
+        test_buzz_row.add_suffix(test_buzz_btn)
+
+        stop_buzz_btn = Gtk.Button(label="Emergency Stop", valign=Gtk.Align.CENTER)
+        stop_buzz_btn.add_css_class("destructive-action")
+        stop_buzz_btn.connect(
+            "clicked",
+            lambda *_: self._run_bg(
+                self.api_client.emergency_stop_alarm,
+                lambda r: self.show_toast("Alarm silenced!" if r.ok else r.error_message),
+            ),
+        )
+        test_buzz_row.add_suffix(stop_buzz_btn)
+        buzzer_group.add(test_buzz_row)
+
+        # Spotify & Timetable summary
+        media_group = Adw.PreferencesGroup(
+            title="Spotify &amp; Timetable Quick Status",
+            description="Live playback and school schedule.",
+        )
+        page.add(media_group)
+
+        self.spotify_row = Adw.ActionRow(
+            title="Spotify Playback",
+            subtitle="Press Refresh to load active track.",
+        )
+        for cmd, icon in [("prev", "media-skip-backward-symbolic"), ("play", "media-playback-start-symbolic"), ("pause", "media-playback-pause-symbolic"), ("next", "media-skip-forward-symbolic")]:
+            b = Gtk.Button(icon_name=icon, valign=Gtk.Align.CENTER, tooltip_text=cmd.title())
+            b.connect(
+                "clicked",
+                lambda _b, c=cmd: self._run_bg(
+                    lambda: self.api_client.control_spotify(c),
+                    lambda r: self.show_toast(f"Spotify: {c}" if r.ok else r.error_message),
+                ),
+            )
+            self.spotify_row.add_suffix(b)
+        media_group.add(self.spotify_row)
+
+        self.timetable_row = Adw.ActionRow(
+            title="Today's Timetable",
+            subtitle="Press Refresh to load subjects and uniform.",
+        )
+        media_group.add(self.timetable_row)
+
+        return page
+
+    def _select_clock_style(self, style_id: int) -> None:
+        self.preview_clock_style = style_id
+        self.preview_oled_view = "clock"
+        self._update_oled_preview()
+        self._run_bg(
+            lambda: self.api_client.set_clock_style(style_id),
+            lambda r: self.show_toast(f"Watch Face Style #{style_id} activated!" if r.ok else r.error_message),
+        )
+
+    def _select_oled_view(self, view_key: str) -> None:
+        self.preview_oled_view = view_key
+        self._update_oled_preview()
+        self._run_bg(
+            lambda: self.api_client.switch_display_view(view_key),
+            lambda r: self.show_toast(f"Switched OLED view to {view_key}" if r.ok else r.error_message),
+        )
+
+    def _on_apply_oled_preview(self, _btn: Gtk.Button) -> None:
+        if self.preview_oled_view == "main":
+            self.oled_mode_badge.set_text("MAIN DASHBOARD")
+            self.oled_screen_title.set_text("DESKFLOW STATION (DEFAULT)")
+            self.oled_screen_main.set_text("12:45 • Ha Long 28°C")
+            self.oled_screen_sub.set_text("♫ Spotify Playing • Quotes & Notes")
+        elif self.preview_oled_view == "clock":
+            def _apply() -> ApiResult:
+                r1 = self.api_client.set_clock_style(self.preview_clock_style)
+                if not r1.ok:
+                    return r1
+                return self.api_client.switch_display_view("clock")
+            self._run_bg(
+                _apply,
+                lambda r: self.show_toast("Applied Watch Face to ESP32!" if r.ok else r.error_message),
+            )
+        else:
+            self._run_bg(
+                lambda: self.api_client.switch_display_view(self.preview_oled_view),
+                lambda r: self.show_toast(f"Applied {self.preview_oled_view} view to ESP32!" if r.ok else r.error_message),
+            )
+
+    def _update_oled_preview(self) -> None:
+        if not hasattr(self, "oled_glass"):
+            return
+        if self.preview_oled_view == "main":
+            self.oled_mode_badge.set_text("MAIN DASHBOARD")
+            self.oled_screen_title.set_text("DESKFLOW STATION (DEFAULT)")
+            self.oled_screen_main.set_text("12:45 • Ha Long 28°C")
+            self.oled_screen_sub.set_text("♫ Spotify Playing • Quotes & Notes")
+        elif self.preview_oled_view == "clock":
+            style = self.preview_clock_style
+            self.oled_mode_badge.set_text(f"WATCH FACE #{style}")
+            if style == 2:
+                self.oled_screen_title.set_text("MINIMALIST CLOCK")
+                self.oled_screen_main.set_text("12:30:45")
+                self.oled_screen_sub.set_text("Sun, 08 Nov • 28°C")
+            elif style == 3:
+                self.oled_screen_title.set_text("CYBER STATION")
+                self.oled_screen_main.set_text("[ 12:30 ]")
+                self.oled_screen_sub.set_text("SEC: 45 • NEON GLOW")
+            elif style == 4:
+                self.oled_screen_title.set_text("ANALOG DIAL")
+                self.oled_screen_main.set_text("12:30 PM (●)")
+                self.oled_screen_sub.set_text("SUN 08 NOV • 3-HAND")
+            elif style == 5:
+                self.oled_screen_title.set_text("RETRO FLIP CLOCK")
+                self.oled_screen_main.set_text("[ 12 ] : [ 30 ]")
+                self.oled_screen_sub.set_text("SEC: 45 • FLIP CARD")
+            elif style == 6:
+                self.oled_screen_title.set_text("BINARY CLOCK")
+                self.oled_screen_main.set_text(":: :: :: :: (12:30)")
+                self.oled_screen_sub.set_text("BCD 8-4-2-1 MATRIX")
+            elif style == 7:
+                self.oled_screen_title.set_text("WORD CLOCK")
+                self.oled_screen_main.set_text("TWELVE THIRTY")
+                self.oled_screen_sub.set_text("FORTY FIVE SECONDS")
+            else:
+                self.oled_screen_title.set_text("DIGITAL CLASSIC")
+                self.oled_screen_main.set_text("12:30 :45")
+                self.oled_screen_sub.set_text("SUN 08 NOV • 28°C HCM")
+        elif self.preview_oled_view == "weather":
+            self.oled_mode_badge.set_text("WEATHER FORECAST")
+            self.oled_screen_title.set_text("HO CHI MINH CITY")
+            self.oled_screen_main.set_text("28°C  SUNNY")
+            self.oled_screen_sub.set_text("POP: 20% • HUMIDITY: 65%")
+        elif self.preview_oled_view == "notes":
+            self.oled_mode_badge.set_text("STICKY NOTE")
+            self.oled_screen_title.set_text("★ PINNED NOTE")
+            self.oled_screen_main.set_text("Meeting at 2:00 PM")
+            self.oled_screen_sub.set_text("Review DeskFlow firmware build")
+        elif self.preview_oled_view == "countdown":
+            self.oled_mode_badge.set_text("TARGET COUNTDOWN")
+            self.oled_screen_title.set_text("KHKT 2026 EXAM")
+            self.oled_screen_main.set_text("45 DAYS LEFT")
+            self.oled_screen_sub.set_text("TARGET: 15/01/2026")
+        elif self.preview_oled_view == "focus":
+            self.oled_mode_badge.set_text("FOCUS SESSION")
+            self.oled_screen_title.set_text("POMODORO ACTIVE")
+            self.oled_screen_main.set_text("24:58")
+            self.oled_screen_sub.set_text("[████████░░░░] 72% LEFT")
+        elif self.preview_oled_view == "stats":
+            self.oled_mode_badge.set_text("SERVER TELEMETRY")
+            self.oled_screen_title.set_text("HOST & ESP32 STATS")
+            self.oled_screen_main.set_text("CPU 24% • RAM 58%")
+            self.oled_screen_sub.set_text("UPTIME: 4d 12h • WIFI OK")
+        elif self.preview_oled_view == "tkb":
+            self.oled_mode_badge.set_text("TIMETABLE")
+            self.oled_screen_title.set_text("TKB — SANG THU 2")
+            self.oled_screen_main.set_text("Toan • Ly • Hoa")
+            self.oled_screen_sub.set_text("Anh • Sinh Hoc")
+        elif self.preview_oled_view == "lyrics":
+            self.oled_mode_badge.set_text("SPOTIFY LYRICS")
+            self.oled_screen_title.set_text("♫ NOW PLAYING")
+            self.oled_screen_main.set_text("Starboy — The Weeknd")
+            self.oled_screen_sub.set_text("\"I'm tryna put you in the worst mood...\"")
+
+    # =========================================================================
+    # Page 8: Settings, Health Check & Scheduled Dark Mode
+    # =========================================================================
+    def _build_settings_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        # Theme & Scheduled Dark Mode group
+        theme_group = Adw.PreferencesGroup(
+            title="Appearance &amp; Scheduled Dark Mode",
+            description="Choose System, Light, Dark, or Scheduled Dark Mode with automatic time-window switching.",
+        )
+        page.add(theme_group)
+
+        self.theme_combo = Adw.ComboRow(
+            title="Theme Mode",
+            subtitle="Automatically switches between Light and Dark when set to Scheduled.",
+        )
+        theme_model = Gtk.StringList.new(["System Default", "Light Mode", "Dark Mode", "Scheduled Dark Mode"])
+        self.theme_combo.set_model(theme_model)
+        mode_to_idx = {"system": 0, "light": 1, "dark": 2, "scheduled": 3}
+        self.theme_combo.set_selected(mode_to_idx.get(self.config_store.config.app_theme, 0))
+        self.theme_combo.connect("notify::selected", self._on_theme_combo_changed)
+        theme_group.add(self.theme_combo)
+
+        # Language Selector (Feature 2)
+        self.language_combo = Adw.ComboRow(
+            title="Display Language (Ngôn ngữ hiển thị)",
+            subtitle="Choose interface language between English and Tiếng Việt.",
+        )
+        lang_model = Gtk.StringList.new(["English", "Tiếng Việt"])
+        self.language_combo.set_model(lang_model)
+        self.language_combo.set_selected(1 if self.config_store.config.language == "vi" else 0)
+        self.language_combo.connect("notify::selected", self._on_language_combo_changed)
+        theme_group.add(self.language_combo)
+
+        # Independent ESP32 Dark Mode Group (Feature 3)
+        esp_theme_group = Adw.PreferencesGroup(
+            title="ESP32 Display Appearance",
+            description="Configure dark mode independently on the ESP32 Station OLED screen.",
+        )
+        page.add(esp_theme_group)
+
+        self.esp32_theme_combo = Adw.ComboRow(
+            title="ESP32 Display Dark Mode",
+            subtitle="Controls OLED theme palette independently of the desktop app theme.",
+        )
+        esp_model = Gtk.StringList.new(["Off (Light Mode)", "Always On (Dark Mode)", "Scheduled (NVS Active)"])
+        self.esp32_theme_combo.set_model(esp_model)
+        self.esp32_theme_combo.set_selected(0)
+        esp_apply_btn = Gtk.Button(label="Apply to ESP32", valign=Gtk.Align.CENTER)
+        esp_apply_btn.add_css_class("suggested-action")
+        esp_apply_btn.connect("clicked", self._on_apply_esp32_theme_clicked)
+        self.esp32_theme_combo.add_suffix(esp_apply_btn)
+        esp_theme_group.add(self.esp32_theme_combo)
+
+        self.dark_start_entry = Adw.EntryRow(title="Dark Mode Start Time (24h HH:MM)")
+        self.dark_start_entry.set_text(self.config_store.config.dark_mode_start)
+        theme_group.add(self.dark_start_entry)
+
+        self.dark_end_entry = Adw.EntryRow(title="Dark Mode End Time (24h HH:MM)")
+        self.dark_end_entry.set_text(self.config_store.config.dark_mode_end)
+        save_sched_btn = Gtk.Button(label="Apply Schedule", valign=Gtk.Align.CENTER)
+        save_sched_btn.add_css_class("suggested-action")
+        save_sched_btn.connect("clicked", self._on_save_schedule_clicked)
+        self.dark_end_entry.add_suffix(save_sched_btn)
+        theme_group.add(self.dark_end_entry)
+
+        preset_row = Adw.ActionRow(
+            title="Quick Schedule Presets",
+            subtitle="One-click overnight dark mode schedules.",
+        )
+        for label, s_time, e_time in [("20:00–06:00", "20:00", "06:00"), ("22:00–06:00", "22:00", "06:00"), ("21:00–07:00", "21:00", "07:00")]:
+            pb = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
+            pb.connect("clicked", lambda _b, s=s_time, e=e_time: self._apply_schedule_preset(s, e))
+            preset_row.add_suffix(pb)
+        theme_group.add(preset_row)
+
+        self.schedule_status_row = Adw.ActionRow(
+            title="Scheduled Dark Mode Evaluator Status",
+            subtitle="",
+        )
+        theme_group.add(self.schedule_status_row)
+
+        # API Connection & Health Check
+        api_group = Adw.PreferencesGroup(
+            title="Backend Server &amp; Diagnostics",
+            description="Configure the DeskFlow API URL and run a live health check.",
+        )
+        page.add(api_group)
+
+        self.api_url_entry = Adw.EntryRow(title="API Base URL")
+        self.api_url_entry.set_text(self.config_store.config.api_url)
+        save_api_btn = Gtk.Button(label="Save URL", valign=Gtk.Align.CENTER)
+        save_api_btn.connect("clicked", self._on_save_api_url_clicked)
+        self.api_url_entry.add_suffix(save_api_btn)
+        api_group.add(self.api_url_entry)
+
+        self.health_row = Adw.ActionRow(
+            title="Backend Health Check (/api/app/health)",
+            subtitle="Click 'Test Connection' to verify server reachability and latency.",
+        )
+        test_btn = Gtk.Button(label="Test Connection", valign=Gtk.Align.CENTER)
+        test_btn.add_css_class("suggested-action")
+        test_btn.connect("clicked", self._on_test_health_clicked)
+        self.health_row.add_suffix(test_btn)
+        api_group.add(self.health_row)
+
+        # Linked Devices & Dynamic Display Selection (Phase 2)
+        dev_group = Adw.PreferencesGroup(
+            title="Linked Devices &amp; Dynamic Display Selection",
+            description="Manage linked devices and choose which device displays the current configuration.",
+        )
+        page.add(dev_group)
+
+        self.display_device_combo = Adw.ComboRow(
+            title="Current Display Device",
+            subtitle="Device designated to display current configuration.",
+        )
+        self.display_device_combo.connect("notify::selected", self._on_display_device_combo_changed)
+        dev_group.add(self.display_device_combo)
+
+        refresh_dev_btn = Gtk.Button(label="Refresh Devices", valign=Gtk.Align.CENTER)
+        refresh_dev_btn.connect("clicked", lambda *_: self.refresh_devices_async())
+        self.display_device_combo.add_suffix(refresh_dev_btn)
+
+        self.devices_list_box = Gtk.ListBox()
+        self.devices_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.devices_list_box.add_css_class("boxed-list")
+        dev_group.add(self.devices_list_box)
+
+        return page
+
+    def _on_theme_combo_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
+        idx_to_mode = {0: "system", 1: "light", 2: "dark", 3: "scheduled"}
+        new_mode = idx_to_mode.get(combo.get_selected(), "system")
+        self.config_store.config.app_theme = new_mode
+        self.config_store.save()
+        self.apply_theme_preference()
+
+    def _apply_schedule_preset(self, start_str: str, end_str: str) -> None:
+        self.dark_start_entry.set_text(start_str)
+        self.dark_end_entry.set_text(end_str)
+        self.config_store.config.dark_mode_start = start_str
+        self.config_store.config.dark_mode_end = end_str
+        self.config_store.config.app_theme = "scheduled"
+        self.theme_combo.set_selected(3)
+        self.config_store.save()
+        self.apply_theme_preference()
+        self.show_toast(f"Scheduled Dark Mode set to {start_str}–{end_str}")
+
+    def _on_language_combo_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
+        idx = combo.get_selected()
+        new_lang = "vi" if idx == 1 else "en"
+        self.config_store.config.language = new_lang
+        self.config_store.save()
+        self.show_toast("Đã chuyển ngôn ngữ sang Tiếng Việt" if new_lang == "vi" else "Language switched to English")
+
+    def _on_apply_esp32_theme_clicked(self, _btn: Gtk.Button) -> None:
+        idx = self.esp32_theme_combo.get_selected()
+        mode_map = {0: "off", 1: "always", 2: "custom"}
+        mode = mode_map.get(idx, "off")
+        s = self.dark_start_entry.get_text().strip() or "22:00"
+        e = self.dark_end_entry.get_text().strip() or "06:00"
+        self._run_bg(
+            lambda: self.api_client.set_esp32_theme(mode, s, e),
+            lambda r: self.show_toast("ESP32 Display theme updated!" if r.ok else r.error_message)
+        )
+
+    def _on_save_schedule_clicked(self, _btn: Gtk.Button) -> None:
+        s_raw = self.dark_start_entry.get_text().strip()
+        e_raw = self.dark_end_entry.get_text().strip()
+        s_norm = ScheduledDarkModeEvaluator.normalize_time_str(s_raw, "20:00")
+        e_norm = ScheduledDarkModeEvaluator.normalize_time_str(e_raw, "06:00")
+        self.dark_start_entry.set_text(s_norm)
+        self.dark_end_entry.set_text(e_norm)
+        self.config_store.config.dark_mode_start = s_norm
+        self.config_store.config.dark_mode_end = e_norm
+        self.config_store.save()
+        self.apply_theme_preference()
+        self.show_toast(f"Dark mode schedule saved: {s_norm} → {e_norm}")
+
+    def _on_save_api_url_clicked(self, _btn: Gtk.Button) -> None:
+        url = self.api_url_entry.get_text().strip().rstrip("/")
+        if not url.startswith("http"):
+            self.show_toast("API URL must start with http:// or https://")
+            return
+        self.config_store.config.api_url = url
+        self.config_store.save()
+        self.title_widget.set_subtitle(self._connection_subtitle())
+        self.pair_status_row.set_subtitle(self._connection_subtitle())
+        self.show_toast(f"Saved API URL: {url}")
+
+    def _on_test_health_clicked(self, _btn: Gtk.Button) -> None:
+        self.health_row.set_subtitle("Testing connection...")
+
+        def _done(res: ApiResult) -> None:
+            if res.ok and isinstance(res.data, dict):
+                svc = res.data.get("service", "deskflow")
+                ver = res.data.get("version", "1.0.0")
+                self.health_row.set_subtitle(
+                    f"ONLINE • HTTP {res.status_code} • {res.latency_ms} ms • {svc} v{ver}"
+                )
+                self.show_toast(f"Backend healthy ({res.latency_ms} ms)")
+            else:
+                self.health_row.set_subtitle(
+                    f"OFFLINE / ERROR • {res.error_code}: {res.error_message}"
+                )
+                self.show_toast(f"Health check failed: {res.error_message}")
+
+        self._run_bg(self.api_client.check_health, _done)
+
+    # =========================================================================
+    # Global Refresh
+    # =========================================================================
+    def refresh_all_async(self) -> None:
+        self.refresh_notes_async()
+        self.refresh_weather_async()
+        self.refresh_alarms_async()
+        self.refresh_devices_async()
+
+        def _fetch_all() -> Dict[str, ApiResult]:
+            return {
+                "status": self.api_client.get_focus_status(),
+                "system": self.api_client.get_system_status(),
+                "countdowns": self.api_client.get_countdowns(),
+                "spotify": self.api_client.get_spotify_status(),
+                "timetable": self.api_client.get_timetable_today(),
+            }
+
+        def _done(results: Dict[str, ApiResult]) -> None:
+            self._render_countdowns_list(self.api_client.countdowns)
+
+            st_res = results["status"]
+            if st_res.ok and isinstance(st_res.data, dict):
+                active = bool(st_res.data.get("focus_active") or st_res.data.get("enabled"))
+                txt = "ACTIVE — Distraction Blocking Enabled" if active else "Idle — Ready"
+                self.focus_state_row.set_subtitle(txt)
+                self.focus_dash_row.set_subtitle(txt)
+
+            sys_res = results["system"]
+            if sys_res.ok and isinstance(sys_res.data, dict):
+                data = sys_res.data.get("data") or {}
+                station = data.get("station") or {}
+                srv = data.get("server") or {}
+                online = "ONLINE" if station.get("online") else "OFFLINE"
+                view = station.get("current_view", "clock")
+                temp = station.get("temp", "--")
+                hum = station.get("humidity", "--")
+                self.esp_status_row.set_subtitle(
+                    f"{online} • View: {view} • Room: {temp}°C / {hum}%"
+                )
+                self.server_status_row.set_subtitle(
+                    f"Server CPU: {srv.get('cpu', 0)}% • RAM: {srv.get('ram', 0)}% • Temp: {srv.get('temp', 0)}°C"
+                )
+
+            sp_res = results["spotify"]
+            if sp_res.ok and isinstance(sp_res.data, dict):
+                track = sp_res.data.get("track") or "No active track"
+                artist = sp_res.data.get("artist") or ""
+                playing = "Playing" if sp_res.data.get("is_playing") else "Paused"
+                self.spotify_row.set_subtitle(f"{playing}: {track} — {artist}")
+
+            tt_res = results["timetable"]
+            if tt_res.ok and isinstance(tt_res.data, dict):
+                today = (tt_res.data.get("data") or {}).get("today") or {}
+                day_lbl = today.get("day", "Today")
+                morn = ", ".join(today.get("morning") or []) or "None"
+                aft = ", ".join(today.get("afternoon") or []) or "None"
+                self.timetable_row.set_subtitle(f"{day_lbl} • AM: {morn} | PM: {aft}")
+
+        self._run_bg(_fetch_all, _done)
+
+    # -------------------------------------------------------------------------
+    # Station & Hardware Helpers
+    # -------------------------------------------------------------------------
+    def _apply_lamp_color(self, hex_color: str) -> None:
+        self.lamp_hex_entry.set_text(hex_color)
+        self._run_bg(
+            lambda: self.api_client.set_lamp_color(hex_color),
+            lambda r: self.show_toast(f"Lamp set to {hex_color}" if r.ok else r.error_message),
+        )
+
+    def _on_buzz_preset_clicked(self, duration_ms: int) -> None:
+        self.buzzer_duration_spin.set_value(duration_ms)
+        self._run_bg(
+            lambda: self.api_client.trigger_buzz(duration_ms),
+            lambda r: self.show_toast(f"Beep ({duration_ms}ms) sent to station!" if r.ok else r.error_message),
+        )
+
+    # -------------------------------------------------------------------------
+    # Linked Devices Management & Dynamic Display Selection (Phase 2)
+    # -------------------------------------------------------------------------
+    def refresh_devices_async(self) -> None:
+        def _fetch() -> Dict[str, ApiResult]:
+            return {
+                "devices": self.api_client.get_paired_devices(),
+                "selected": self.api_client.get_selected_display_device(),
+            }
+
+        def _done(results: Dict[str, ApiResult]) -> None:
+            dev_res = results["devices"]
+            sel_res = results["selected"]
+            devices: List[Dict[str, Any]] = []
+            if dev_res.ok and isinstance(dev_res.data, dict):
+                devices = dev_res.data.get("devices", [])
+            selected_id: Optional[str] = None
+            if sel_res.ok and isinstance(sel_res.data, dict):
+                selected_id = sel_res.data.get("selected_device_id")
+            self._render_devices_list(devices, selected_id)
+
+        self._run_bg(_fetch, _done)
+
+    def _render_devices_list(self, devices: List[Dict[str, Any]], selected_device_id: Optional[str]) -> None:
+        child = self.devices_list_box.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            self.devices_list_box.remove(child)
+            child = nxt
+
+        dev_names = [f"{d.get('device_name', 'Device')} ({d.get('platform', 'unknown')})" for d in devices]
+        if not dev_names:
+            dev_names = ["(No linked devices)"]
+        model = Gtk.StringList.new(dev_names)
+        self.display_device_combo.set_model(model)
+        self._devices_cache = list(devices)
+        sel_idx = next((i for i, d in enumerate(devices) if d.get("device_id") == selected_device_id), 0)
+        self.display_device_combo.set_selected(sel_idx)
+
+        if not devices:
+            empty_row = Adw.ActionRow(
+                title="No Linked Devices",
+                subtitle="Generate a pairing code in Discord (/pair) to connect devices.",
+            )
+            self.devices_list_box.append(empty_row)
+            return
+
+        for dev in devices:
+            did = str(dev.get("device_id", ""))
+            dname = str(dev.get("device_name", "Device"))
+            plat = str(dev.get("platform", "unknown"))
+            is_cur = bool(dev.get("is_current", False))
+
+            title_txt = f"{dname} {'★ Current Device' if is_cur else ''}"
+            row = Adw.ActionRow(
+                title=title_txt,
+                subtitle=f"Platform: {plat} • ID: {did}",
+            )
+
+            rename_btn = Gtk.Button(label="Rename", valign=Gtk.Align.CENTER)
+            rename_btn.connect("clicked", lambda _b, dev_id=did, cur_name=dname: self._show_rename_dialog(dev_id, cur_name))
+            row.add_suffix(rename_btn)
+
+            unlink_btn = Gtk.Button(label="Unlink", valign=Gtk.Align.CENTER)
+            unlink_btn.add_css_class("destructive-action")
+            unlink_btn.connect("clicked", lambda _b, dev_id=did, name=dname: self._show_unlink_confirm_dialog(dev_id, name))
+            row.add_suffix(unlink_btn)
+
+            self.devices_list_box.append(row)
+
+    def _show_rename_dialog(self, device_id: str, current_name: str) -> None:
+        dialog = Adw.MessageDialog.new(self, "Rename Device", f"Enter a new display name for '{current_name}':")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("rename", "Rename")
+        dialog.set_response_appearance("rename", Adw.ResponseAppearance.SUGGESTED)
+
+        entry = Gtk.Entry()
+        entry.set_text(current_name)
+        entry.set_margin_start(24)
+        entry.set_margin_end(24)
+        entry.set_margin_top(12)
+        dialog.set_extra_child(entry)
+
+        def _on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response == "rename":
+                new_name = entry.get_text().strip()
+                if new_name:
+                    self._run_bg(
+                        lambda: self.api_client.rename_device(device_id, new_name),
+                        lambda r: (self.show_toast(f"Device renamed to {new_name}!" if r.ok else r.error_message), self.refresh_devices_async())
+                    )
+
+        dialog.connect("response", _on_response)
+        dialog.present()
+
+    def _show_unlink_confirm_dialog(self, device_id: str, device_name: str) -> None:
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Unlink Device?",
+            f"Are you sure you want to remove and revoke access for '{device_name}'? It will no longer be able to communicate with DeskFlow until paired again.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("unlink", "Unlink")
+        dialog.set_response_appearance("unlink", Adw.ResponseAppearance.DESTRUCTIVE)
+
+        def _on_response(_d: Adw.MessageDialog, response: str) -> None:
+            if response == "unlink":
+                def _done(res: ApiResult) -> None:
+                    if res.ok:
+                        self.show_toast(f"'{device_name}' unlinked.")
+                        self.refresh_devices_async()
+                    else:
+                        self.show_toast(f"Unlink failed: {res.error_message}")
+
+                self._run_bg(lambda: self.api_client.unpair_device(device_id), _done)
+
+        dialog.connect("response", _on_response)
+        dialog.present()
+
+    def _on_display_device_combo_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
+        idx = combo.get_selected()
+        if hasattr(self, "_devices_cache") and 0 <= idx < len(self._devices_cache):
+            target_id = self._devices_cache[idx].get("device_id")
+            if target_id:
+                self._run_bg(
+                    lambda: self.api_client.set_selected_display_device(target_id),
+                    lambda r: self.show_toast("Current display device updated!" if r.ok else r.error_message)
+                )

@@ -1,0 +1,216 @@
+openapi: 3.0.3
+info:
+  title: DeskFlow Ecosystem REST API
+  version: 1.0.0
+  description: Shared REST API contract for Android, Linux, macOS, Windows, and Browser Extension clients.
+servers:
+  - url: https://api.10th012013.duckdns.org
+    description: Production Server (Canonical)
+  - url: https://focus-api.10th012013.duckdns.org
+    description: Production Server (Legacy Alias)
+  - url: http://127.0.0.1:8787
+    description: Local Development Server
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    NoteItem:
+      type: object
+      required: [id, text, pinned]
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        content:
+          type: string
+        pinned:
+          type: boolean
+        created_at:
+          type: string
+    CountdownItem:
+      type: object
+      required: [id, title, target_date, days_left, pinned]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        name:
+          type: string
+        target_date:
+          type: string
+        days_left:
+          type: integer
+        pinned:
+          type: boolean
+paths:
+  /api/app/health:
+    get:
+      summary: Health Check
+      responses:
+        '200':
+          description: Healthy
+  /api/focus/pair:
+    post:
+      summary: Pair Device with 8-character Code
+      responses:
+        '200':
+          description: Paired device token and scopes
+  /api/focus/status:
+    get:
+      security: [{BearerAuth: []}]
+      summary: Get Focus Mode Status
+      responses:
+        '200':
+          description: Current focus session status
+  /api/focus/enable:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Start Focus Session
+      responses:
+        '200':
+          description: Focus session started
+  /api/focus/challenge:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Request Math Unlock Challenge
+      responses:
+        '200':
+          description: Challenge generated
+  /api/focus/verify:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Verify Math Unlock Challenge Answer
+      responses:
+        '200':
+          description: Challenge verified
+  /api/focus/unpair:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Unpair Device
+      responses:
+        '200':
+          description: Unpaired
+  /api/focus/history:
+    get:
+      security: [{BearerAuth: []}]
+      summary: Focus Session History
+      responses:
+        '200':
+          description: Focus history list
+  /api/app/control/notes:
+    get:
+      security: [{BearerAuth: []}]
+      summary: List Sticky Notes
+      responses:
+        '200':
+          description: List of notes and active_note_id
+    post:
+      security: [{BearerAuth: []}]
+      summary: Create Sticky Note
+      responses:
+        '200':
+          description: Created note and updated notes list
+  /api/app/control/notes/{id}:
+    delete:
+      security: [{BearerAuth: []}]
+      summary: Delete Sticky Note by ID
+      responses:
+        '200':
+          description: Note deleted and updated notes list returned
+        '404':
+          description: Note ID not found
+  /api/app/control/notes/{id}/pin:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Pin Sticky Note to ESP32 Station
+      responses:
+        '200':
+          description: Note pinned
+  /api/app/control/notes/unpin:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Unpin Active Sticky Note from ESP32 Station
+      responses:
+        '200':
+          description: Note unpinned
+  /api/app/control/countdowns:
+    get:
+      security: [{BearerAuth: []}]
+      summary: List Exam/Event Countdowns
+      responses:
+        '200':
+          description: List of countdowns
+    post:
+      security: [{BearerAuth: []}]
+      summary: Create Countdown
+      responses:
+        '200':
+          description: Countdown created
+  /api/app/control/countdowns/{id}:
+    delete:
+      security: [{BearerAuth: []}]
+      summary: Delete Countdown by ID
+      responses:
+        '200':
+          description: Countdown deleted
+        '404':
+          description: Countdown ID not found
+  /api/app/control/countdowns/{id}/pin:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Pin Countdown to ESP32 Station
+      responses:
+        '200':
+          description: Countdown pinned
+  /api/app/control/weather/forecast:
+    get:
+      security: [{BearerAuth: []}]
+      summary: Get 24-Hour Weather Forecast
+      responses:
+        '200':
+          description: Weather forecast intervals
+  /api/app/control/status:
+    get:
+      security: [{BearerAuth: []}]
+      summary: Get Station, Server & Laptop Telemetry
+      responses:
+        '200':
+          description: Telemetry snapshot
+  /api/app/control/display/view:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Switch ESP32 Display View
+      responses:
+        '200':
+          description: Display view switched
+  /api/app/control/clock/style:
+    get:
+      security: [{BearerAuth: []}]
+      summary: Get Clock Style Studio Configuration
+      responses:
+        '200':
+          description: Clock style configuration
+    post:
+      security: [{BearerAuth: []}]
+      summary: Update Clock Style Studio Configuration
+      responses:
+        '200':
+          description: Clock style configuration updated
+  /api/app/control/morse/play:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Play Morse Pattern on ESP32 Buzzer
+      responses:
+        '200':
+          description: Morse dispatched
+  /api/app/control/morse/stop:
+    post:
+      security: [{BearerAuth: []}]
+      summary: Stop Active Morse Playback on ESP32 Buzzer
+      responses:
+        '200':
+          description: Morse stopped

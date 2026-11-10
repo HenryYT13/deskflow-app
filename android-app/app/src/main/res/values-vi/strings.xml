@@ -1,0 +1,328 @@
+<resources>
+    <string name="app_name">Deskflow</string>
+    <string name="app_subtitle">Trợ thủ làm việc và học tập đồng bộ IoT</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Trang chủ</string>
+    <string name="nav_focus">Tập trung</string>
+    <string name="nav_timetable">TKB</string>
+    <string name="nav_control">Điều khiển</string>
+    <string name="nav_spotify">Spotify</string>
+    <string name="nav_activity">Nhật ký</string>
+    <string name="nav_settings">Cài đặt</string>
+    <string name="nav_dashboard">Giám sát</string>
+    <string name="screen_switcher_title">Tất cả màn hình</string>
+    <string name="screen_switcher_desc">Chuyển đổi nhanh giữa các trang và tính năng</string>
+    <string name="card_dashboard_title">Giám sát hệ thống</string>
+    <string name="card_dashboard_desc">Thông số máy chủ và sức khỏe trạm IoT</string>
+    <string name="card_activity_title">Nhật ký hoạt động</string>
+    <string name="card_activity_desc">Lịch sử phiên tập trung và sự kiện</string>
+    <string name="view_focus">Tập trung</string>
+    <string name="view_countdown">Đếm ngược thi</string>
+    <string name="view_notes">Ghi chú ghim</string>
+    <string name="view_clock">Đồng hồ lớn</string>
+
+    <!-- Unified Home Cards -->
+    <string name="card_focus_title">Chế độ tập trung</string>
+    <string name="card_control_title">Điều khiển trạm</string>
+    <string name="card_spotify_title">Phát nhạc Spotify</string>
+    <string name="tap_to_manage">Chạm để mở</string>
+
+    <!-- Control Section -->
+    <string name="control_alarm_title">Báo thức toán học</string>
+    <string name="alarm_active_warning">CHUÔNG ĐANG KÊU</string>
+    <string name="alarm_no_active">Không có báo thức đang kêu</string>
+    <string name="alarm_answer_placeholder">Nhập đáp án</string>
+    <string name="alarm_solve_btn">Giải toán tắt chuông</string>
+    <string name="alarm_cancel_btn">Hủy báo thức</string>
+    <string name="alarm_emergency_stop">Dừng khẩn cấp</string>
+    <string name="alarm_solving">Đang giải bài toán…</string>
+    <string name="alarm_solved_success">Đã giải đúng và dập tắt còi báo!</string>
+    <string name="timetable_title">Thời khóa biểu hôm nay</string>
+    <string name="timetable_uniform">Đồng phục: %1$s</string>
+    <string name="timetable_morning">Tiết học sáng</string>
+    <string name="timetable_afternoon">Tiết học chiều</string>
+    <string name="timetable_no_classes">Nghỉ học</string>
+    <string name="timetable_tomorrow_preview">Ngày mai: %1$s</string>
+    <string name="scope_control_required">Cần cấp quyền Control. Hãy liên hệ quản trị viên qua Discord.</string>
+
+    <!-- Spotify Section -->
+    <string name="spotify_now_playing">Đang phát</string>
+    <string name="spotify_not_playing">Tạm dừng</string>
+    <string name="spotify_volume">Âm lượng: %1$d%%</string>
+    <string name="spotify_offline">Spotify Ngoại tuyến</string>
+    <string name="scope_spotify_required">Cần cấp quyền Spotify. Hãy liên hệ quản trị viên qua Discord.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_welcome_title">Chào mừng đến với Deskflow</string>
+    <string name="onboarding_welcome_desc">Deskflow kết nối điện thoại Android của bạn vào hệ sinh thái Deskflow (Discord bot, tiện ích trình duyệt, thiết bị IoT) để quản lý Chế độ tập trung, Báo thức toán học, Thời khóa biểu và phát nhạc Spotify.</string>
+    <string name="onboarding_how_it_works_title">Cơ chế hoạt động</string>
+    <string name="onboarding_how_it_works_desc">Khi bật Focus Mode, các trang web giải trí và mạng xã hội sẽ bị chặn. Để tắt sớm, bạn bắt buộc phải giải bài toán số học do DeskFlow AI tạo ra để kiểm tra độ tỉnh táo.</string>
+    <string name="onboarding_lock_title">Khóa phiên tập trung</string>
+    <string name="onboarding_lock_desc">Khi bật Focus Mode, để kết thúc phiên bạn phải giải đúng thử thách toán học từ máy chủ DeskFlow. Mọi tính năng điện thoại và Internet thông thường vẫn hoạt động bình thường.</string>
+    <string name="onboarding_privacy_title">Bảo mật tuyệt đối</string>
+    <string name="onboarding_privacy_desc">DeskFlow không can thiệp lưu lượng mạng và không yêu cầu quyền VPN. Toàn bộ tính năng nghe gọi, lướt web và ứng dụng của bạn hoạt động hoàn toàn bình thường.</string>
+    <string name="btn_get_started">Bắt đầu</string>
+    <string name="btn_next">Tiếp theo</string>
+    <string name="btn_skip">Bỏ qua</string>
+
+    <!-- Status -->
+    <string name="status_active">ĐANG TẬP TRUNG</string>
+    <string name="status_inactive">NGHỈ NGƠI</string>
+    <string name="status_connecting">Đang kết nối…</string>
+    <string name="status_paired">Đã kết nối</string>
+    <string name="status_unpaired">Chưa kết nối</string>
+    <string name="backend_online">Trực tuyến</string>
+    <string name="backend_offline">Ngoại tuyến</string>
+    <string name="sync_status_updated">Đồng bộ: %1$s</string>
+    <string name="sync_status_never">Chưa đồng bộ</string>
+
+    <!-- Pairing -->
+    <string name="pair_title">Ghép đôi với DeskFlow</string>
+    <string name="pair_desc">Tạo mã ghép đôi 8 ký tự qua Discord (/focus_mode pair) và nhập vào ô bên dưới.</string>
+    <string name="pairing_code_label">Mã ghép đôi</string>
+    <string name="pairing_code_placeholder">Ví dụ: A1B2C3D4</string>
+    <string name="device_name_label">Tên thiết bị</string>
+    <string name="btn_pair">Ghép đôi thiết bị</string>
+    <string name="pairing_in_progress">Đang ghép đôi…</string>
+    <string name="pairing_success">Ghép đôi thành công với DeskFlow!</string>
+    <string name="pairing_failed">Ghép đôi thất bại: %1$s</string>
+    <string name="error_invalid_code">Vui lòng nhập đúng mã ghép đôi gồm 8 ký tự.</string>
+
+    <!-- Focus Session -->
+    <string name="start_focus_title">Bắt đầu phiên học</string>
+    <string name="duration_label">Thời lượng (Phút)</string>
+    <string name="duration_15m">15 phút</string>
+    <string name="duration_25m">25 phút (Pomodoro)</string>
+    <string name="duration_45m">45 phút</string>
+    <string name="duration_60m">60 phút</string>
+    <string name="reason_label">Mục tiêu / Ghi chú</string>
+    <string name="reason_placeholder">Ví dụ: Ôn thi Toán, Làm bài tập, Lập trình</string>
+    <string name="btn_start_focus">Bắt đầu tập trung</string>
+    <string name="starting_focus">Đang kích hoạt…</string>
+    <string name="focus_started_success">Phiên tập trung đã bật trên tất cả thiết bị!</string>
+    <string name="time_remaining">Thời gian còn lại</string>
+    <string name="focus_active_notice">Focus Mode đang bật đồng bộ. Bạn cần giải thử thách toán học để kết thúc phiên.</string>
+    <string name="focus_active_dashboard_desc">Phiên tập trung đang được khóa. Hãy hoàn thành phiên hoặc yêu cầu mở khóa bằng thử thách.</string>
+
+    <!-- Math Challenge -->
+    <string name="btn_request_challenge">Yêu cầu mở khóa sớm</string>
+    <string name="challenge_title">Thử thách toán học</string>
+    <string name="challenge_desc">Hãy tính toán chính xác phép tính sau để chứng minh bạn đã sẵn sàng dừng phiên tập trung.</string>
+    <string name="challenge_question_label">Phép tính:</string>
+    <string name="challenge_answer_placeholder">Nhập kết quả số nguyên</string>
+    <string name="challenge_expires_in">Hết hạn sau: %1$ds</string>
+    <string name="btn_submit_answer">Xác nhận kết quả</string>
+    <string name="btn_new_challenge">Đổi thử thách mới</string>
+    <string name="submitting_answer">Đang kiểm tra với máy chủ DeskFlow…</string>
+    <string name="challenge_expired">Thử thách đã hết hạn! Đang yêu cầu thử thách mới…</string>
+    <string name="wrong_answer">Kết quả chưa đúng. Vui lòng tính toán cẩn thận và thử lại.</string>
+    <string name="cooldown_active">Đã nhập sai 5 lần. Vui lòng chờ %1$ds trước khi thử lại.</string>
+    <string name="challenge_success">Chính xác! Focus Mode đã được tắt.</string>
+
+    <!-- Focus Lock & Notification -->
+    <string name="focus_mode_active_popup_title">Focus Mode đang Bật</string>
+    <string name="focus_mode_active_popup_msg">Phiên tập trung của bạn đang được bảo vệ. Bạn cần giải câu hỏi thử thách để kết thúc phiên.</string>
+    <string name="btn_continue_focusing">Tiếp tục tập trung</string>
+    <string name="btn_request_deactivation">Yêu cầu mở khóa sớm</string>
+    <string name="persistent_notification_title">Deskflow</string>
+    <string name="persistent_notification_content">Phiên tập trung đang hoạt động.</string>
+    <string name="android_limitations_title">Phạm vi hệ thống Android</string>
+    <string name="android_limitations_desc">DeskFlow khóa luồng mở khóa trong ứng dụng bằng thử thách từ máy chủ. Internet và ứng dụng khác hoạt động bình thường. Ứng dụng không can thiệp cài đặt gốc của hệ thống Android.</string>
+
+    <!-- Unified Screen Strings -->
+    <string name="unified_session_controls_title">Tùy chọn phiên học</string>
+    <string name="unified_activity_title">Hoạt động gần đây</string>
+    <string name="unified_settings_title">Cài đặt &amp; Hệ thống</string>
+    <string name="back_press_locked_title">Focus Mode đang hoạt động</string>
+    <string name="back_press_locked_desc">Bạn không thể tắt Focus Mode bằng phím Quay lại. Để kết thúc phiên, hãy giải thử thách toán học hoặc đợi hết thời gian phiên học.</string>
+    <string name="btn_got_it">Đã hiểu</string>
+
+    <!-- Activity -->
+    <string name="activity_title">Nhật ký hoạt động</string>
+    <string name="activity_empty">Chưa có hoạt động nào được ghi lại.</string>
+    <string name="event_focus_started">Bắt đầu Focus Mode (%1$d phút)</string>
+    <string name="event_focus_stopped">Kết thúc Focus Mode</string>
+    <string name="event_device_paired">Đã kết nối thiết bị với DeskFlow</string>
+    <string name="event_site_blocked">Đã chặn web gây xao nhãng: %1$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Cài đặt</string>
+    <string name="settings_api_group">Kết nối máy chủ</string>
+    <string name="api_url_label">Địa chỉ API máy chủ</string>
+    <string name="settings_device_group">Thông tin thiết bị</string>
+    <string name="device_id_label">Mã thiết bị</string>
+    <string name="device_status_label">Trạng thái</string>
+    <string name="btn_unpair">Hủy kết nối thiết bị</string>
+    <string name="unpair_confirm_title">Hủy ghép đôi thiết bị này?</string>
+    <string name="unpair_confirm_desc">Bạn sẽ cần tạo mã mới từ Discord để kết nối lại thiết bị.</string>
+    <string name="btn_confirm_unpair">Đồng ý hủy</string>
+    <string name="btn_cancel">Hủy</string>
+    <string name="settings_preferences_group">Tùy chọn</string>
+    <string name="language_label">Ngôn ngữ</string>
+    <string name="theme_label">Giao diện</string>
+    <string name="theme_system">Theo hệ thống</string>
+    <string name="theme_dark">Tối</string>
+    <string name="theme_light">Sáng</string>
+    <string name="theme_scheduled">Theo lịch</string>
+    <string name="theme_schedule_start">Bắt đầu Tối</string>
+    <string name="theme_schedule_end">Kết thúc Tối</string>
+    <string name="theme_dynamic_color">Màu động Material You</string>
+    <string name="note_delete_confirm_title">Xóa ghi chú này?</string>
+    <string name="note_delete_confirm_desc">Ghi chú sẽ bị xóa vĩnh viễn khỏi máy chủ và gỡ khỏi màn hình trạm DeskFlow.</string>
+    <string name="btn_delete">Xóa</string>
+    <string name="settings_nav_position_title">Vị trí thanh điều hướng</string>
+    <string name="nav_pos_bottom">Dưới cùng</string>
+    <string name="nav_pos_top">Trên cùng</string>
+    <string name="api_test_title">Kiểm tra kết nối API</string>
+    <string name="api_test_subtitle">Kiểm tra kết nối thực tế tới GET /api/app/health</string>
+    <string name="api_test_run_btn">Kiểm tra sức khỏe API</string>
+    <string name="api_test_testing">Đang kiểm tra kết nối…</string>
+    <string name="api_test_status_healthy">Kết nối tốt &amp; Khỏe mạnh</string>
+    <string name="api_test_status_failed">Kết nối thất bại</string>
+    <string name="api_test_latency">Độ trễ: %1$d ms</string>
+    <string name="api_test_last_run">Kiểm tra lúc: %1$s</string>
+    <string name="api_test_service">Dịch vụ: %1$s</string>
+    <string name="api_test_version">Phiên bản: %1$s</string>
+    <string name="api_test_http_status">Mã trạng thái HTTP: %1$d</string>
+    <string name="api_test_diagnostics">Thông tin chẩn đoán</string>
+    <string name="about_title">Giới thiệu DeskFlow</string>
+    <string name="version_label">Phiên bản 1.0.0</string>
+    <string name="about_desc">DeskFlow là hệ sinh thái năng suất IoT kết nối đa nền tảng gồm Discord, tiện ích web, phần cứng IoT và ứng dụng Android.</string>
+
+    <!-- Dedicated Timetable Screen -->
+    <string name="timetable_screen_title">TKB</string>
+    <string name="timetable_today_header">Hôm nay</string>
+    <string name="timetable_tomorrow_header">Ngày mai</string>
+    <string name="timetable_refresh_btn">Cập nhật lịch học</string>
+    <string name="timetable_empty_today">Hôm nay không có lịch học.</string>
+    <string name="timetable_empty_tomorrow">Ngày mai không có lịch học.</string>
+    <string name="timetable_period">Tiết %1$s</string>
+    <string name="uniform_morning_label">Đồng phục sáng: %1$s</string>
+    <string name="uniform_afternoon_label">Đồng phục chiều: %1$s</string>
+    <string name="uniform_badge">Đồng phục: %1$s</string>
+
+    <!-- Focus History -->
+    <string name="focus_tab_active">Phiên hiện tại</string>
+    <string name="focus_tab_history">Lịch sử phiên</string>
+    <string name="history_empty_title">Chưa có phiên nào được ghi lại</string>
+    <string name="history_empty_desc">Các phiên tập trung đã hoàn thành sẽ được lưu lại tại đây kèm thời lượng và kết quả.</string>
+    <string name="session_status_completed">Đã hoàn thành</string>
+    <string name="session_status_interrupted">Bị gián đoạn</string>
+    <string name="session_duration_format">%1$d phút</string>
+
+    <!-- Expanded Station Control -->
+    <string name="control_telemetry_title">Thông số trạm DeskFlow</string>
+    <string name="control_views_title">Màn hình trạm DeskFlow</string>
+    <string name="control_lighting_title">Đèn bàn &amp; Màn hình</string>
+    <string name="control_tools_title">Công cụ học tập &amp; AI</string>
+    <string name="control_settings_title">Cấu hình trạm từ xa</string>
+
+    <string name="control_alarm_schedule_title">Hẹn giờ báo thức toán</string>
+    <string name="control_alarm_time_label">Mốc giờ (HH:MM)</string>
+    <string name="control_alarm_schedule_btn">Đặt báo thức</string>
+    <string name="control_alarm_schedule_success">Đã đặt báo thức lúc %1$s!</string>
+    <string name="control_buzz_btn">Bíp còi Buzzer</string>
+    <string name="control_buzz_success">Đã kích hoạt còi bíp trên trạm!</string>
+
+    <string name="view_main">Đồng hồ chính</string>
+    <string name="view_stats">Thông số máy chủ</string>
+    <string name="view_tkb">Thời khóa biểu</string>
+    <string name="view_weather">Thời tiết</string>
+    <string name="view_lyrics">Lời bài hát</string>
+    <string name="control_close_tkb_btn">Trở về Dashboard chính</string>
+    <string name="view_switched_success">Đã chuyển màn hình trạm sang %1$s</string>
+
+    <string name="lamp_color_label">Màu vòng LED</string>
+    <string name="lamp_dim_label">Điều chỉnh độ sáng</string>
+    <string name="led_bright_label">Vòng LED: %1$d%%</string>
+    <string name="screen_bright_label">Màn hình: %1$d%%</string>
+    <string name="lamp_off_btn">Tắt nhanh vòng LED</string>
+    <string name="led_toggle_btn">Bật/Tắt LED trạm</string>
+    <string name="led_blink_btn">Nhấp nháy LED trạm</string>
+    <string name="clock_style_label">Mặt đồng hồ</string>
+    <string name="clock_modern">Hiện đại (Catppuccin)</string>
+    <string name="clock_flip">Đồng hồ lật</string>
+    <string name="clock_minimal">Tối giản</string>
+
+    <string name="sticky_note_title">Ghim giấy nhớ lên trạm</string>
+    <string name="sticky_note_placeholder">Nhập lời nhắn hoặc ghi chú</string>
+    <string name="sticky_note_btn">Ghim ghi chú</string>
+    <string name="sticky_note_success">Đã ghim giấy nhớ lên màn hình trạm!</string>
+
+    <string name="exam_title">Đếm ngược kỳ thi</string>
+    <string name="exam_name_label">Tên kỳ thi (VD: Thi Giữa Kỳ)</string>
+    <string name="exam_date_label">Ngày thi (DD/MM VD: 25/12)</string>
+    <string name="exam_btn">Ghim đếm ngược</string>
+    <string name="exam_success">Đã ghim đếm ngược kỳ thi %1$s!</string>
+
+    <string name="quote_title">Danh ngôn động lực Groq AI</string>
+    <string name="quote_topic_label">Chủ đề (VD: học tập, kiên trì)</string>
+    <string name="quote_generate_btn">Sinh danh ngôn đẩy xuống trạm</string>
+    <string name="quote_success">Đã sinh và đẩy danh ngôn xuống trạm!</string>
+
+    <string name="timer_title">Hẹn giờ Pomodoro tập trung</string>
+    <string name="timer_duration_label">Thời lượng (VD: 25m, 1h)</string>
+    <string name="timer_note_label">Mục tiêu học tập</string>
+    <string name="timer_start_btn">Bắt đầu Pomodoro</string>
+    <string name="timer_success">Đã bắt đầu chế độ Pomodoro!</string>
+
+    <string name="settings_darkmode_title">Lịch trình Dark Mode</string>
+    <string name="settings_weather_title">Cảnh báo mưa buổi sáng</string>
+    <string name="settings_battery_title">Ngưỡng bảo vệ pin 21700</string>
+    <string name="settings_quotesched_title">Giờ phát danh ngôn hàng ngày</string>
+    <string name="settings_save_btn">Lưu cấu hình</string>
+    <string name="settings_saved_success">Đã lưu cấu hình lên thiết bị!</string>
+
+    <!-- Hierarchical Control Categories & Subcategories -->
+    <string name="cat_hardware">Phần cứng &amp; Trạm ESP32</string>
+    <string name="cat_hardware_desc">Điều khiển đèn LED, màn hình và còi bíp</string>
+    <string name="cat_alarms">Báo thức &amp; Còi báo</string>
+    <string name="cat_alarms_desc">Báo thức toán học, dập còi và hẹn giờ</string>
+    <string name="cat_tools">Công cụ học tập &amp; AI</string>
+    <string name="cat_tools_desc">Giấy nhớ, đếm ngược thi, danh ngôn &amp; Pomodoro</string>
+    <string name="cat_settings">Cấu hình trạm từ xa</string>
+    <string name="cat_settings_desc">Lịch Dark Mode, cảnh báo mưa, ngưỡng bảo vệ pin</string>
+    <string name="cat_system">Giám sát hệ thống</string>
+    <string name="cat_system_desc">Pin trạm, điện áp, thông số server và laptop</string>
+
+    <string name="subcat_led">Đèn &amp; Chiếu sáng</string>
+    <string name="subcat_led_desc">Màu đèn LED, độ sáng PWM, đèn LED trạm</string>
+    <string name="subcat_display">Màn hình &amp; Giao diện</string>
+    <string name="subcat_display_desc">Chuyển chế độ màn hình, đổi mặt đồng hồ</string>
+    <string name="subcat_buzzer">Còi báo Buzzer</string>
+    <string name="subcat_buzzer_desc">Kích hoạt còi bíp và thử nghiệm âm thanh</string>
+    <string name="subcat_alarm_active">Báo thức đang kêu</string>
+    <string name="subcat_alarm_active_desc">Nhập đáp án tắt còi hoặc dừng khẩn cấp</string>
+    <string name="subcat_alarm_schedule">Hẹn giờ báo thức</string>
+    <string name="subcat_alarm_schedule_desc">Cài đặt mốc giờ báo thức dậy học bài</string>
+    <string name="subcat_tools_notes">Ghi chú &amp; Đếm ngược</string>
+    <string name="subcat_tools_notes_desc">Ghim giấy nhớ lên trạm và đếm ngược ngày thi</string>
+    <string name="subcat_tools_ai">Groq AI &amp; Pomodoro</string>
+    <string name="subcat_tools_ai_desc">Sinh danh ngôn tạo động lực và hẹn giờ học</string>
+    <string name="subcat_settings_display">Lịch trình Dark Mode</string>
+    <string name="subcat_settings_display_desc">Tùy chỉnh khung giờ Dark Mode tự động</string>
+    <string name="subcat_settings_power">Cảnh báo mưa &amp; Pin</string>
+    <string name="subcat_settings_power_desc">Báo trời mưa trước khi đi học và ngưỡng bảo vệ pin</string>
+    <string name="subcat_system_telemetry">Bảng thông số trực tiếp</string>
+    <string name="subcat_system_telemetry_desc">Xem pin trạm, Wi-Fi, CPU máy chủ và laptop</string>
+
+    <!-- Morse Converter -->
+    <string name="morse_title">Bộ chuyển đổi mã Morse</string>
+    <string name="morse_subtitle">Dịch văn bản sang Morse và phát qua còi ESP32</string>
+    <string name="morse_tab_live">Trực tiếp ⇄</string>
+    <string name="morse_tab_text_to_morse">Văn bản → Morse</string>
+    <string name="morse_tab_morse_to_text">Morse → Văn bản</string>
+    <string name="morse_input_text_label">Văn bản thường (A–Z, 0–9)</string>
+    <string name="morse_input_morse_label">Mã Morse (. và -)</string>
+    <string name="morse_output_label">Kết quả chuyển đổi</string>
+    <string name="morse_btn_play">Phát qua còi trạm</string>
+    <string name="morse_btn_stop">Dừng phát</string>
+    <string name="morse_playing_status">Đang phát qua còi ESP32…</string>
+    <string name="morse_play_success">Đã gửi chuỗi Morse tới còi chip ESP32!</string>
+    <string name="morse_stop_success">Đã dừng phát mã Morse trên trạm!</string>
+    <string name="morse_speed_label">Tốc độ phát (WPM): %1$d WPM (%2$d ms/đơn vị)</string>
+    <string name="morse_error_empty">Vui lòng nhập văn bản hoặc mã Morse cần dịch</string>
+    <string name="subcat_morse">Bộ chuyển đổi mã Morse</string>
+    <string name="subcat_morse_desc">Dịch mã Morse và phát âm thanh trên còi chip trạm</string>
+</resources>

@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Launcher executable for DeskFlow Station Linux (GTK4 + Libadwaita)."""
+
+import os
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+CANDIDATE_PATHS = [
+    HERE.parent / "src",
+    HERE.parent / "lib" / "deskflow",
+    Path("/usr/share/deskflow/src"),
+    Path("/usr/lib/deskflow/src"),
+]
+for p in CANDIDATE_PATHS:
+    if p.exists() and str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+from deskflow.main import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
