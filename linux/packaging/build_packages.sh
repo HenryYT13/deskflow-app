@@ -20,8 +20,7 @@ cp -a "$LINUX_DIR/src/deskflow" "$STAGE_TAR/src/"
 cp -a "$LINUX_DIR/data/com.deskflow.Station.desktop" "$STAGE_TAR/share/applications/"
 cp -a "$LINUX_DIR/data/com.deskflow.Station.metainfo.xml" "$STAGE_TAR/share/metainfo/"
 cp -a "$ROOT_DIR/shared/assets/deskflow-icon.svg" "$STAGE_TAR/share/icons/hicolor/scalable/apps/com.deskflow.Station.svg"
-tar -C "$BUILD_TMP" -czf "$OUT_DIR/Deskflow-${VERSION}-linux-x86_64.tar.gz" "DeskFlow-${VERSION}-linux-x86_64"
-cp -f "$OUT_DIR/Deskflow-${VERSION}-linux-x86_64.tar.gz" "$OUT_DIR/DeskFlow-${VERSION}-linux-x86_64.tar.gz"
+tar -C "$BUILD_TMP" -czf "$OUT_DIR/DeskFlow-${VERSION}-linux-x86_64.tar.gz" "DeskFlow-${VERSION}-linux-x86_64"
 
 echo "[2/4] Building Debian package (.deb)..."
 DEB_WORK="$BUILD_TMP/deb"
@@ -133,8 +132,6 @@ __APPDIR_ARCHIVE_BELOW__
 EOF
 cat "$APPDIR_TAR" >> "$APPIMAGE_OUT"
 chmod 0755 "$APPIMAGE_OUT"
-cp -f "$APPIMAGE_OUT" "$OUT_DIR/Deskflow-${VERSION}-x86_64.AppImage"
-chmod 0755 "$OUT_DIR/Deskflow-${VERSION}-x86_64.AppImage"
 
 echo "Linux packaging complete:"
 ls -lh "$OUT_DIR"

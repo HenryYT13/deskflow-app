@@ -31,6 +31,7 @@ swiftc -O \
   DeskFlow/DeskFlowApp.swift \
   DeskFlow/Models/ApiModels.swift \
   DeskFlow/Services/DeskFlowApiClient.swift \
+  DeskFlow/Services/Localization.swift \
   DeskFlow/Services/SelfTestRunner.swift \
   DeskFlow/Views/MainSplitView.swift \
   -o "$BIN_PATH"
