@@ -2519,25 +2519,6 @@ public struct SpotifyMacView: View {
                                 .frame(width: 36, alignment: .trailing)
                         }
                     }
-
-                    // Quick Playlist Trigger
-                    HStack {
-                        Button {
-                            Task {
-                                await client.setFocusMode(enabled: true, durationMinutes: 25)
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "headphones")
-                                Text(client.appLanguage == "vi" ? "Phát Lo-fi Tập trung (25m Focus)" : "Play Lo-fi Focus (25m)")
-                            }
-                            .font(.system(.subheadline, design: .rounded).bold())
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color(hex: "#1db954"))
-
-                        Spacer()
-                    }
                 }
             }
 

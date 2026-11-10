@@ -12,7 +12,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
-      - uses: android-actions/setup-android@v3
       - working-directory: android-app
         run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
       - run: cp android-app/app/build/outputs/apk/debug/*.apk DeskFlow-android.apk
@@ -31,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
-      - run: dotnet publish win/DeskFlow/DeskFlow.csproj -c Release -r win-x64 --self-contained true -o out
+      - run: dotnet publish win/DeskFlow/DeskFlow.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true -o out
       - run: Compress-Archive -Path out\* -DestinationPath DeskFlow-windows-x64.zip
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: DeskFlow-windows-x64.zip }
