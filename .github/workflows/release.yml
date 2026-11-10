@@ -38,13 +38,30 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
       - uses: microsoft/setup-msbuild@v2
-      - name: Build Windows
-        shell: cmd
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build and Package Windows Installer (.exe & .zip)
+        shell: pwsh
         run: |
-          msbuild win\DeskFlow\DeskFlow.csproj -restore -t:Publish -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:PublishDir=%GITHUB_WORKSPACE%\out\
-      - run: Compress-Archive -Path out\* -DestinationPath DeskFlow-windows-x64.zip
+          $dist = Join-Path (Get-Location) "win\dist"
+          $appOut = Join-Path $dist "DeskFlow-win-x64"
+          & msbuild win\DeskFlow\DeskFlow.csproj -restore -t:Publish -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:PublishDir=$appOut
+          if ($LASTEXITCODE -ne 0) { throw "MSBuild publish failed" }
+
+          Compress-Archive -Path "$appOut\*" -DestinationPath (Join-Path $dist "DeskFlow-1.0.0-win-x64.zip")
+
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "iscc" }
+          & $iscc win\packaging\DeskFlowInstaller.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+
+          Get-ChildItem -Path $dist
       - uses: actions/upload-artifact@v4
-        with: { name: windows, path: DeskFlow-windows-x64.zip }
+        with:
+          name: windows
+          path: |
+            win/dist/DeskFlow-1.0.0-windows-setup.exe
+            win/dist/DeskFlow-1.0.0-win-x64.zip
   macos:
     runs-on: macos-latest
     steps:
