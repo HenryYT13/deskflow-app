@@ -48,7 +48,7 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
     @Published public var appLanguage: String {
-        didSet { defaults.set(appLanguage, forKey: "deskflow.language") }
+        didSet { defaults.set(appLanguage, forKey: "deskflow.language"); L10n.lang = appLanguage }
     }
     @Published public var esp32ThemeMode: String {
         didSet {
@@ -140,6 +140,7 @@ public final class DeskFlowApiClient: ObservableObject {
             fallback: "06:00"
         )
         self.appLanguage = defaults.string(forKey: "deskflow.language") ?? "vi"
+        L10n.lang = self.appLanguage
         self.esp32ThemeMode = defaults.string(forKey: "deskflow.esp32ThemeMode") ?? "sync"
     }
 

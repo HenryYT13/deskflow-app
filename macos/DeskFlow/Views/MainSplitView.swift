@@ -367,7 +367,7 @@ public struct MainSplitView: View {
                     Button {
                         Task { await client.refreshAll() }
                     } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                        Label(tr("Refresh"), systemImage: "arrow.clockwise")
                     }
                     .keyboardShortcut("r", modifiers: [.command])
                 }
@@ -380,12 +380,12 @@ public struct MainSplitView: View {
                 ),
                 presenting: notePendingDelete
             ) { note in
-                Button("Delete", role: .destructive) {
+                Button(tr("Delete"), role: .destructive) {
                     Task { await client.deleteNote(noteId: note.id) }
                 }
-                Button("Cancel", role: .cancel) {}
+                Button(tr("Cancel"), role: .cancel) {}
             } message: { note in
-                Text("Are you sure you want to delete \"\(note.displayText)\"? This will also unpin it from the ESP32 Station.")
+                Text(L10n.lang == "vi" ? "Bạn có chắc muốn xóa \"\(note.displayText)\"? Ghi chú cũng sẽ được bỏ ghim khỏi trạm ESP32." : "Are you sure you want to delete \"\(note.displayText)\"? This will also unpin it from the ESP32 Station.")
             }
         }
     }
@@ -421,7 +421,7 @@ private struct DashboardMacView: View {
                             .font(.system(.headline, design: .rounded).weight(.semibold))
                     }
                     HStack(spacing: 12) {
-                        TextField("6-Character Pairing Code", text: $pairCode)
+                        TextField(tr("6-Character Pairing Code"), text: $pairCode)
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -677,7 +677,7 @@ private struct DashboardMacView: View {
                             ProgressView()
                             Text(client.appLanguage == "vi" ? "Đang tải dữ liệu thời tiết..." : "Loading forecast...")
                                 .foregroundColor(.secondary)
-                            Button("Tải lại") {
+                            Button(tr("Tải lại")) {
                                 Task { await client.fetchWeatherForecast() }
                             }
                         }
@@ -778,10 +778,10 @@ private struct ToolsMacView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Picker("Chức năng công cụ", selection: $toolTab) {
-                Text(client.appLanguage == "vi" ? "1. Danh ngôn AI & Pomodoro" : "1. AI Quotes & Pomodoro").tag(0)
-                Text(client.appLanguage == "vi" ? "2. Giấy nhớ & Đếm ngược" : "2. Notes & Countdowns").tag(1)
-                Text(client.appLanguage == "vi" ? "3. Mã Morse Studio" : "3. Morse Studio").tag(2)
+            Picker(tr("Chức năng công cụ"), selection: $toolTab) {
+                Text(client.appLanguage == "vi" ? "Danh ngôn AI & Pomodoro" : "AI Quotes & Pomodoro").tag(0)
+                Text(client.appLanguage == "vi" ? "Giấy nhớ & Đếm ngược" : "Notes & Countdowns").tag(1)
+                Text(client.appLanguage == "vi" ? "Mã Morse Studio" : "Morse Studio").tag(2)
             }
             .pickerStyle(.segmented)
 
@@ -858,20 +858,20 @@ private struct FocusMacView: View {
             LiquidGlassCard("Start Focus Session (Pomodoro)", icon: "timer", iconColor: .purple) {
                 VStack(alignment: .leading, spacing: 12) {
                     Stepper("Duration: \(duration) minutes", value: $duration, in: 5...180, step: 5)
-                    TextField("Session Goal", text: $reason)
+                    TextField(tr("Session Goal"), text: $reason)
                         .textFieldStyle(.roundedBorder)
                     HStack {
-                        Button("Start 25m Focus") {
+                        Button(tr("Start 25m Focus")) {
                             duration = 25
                             Task { await client.startFocus(durationMinutes: 25, reason: reason) }
                         }
                         .buttonStyle(.borderedProminent)
-                        Button("Start 50m Deep Work") {
+                        Button(tr("Start 50m Deep Work")) {
                             duration = 50
                             Task { await client.startFocus(durationMinutes: 50, reason: reason) }
                         }
                         if client.focusActive {
-                            Button("Stop Session", role: .destructive) {
+                            Button(tr("Stop Session"), role: .destructive) {
                                 Task { await client.requestChallenge() }
                             }
                         }
@@ -884,12 +884,12 @@ private struct FocusMacView: View {
                     Text(client.activeChallengeQuestion ?? "No active challenge. Click Request Challenge to unlock early.")
                         .font(.headline)
                     HStack {
-                        Button("Request Challenge") {
+                        Button(tr("Request Challenge")) {
                             Task { await client.requestChallenge() }
                         }
-                        TextField("Integer Answer", text: $answerInput)
+                        TextField(tr("Integer Answer"), text: $answerInput)
                             .textFieldStyle(.roundedBorder)
-                        Button("Verify Answer") {
+                        Button(tr("Verify Answer")) {
                             if let ans = Int(answerInput.trimmingCharacters(in: .whitespaces)) {
                                 Task { await client.verifyChallenge(answer: ans) }
                             }
@@ -956,21 +956,21 @@ private struct NotesMacView: View {
             }
 
             HStack {
-                Text("Sticky Notes")
+                Text(tr("Sticky Notes"))
                     .font(.title.bold())
                 Spacer()
-                Button("Unpin ESP32 Note") {
+                Button(tr("Unpin ESP32 Note")) {
                     Task { await client.unpinNote() }
                 }
-                Button("Refresh") {
+                Button(tr("Refresh")) {
                     Task { await client.fetchNotes() }
                 }
             }
 
             HStack {
-                TextField("Write a sticky note for ESP32 OLED...", text: $newNoteText)
+                TextField(tr("Write a sticky note for ESP32 OLED..."), text: $newNoteText)
                     .textFieldStyle(.roundedBorder)
-                Button("Add Note") {
+                Button(tr("Add Note")) {
                     let text = newNoteText
                     newNoteText = ""
                     Task { await client.createNote(text: text) }
@@ -979,7 +979,7 @@ private struct NotesMacView: View {
             }
 
             if client.notes.isEmpty {
-                Text("No sticky notes saved.")
+                Text(tr("No sticky notes saved."))
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 16)
             } else {
@@ -989,7 +989,7 @@ private struct NotesMacView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(note.displayText)
                                     .font(.headline)
-                                Text("ID: \(note.id)" + (note.effectivePinned ? " • PINNED ON ESP32" : ""))
+                                Text("ID: \(note.id)" + (note.effectivePinned ? (L10n.lang == "vi" ? " • ĐÃ GHIM TRÊN ESP32" : " • PINNED ON ESP32") : ""))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -1023,15 +1023,15 @@ private struct CountdownsMacView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Exam & Event Countdowns")
+            Text(tr("Exam & Event Countdowns"))
                 .font(.title.bold())
 
             HStack {
-                TextField("Event Name", text: $eventName)
+                TextField(tr("Event Name"), text: $eventName)
                     .textFieldStyle(.roundedBorder)
-                TextField("Target Date (YYYY-MM-DD or DD/MM)", text: $targetDate)
+                TextField(tr("Target Date (YYYY-MM-DD or DD/MM)"), text: $targetDate)
                     .textFieldStyle(.roundedBorder)
-                Button("Add Countdown") {
+                Button(tr("Add Countdown")) {
                     Task {
                         await client.createCountdown(name: eventName, targetDate: targetDate)
                         eventName = ""
@@ -1046,7 +1046,7 @@ private struct CountdownsMacView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(item.displayName).font(.headline)
-                            Text("Target: \(item.targetDate ?? "") • \(item.daysLeft ?? 0) days left")
+                            Text(L10n.lang == "vi" ? "Mục tiêu: \(item.targetDate ?? "") • còn \(item.daysLeft ?? 0) ngày" : "Target: \(item.targetDate ?? "") • \(item.daysLeft ?? 0) days left")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1129,7 +1129,7 @@ private struct MorseMacView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Morse Code Studio & ESP32 Buzzer")
+            Text(tr("Morse Code Studio & ESP32 Buzzer"))
                 .font(.title.bold())
 
             LiquidGlassCard("Live Bidirectional Converter", icon: "waveform", iconColor: .cyan) {
@@ -1142,7 +1142,7 @@ private struct MorseMacView: View {
                         Text(client.appLanguage == "vi" ? "Văn bản thường (Plain Text):" : "Plain Text:")
                             .font(.caption.bold())
                         HStack {
-                            TextField("Plain Text", text: $plainText)
+                            TextField(tr("Plain Text"), text: $plainText)
                                 .textFieldStyle(.plain)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
@@ -1154,7 +1154,7 @@ private struct MorseMacView: View {
                                     morsePattern = MorseCodeConverter.textToMorse(newText)
                                     isSyncing = false
                                 }
-                            Button("Text → Morse") {
+                            Button(tr("Text → Morse")) {
                                 isSyncing = true
                                 morsePattern = MorseCodeConverter.textToMorse(plainText)
                                 isSyncing = false
@@ -1167,7 +1167,7 @@ private struct MorseMacView: View {
                         Text(client.appLanguage == "vi" ? "Mã Morse (Morse Pattern):" : "Morse Pattern:")
                             .font(.caption.bold())
                         HStack {
-                            TextField("Morse Pattern (. - /)", text: $morsePattern)
+                            TextField(tr("Morse Pattern (. - /)"), text: $morsePattern)
                                 .textFieldStyle(.plain)
                                 .font(.system(.body, design: .monospaced))
                                 .padding(.horizontal, 12)
@@ -1180,7 +1180,7 @@ private struct MorseMacView: View {
                                     plainText = MorseCodeConverter.morseToText(newMorse)
                                     isSyncing = false
                                 }
-                            Button("Morse → Text") {
+                            Button(tr("Morse → Text")) {
                                 isSyncing = true
                                 plainText = MorseCodeConverter.morseToText(morsePattern)
                                 isSyncing = false
@@ -1191,38 +1191,38 @@ private struct MorseMacView: View {
 
                     // Quick Tap Keypad for Morse Characters
                     HStack(spacing: 8) {
-                        Text("Phím gõ nhanh:")
+                        Text(tr("Phím gõ nhanh:"))
                             .font(.caption2.bold())
                             .foregroundColor(.secondary)
-                        Button("• (Dot)") {
+                        Button(tr("• (Dot)")) {
                             morsePattern.append(".")
                             isSyncing = true
                             plainText = MorseCodeConverter.morseToText(morsePattern)
                             isSyncing = false
                         }
                         .buttonStyle(.bordered)
-                        Button("— (Dash)") {
+                        Button(tr("— (Dash)")) {
                             morsePattern.append("-")
                             isSyncing = true
                             plainText = MorseCodeConverter.morseToText(morsePattern)
                             isSyncing = false
                         }
                         .buttonStyle(.bordered)
-                        Button("[Ký tự] (Space)") {
+                        Button(tr("[Ký tự] (Space)")) {
                             morsePattern.append(" ")
                             isSyncing = true
                             plainText = MorseCodeConverter.morseToText(morsePattern)
                             isSyncing = false
                         }
                         .buttonStyle(.bordered)
-                        Button("/ [Từ]") {
+                        Button(tr("/ [Từ]")) {
                             morsePattern.append(" / ")
                             isSyncing = true
                             plainText = MorseCodeConverter.morseToText(morsePattern)
                             isSyncing = false
                         }
                         .buttonStyle(.bordered)
-                        Button("Xóa") {
+                        Button(tr("Xóa")) {
                             morsePattern = ""
                             plainText = ""
                         }
@@ -1234,13 +1234,13 @@ private struct MorseMacView: View {
             LiquidGlassCard("Hardware Buzzer Playback", icon: "speaker.wave.2.fill", iconColor: .yellow) {
                 VStack(alignment: .leading, spacing: 10) {
                     Slider(value: $unitMs, in: 30...300, step: 10) {
-                        Text("Dot Unit: \(Int(unitMs)) ms")
+                        Text(L10n.lang == "vi" ? "Đơn vị chấm: \(Int(unitMs)) ms" : "Dot Unit: \(Int(unitMs)) ms")
                     }
                     Slider(value: $freqHz, in: 500...4500, step: 100) {
-                        Text("Frequency: \(Int(freqHz)) Hz")
+                        Text(L10n.lang == "vi" ? "Tần số: \(Int(freqHz)) Hz" : "Frequency: \(Int(freqHz)) Hz")
                     }
                     HStack {
-                        Button("Play on ESP32") {
+                        Button(tr("Play on ESP32")) {
                             Task {
                                 await client.playMorse(
                                     pattern: morsePattern,
@@ -1251,7 +1251,7 @@ private struct MorseMacView: View {
                         }
                         .buttonStyle(.borderedProminent)
 
-                        Button("Stop Playback", role: .destructive) {
+                        Button(tr("Stop Playback"), role: .destructive) {
                             Task { await client.stopMorse() }
                         }
                     }
@@ -1276,18 +1276,18 @@ private struct AlarmsMacView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Backend-Authoritative Alarms")
+            Text(tr("Backend-Authoritative Alarms"))
                 .font(.title.bold())
 
             LiquidGlassCard("Create New Alarm", icon: "plus.circle.fill", iconColor: .green) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        TextField("Time (HH:MM)", text: $timeStr)
+                        TextField(tr("Time (HH:MM)"), text: $timeStr)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 120)
-                        TextField("Label", text: $labelStr)
+                        TextField(tr("Label"), text: $labelStr)
                             .textFieldStyle(.roundedBorder)
-                        Button("Save Alarm") {
+                        Button(tr("Save Alarm")) {
                             var days: [Int] = []
                             if repeatMon { days.append(0) }
                             if repeatTue { days.append(1) }
@@ -1309,14 +1309,14 @@ private struct AlarmsMacView: View {
                     }
 
                     HStack(spacing: 8) {
-                        Text("Repeat:")
-                        Toggle("Mon", isOn: $repeatMon)
-                        Toggle("Tue", isOn: $repeatTue)
-                        Toggle("Wed", isOn: $repeatWed)
-                        Toggle("Thu", isOn: $repeatThu)
-                        Toggle("Fri", isOn: $repeatFri)
-                        Toggle("Sat", isOn: $repeatSat)
-                        Toggle("Sun", isOn: $repeatSun)
+                        Text(tr("Repeat:"))
+                        Toggle(tr("Mon"), isOn: $repeatMon)
+                        Toggle(tr("Tue"), isOn: $repeatTue)
+                        Toggle(tr("Wed"), isOn: $repeatWed)
+                        Toggle(tr("Thu"), isOn: $repeatThu)
+                        Toggle(tr("Fri"), isOn: $repeatFri)
+                        Toggle(tr("Sat"), isOn: $repeatSat)
+                        Toggle(tr("Sun"), isOn: $repeatSun)
                     }
                     .toggleStyle(.checkbox)
                 }
@@ -1324,7 +1324,7 @@ private struct AlarmsMacView: View {
 
             LiquidGlassCard("Active Alarms", icon: "alarm.fill", iconColor: .orange) {
                 if client.alarms.isEmpty {
-                    Text("No alarms configured on server. Create one above.")
+                    Text(tr("No alarms configured on server. Create one above."))
                         .foregroundColor(.secondary)
                         .padding(8)
                 } else {
@@ -1334,7 +1334,7 @@ private struct AlarmsMacView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("\(a.displayTime) — \(a.displayLabel)")
                                         .font(.headline)
-                                    Text("Repeat: \(a.repeatSummary) • Buzzer: \(a.buzzerDuration ?? 250)ms")
+                                    Text(L10n.lang == "vi" ? "Lặp lại: \(a.repeatSummary) • Còi: \(a.buzzerDuration ?? 250)ms" : "Repeat: \(a.repeatSummary) • Buzzer: \(a.buzzerDuration ?? 250)ms")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -1454,7 +1454,7 @@ private struct StationMacView: View {
                     VStack(spacing: 8) {
                         HStack {
                             Circle().fill(Color.green).frame(width: 7, height: 7)
-                            Text("128×64 SSD1306 OLED MONITOR")
+                            Text(tr("128×64 SSD1306 OLED MONITOR"))
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -1585,7 +1585,7 @@ private struct StationMacView: View {
                 // 3. OLED Display View Switcher (8 Views with Visual Cards)
                 LiquidGlassCard("OLED Display View Switcher (Clock Page System)", icon: "square.grid.2x2", iconColor: .blue) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Switch the active page displayed on the ESP32 station:")
+                        Text(tr("Switch the active page displayed on the ESP32 station:"))
                             .font(.caption)
                             .foregroundColor(.secondary)
 
@@ -1631,7 +1631,7 @@ private struct StationMacView: View {
                 LiquidGlassCard("WS2812B NeoPixel & Bảng màu tuỳ biến (Color Palette)", icon: "paintpalette.fill", iconColor: .pink) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 16) {
-                            ColorPicker("Bảng màu tuỳ biến (Color Palette):", selection: $selectedPaletteColor)
+                            ColorPicker(tr("Bảng màu tuỳ biến (Color Palette):"), selection: $selectedPaletteColor)
                                 .font(.headline)
                                 .onChange(of: selectedPaletteColor) { newCol in
                                     if let hex = newCol.toHex() {
@@ -1642,28 +1642,28 @@ private struct StationMacView: View {
 
                             Spacer()
 
-                            Button("Tắt đèn (Lamp Off)") {
+                            Button(tr("Tắt đèn (Lamp Off)")) {
                                 Task { await client.turnLampOff() }
                             }
                             .buttonStyle(.bordered)
                         }
 
                         HStack {
-                            TextField("Mã màu Hex (#RRGGBB)", text: $hexColor)
+                            TextField(tr("Mã màu Hex (#RRGGBB)"), text: $hexColor)
                                 .textFieldStyle(.plain)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
                                 .frame(width: 160)
-                            Button("Áp dụng mã Hex") {
+                            Button(tr("Áp dụng mã Hex")) {
                                 Task { await client.setLampColor(hex: hexColor) }
                             }
                             .buttonStyle(.borderedProminent)
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Màu Preset nhanh (Quick Presets):")
+                            Text(tr("Màu Preset nhanh (Quick Presets):"))
                                 .font(.caption.bold())
                                 .foregroundColor(.secondary)
                             HStack(spacing: 8) {
@@ -1717,7 +1717,7 @@ private struct StationMacView: View {
                 LiquidGlassCard("Custom Beep & Hardware Buzzer (Phase 4)", icon: "speaker.wave.3.fill", iconColor: .yellow) {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
-                            Text("Duration Presets:")
+                            Text(tr("Duration Presets:"))
                             Button("40ms") { Task { await client.triggerBuzz(durationMs: 40) } }
                             Button("80ms") { Task { await client.triggerBuzz(durationMs: 80) } }
                             Button("150ms") { Task { await client.triggerBuzz(durationMs: 150) } }
@@ -1725,7 +1725,7 @@ private struct StationMacView: View {
                             Button("500ms") { Task { await client.triggerBuzz(durationMs: 500) } }
                         }
                         HStack {
-                            Button("Emergency Stop", role: .destructive) {
+                            Button(tr("Emergency Stop"), role: .destructive) {
                                 Task { await client.emergencyStop() }
                             }
                             .buttonStyle(.borderedProminent)
@@ -2129,7 +2129,7 @@ private struct SettingsMacView: View {
                         Text(isVi ? "Ngôn ngữ ứng dụng:" : "App Language:")
                             .font(.headline)
                         Picker("", selection: $client.appLanguage) {
-                            Text("Tiếng Việt").tag("vi")
+                            Text(tr("Tiếng Việt")).tag("vi")
                             Text("English").tag("en")
                         }
                         .pickerStyle(.segmented)
@@ -2408,7 +2408,7 @@ public struct SpotifyMacView: View {
                                     .background(Capsule().fill((client.spotifyState.isPlaying ? Color(hex: "#1db954") : Color.gray).opacity(0.15)))
 
                                 if client.spotifyState.connected {
-                                    Text("CONNECT ONLINE")
+                                    Text(tr("CONNECT ONLINE"))
                                         .font(.system(size: 10, weight: .bold, design: .rounded))
                                         .foregroundColor(.green)
                                         .padding(.horizontal, 6)

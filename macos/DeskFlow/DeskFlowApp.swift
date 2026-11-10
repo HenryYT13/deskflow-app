@@ -103,13 +103,13 @@ struct DeskFlowApp: App {
                 }
         }
         .commands {
-            CommandMenu("Station") {
-                Button("Refresh All Telemetry") {
+            CommandMenu(tr("Station")) {
+                Button(tr("Refresh All Telemetry")) {
                     Task { await apiClient.refreshAll() }
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Button("Test Backend Health") {
+                Button(tr("Test Backend Health")) {
                     Task { await apiClient.testHealth() }
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
