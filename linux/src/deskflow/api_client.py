@@ -39,7 +39,7 @@ ERROR_CODE_MESSAGES: Dict[str, str] = {
     "cooldown": "Cooldown active due to repeated failed attempts.",
     "token_invalid": "Device session expired or revoked. Please pair again.",
     "unauthorized": "Authentication required or session expired (HTTP 401).",
-    "insufficient_scope": "This device lacks required scope permissions for this action (HTTP 403).",
+    "insufficient_scope": "This device was paired without 'control' permission, so notes/alarms are read-only. Unpair and re-pair using a full-access code from Discord (/pair with full access).",
     "forbidden": "Action forbidden by server policy (HTTP 403).",
     "not_found": "Requested resource or endpoint was not found on server (HTTP 404).",
     "note_not_found": "Sticky note was not found on the server (HTTP 404).",
@@ -166,6 +166,8 @@ class DeskFlowApiClient:
                 except Exception:
                     pass
             code, msg, retry_after = self._parse_error_payload(exc.code, raw_err)
+            if code == "insufficient_scope" or (exc.code == 403 and "scope" in raw_err.lower()):
+                code, msg = "insufficient_scope", ERROR_CODE_MESSAGES["insufficient_scope"]
             logger.warning(
                 "[HTTP] <- %s %s status=%d latency=%dms error_code=%s message=%s",
                 method.upper(),
@@ -400,11 +402,11 @@ class DeskFlowApiClient:
         return self.request("POST", "/api/app/control/alarms", payload=data)
 
     def delete_alarm(self, alarm_id: str) -> ApiResult:
-        return self.request("DELETE", f"/api/app/control/alarms/{alarm_id}")
+        return self.request("DELETE", f"/api/app/control/alarms/{urllib.parse.quote(str(alarm_id), safe='')}")
 
     def toggle_alarm(self, alarm_id: str, enabled: Optional[bool] = None) -> ApiResult:
         payload = {"enabled": enabled} if enabled is not None else {}
-        return self.request("POST", f"/api/app/control/alarms/{alarm_id}/toggle", payload=payload)
+        return self.request("POST", f"/api/app/control/alarms/{urllib.parse.quote(str(alarm_id), safe='')}/toggle", payload=payload)
 
     def emergency_stop_alarm(self) -> ApiResult:
         return self.request("POST", "/api/app/control/alarm/emergency-stop", payload={})

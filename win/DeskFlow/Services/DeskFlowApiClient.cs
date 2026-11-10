@@ -26,6 +26,7 @@ public sealed class DeskFlowApiClient
             ["pair_code_invalid"] = "Invalid, expired, or already-used pairing code. Generate a new code in Discord (/pair).",
             ["invalid_request"] = "Invalid request format or endpoint rejected by backend.",
             ["rate_limited"] = "Too many attempts. Please wait a minute before trying again.",
+            ["insufficient_scope"] = "This device was paired without 'control' permission, so notes/alarms cannot be changed. Re-pair using a full-access code from Discord (/pair).",
             ["unauthorized"] = "Authentication required or device token expired. Please pair your device.",
             ["token_invalid"] = "Device token is invalid or revoked. Please pair your device again.",
             ["token_expired"] = "Device token expired. Please re-pair your device.",
@@ -103,6 +104,14 @@ public sealed class DeskFlowApiClient
         }
 
         return (errorCode, errorMessage);
+    }
+
+    private static async Task<string> FailMessageAsync(HttpResponseMessage resp)
+    {
+        var body = await resp.Content.ReadAsStringAsync();
+        var (code, msg) = ExtractErrorInfo(body, (int)resp.StatusCode);
+        if (code == "insufficient_scope" && ErrorCodeMessages.TryGetValue(code, out var m)) return m;
+        return msg;
     }
 
     private HttpRequestMessage CreateRequest(
@@ -342,7 +351,8 @@ public sealed class DeskFlowApiClient
                     Settings.DeviceId = null;
                     Settings.Save();
                 }
-                var (_, errMsg) = ExtractErrorInfo(body, (int)resp.StatusCode);
+                var (errCode, errMsg) = ExtractErrorInfo(body, (int)resp.StatusCode);
+                if (errCode == "insufficient_scope" && ErrorCodeMessages.TryGetValue(errCode, out var scopeMsg)) errMsg = scopeMsg;
                 return (false, $"Delete failed ({errMsg})");
             }
 
@@ -677,16 +687,15 @@ public sealed class DeskFlowApiClient
         {
             var data = new
             {
-                id = alarmId,
                 time,
                 label,
                 repeat_days = repeatDays,
                 buzzer_duration = buzzerDuration,
                 math_challenge = true
             };
-            using var req = CreateRequest(alarmId != null ? HttpMethod.Put : HttpMethod.Post, alarmId != null ? $"/api/app/control/alarms/{alarmId}" : "/api/app/control/alarms", data);
+            using var req = CreateRequest(alarmId != null ? HttpMethod.Put : HttpMethod.Post, alarmId != null ? $"/api/app/control/alarms/{Uri.EscapeDataString(alarmId)}" : "/api/app/control/alarms", data);
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Alarm {time} saved." : $"HTTP {(int)resp.StatusCode}");
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Alarm {time} saved." : await FailMessageAsync(resp));
         }
         catch (Exception ex)
         {
@@ -698,9 +707,9 @@ public sealed class DeskFlowApiClient
     {
         try
         {
-            using var req = CreateRequest(HttpMethod.Delete, $"/api/app/control/alarms/{alarmId}");
+            using var req = CreateRequest(HttpMethod.Delete, $"/api/app/control/alarms/{Uri.EscapeDataString(alarmId)}");
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? "Alarm deleted." : $"HTTP {(int)resp.StatusCode}");
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? "Alarm deleted." : await FailMessageAsync(resp));
         }
         catch (Exception ex)
         {
@@ -714,7 +723,7 @@ public sealed class DeskFlowApiClient
         {
             using var req = CreateRequest(HttpMethod.Post, $"/api/app/control/alarms/{alarmId}/toggle", enabled.HasValue ? new { enabled = enabled.Value } : new { });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? "Alarm toggled." : $"HTTP {(int)resp.StatusCode}");
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? "Alarm toggled." : await FailMessageAsync(resp));
         }
         catch (Exception ex)
         {

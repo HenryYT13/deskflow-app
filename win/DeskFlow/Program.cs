@@ -11,8 +11,34 @@ namespace DeskFlow;
 
 public static class Program
 {
+    public static void WriteCrashLog(string source, object? ex)
+    {
+        try
+        {
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DeskFlow");
+            Directory.CreateDirectory(folder);
+            File.AppendAllText(Path.Combine(folder, "crash.log"), $"[{DateTime.UtcNow:o}] {source}: {ex}\n");
+        }
+        catch { }
+    }
+
     [STAThread]
     public static void Main(string[] args)
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => WriteCrashLog("AppDomain.UnhandledException", e.ExceptionObject);
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) => WriteCrashLog("UnobservedTaskException", e.Exception);
+        try
+        {
+            RunApp(args);
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog("Startup", ex);
+            throw;
+        }
+    }
+
+    private static void RunApp(string[] args)
     {
         if (args.Contains("--version"))
         {
@@ -24,7 +50,7 @@ public static class Program
 
         if (args.Contains("--self-test"))
         {
-            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deskflow");
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DeskFlow");
             Directory.CreateDirectory(folder);
             var logPath = Path.Combine(folder, "self-test.log");
             File.WriteAllText(logPath, $"[{DateTime.UtcNow:o}] Self-test started\n");
