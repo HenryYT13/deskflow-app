@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MACOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="$MACOS_DIR/dist"
+VERSION="${1:-${VERSION:-1.0.0}}"
+VERSION="${VERSION#v}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Error: Native macOS build script must be executed on Darwin (macOS)."
@@ -52,7 +54,7 @@ if [[ -d "$MACOS_DIR/DeskFlow/Resources/AppIcon.iconset" ]] && command -v iconut
   iconutil -c icns "$MACOS_DIR/DeskFlow/Resources/AppIcon.iconset" -o "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
-cat > "$APP_DIR/Contents/Info.plist" <<'EOF'
+cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -76,7 +78,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<'EOF'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
@@ -100,9 +102,9 @@ echo "[4/5] Running native macOS test suite and GUI launch verification..."
 "$APP_DIR/Contents/MacOS/DeskFlow" --run-tests
 "$APP_DIR/Contents/MacOS/DeskFlow" --self-test
 
-echo "[5/5] Creating DeskFlow-1.0.0-macOS.dmg with Liquid Glass Finder styling..."
+echo "[5/5] Creating DeskFlow-${VERSION}-macOS.dmg with Liquid Glass Finder styling..."
 TMP_DMG="$OUT_DIR/Deskflow_temp.dmg"
-DMG_PATH="$OUT_DIR/Deskflow-1.0.0-macOS.dmg"
+DMG_PATH="$OUT_DIR/DeskFlow-${VERSION}-macOS.dmg"
 rm -f "$TMP_DMG" "$DMG_PATH"
 
 diskutil unmount force /Volumes/Deskflow >/dev/null 2>&1 || true

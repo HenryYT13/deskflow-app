@@ -2,7 +2,9 @@
 ; Inno Setup 6 Script
 
 #define MyAppName "Deskflow"
+#ifndef MyAppVersion
 #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "Deskflow Engineering"
 #define MyAppURL "https://api.10th012013.duckdns.org"
 #define MyAppExeName "DeskFlow.exe"
@@ -19,7 +21,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
-OutputBaseFilename=DeskFlow-1.0.0-windows-setup
+OutputBaseFilename=DeskFlow-{#MyAppVersion}-windows-setup
 SetupIconFile=..\Assets\app.ico
 UninstallDisplayIcon={app}\Assets\app.ico
 Compression=lzma2/max

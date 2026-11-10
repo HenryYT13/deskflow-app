@@ -8,7 +8,8 @@ OUT_DIR="$ROOT_DIR/artifacts/linux"
 BUILD_TMP="$(mktemp -d)"
 trap 'rm -rf "$BUILD_TMP"' EXIT
 
-VERSION="1.0.0"
+VERSION="${1:-${VERSION:-1.0.0}}"
+VERSION="${VERSION#v}"
 mkdir -p "$OUT_DIR"
 
 echo "[1/4] Building portable TAR.GZ archive..."

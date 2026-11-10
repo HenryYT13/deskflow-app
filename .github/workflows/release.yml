@@ -14,9 +14,15 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - working-directory: android-app
         run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
-      - run: cp android-app/app/build/outputs/apk/debug/*.apk DeskFlow-android.apk
+      - run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION="1.0.2"
+          fi
+          cp android-app/app/build/outputs/apk/debug/*.apk "DeskFlow-${VERSION}-android.apk"
+          cp "DeskFlow-${VERSION}-android.apk" DeskFlow-android.apk
       - uses: actions/upload-artifact@v4
-        with: { name: android, path: DeskFlow-android.apk }
+        with: { name: android, path: DeskFlow-*.apk }
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -25,8 +31,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y rpm binutils
       - name: Build all Linux packages (RPM, DEB, AppImage, TAR.GZ)
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION="1.0.2"
+          fi
           chmod +x linux/packaging/build_packages.sh
-          ./linux/packaging/build_packages.sh
+          ./linux/packaging/build_packages.sh "$VERSION"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -48,11 +58,15 @@ jobs:
           & msbuild win\DeskFlow\DeskFlow.csproj -restore -t:Publish -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:PublishDir=$appOut
           if ($LASTEXITCODE -ne 0) { throw "MSBuild publish failed" }
 
-          Compress-Archive -Path "$appOut\*" -DestinationPath (Join-Path $dist "DeskFlow-1.0.0-win-x64.zip")
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag) { $tag = "1.0.2" }
+          $ver = $tag -replace '^v', ''
+
+          Compress-Archive -Path "$appOut\*" -DestinationPath (Join-Path $dist "DeskFlow-$ver-win-x64.zip")
 
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { $iscc = "iscc" }
-          & $iscc win\packaging\DeskFlowInstaller.iss
+          & $iscc "/DMyAppVersion=$ver" win\packaging\DeskFlowInstaller.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
 
           Get-ChildItem -Path $dist
@@ -60,16 +74,20 @@ jobs:
         with:
           name: windows
           path: |
-            win/dist/DeskFlow-1.0.0-windows-setup.exe
-            win/dist/DeskFlow-1.0.0-win-x64.zip
+            win/dist/*.exe
+            win/dist/*.zip
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build macOS DMG
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION="1.0.2"
+          fi
           chmod +x macos/scripts/build_macos_dmg.sh
-          ./macos/scripts/build_macos_dmg.sh
+          ./macos/scripts/build_macos_dmg.sh "$VERSION"
       - uses: actions/upload-artifact@v4
         with:
           name: macos

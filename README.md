@@ -13,10 +13,10 @@ Tất cả các bản dựng mới nhất được tự động biên dịch và
 
 | Hệ điều hành | Định dạng file | Mô tả |
 |---|---|---|
-| **Windows 10/11** | 🪟 `DeskFlow-1.0.0-windows-setup.exe`<br>🪟 `DeskFlow-1.0.0-win-x64.zip` | Bộ cài đặt Inno Setup Wizard hoặc bản portable zip tự chạy (WinUI 3 x64 self-contained). |
-| **Linux** | 🐧 `deskflow_1.0.0_amd64.deb`<br>🐧 `deskflow-1.0.0-1.x86_64.rpm`<br>🐧 `DeskFlow-1.0.0-x86_64.AppImage`<br>🐧 `DeskFlow-1.0.0-linux-x86_64.tar.gz` | Đầy đủ định dạng cho Ubuntu/Debian (.deb), Fedora/RHEL (.rpm), file chạy độc lập (.AppImage) và tarball. |
-| **macOS** | 🍏 `Deskflow-1.0.0-macOS.dmg` | Bộ cài đặt DMG kéo thả cho macOS 13.0+ (Ventura, Sonoma, Sequoia). |
-| **Android** | 📱 `DeskFlow-android.apk` | Ứng dụng Android 8.0+ (hỗ trợ quét mã QR, Display Over Apps). |
+| **Windows 10/11** | 🪟 `DeskFlow-<version>-windows-setup.exe`<br>🪟 `DeskFlow-<version>-win-x64.zip` | Bộ cài đặt Inno Setup Wizard hoặc bản portable zip tự chạy (WinUI 3 x64 self-contained). |
+| **Linux** | 🐧 `deskflow_<version>_amd64.deb`<br>🐧 `deskflow-<version>-1.x86_64.rpm`<br>🐧 `DeskFlow-<version>-x86_64.AppImage`<br>🐧 `DeskFlow-<version>-linux-x86_64.tar.gz` | Đầy đủ định dạng cho Ubuntu/Debian (.deb), Fedora/RHEL (.rpm), file chạy độc lập (.AppImage) và tarball. |
+| **macOS** | 🍏 `DeskFlow-<version>-macOS.dmg` | Bộ cài đặt DMG kéo thả cho macOS 13.0+ (Ventura, Sonoma, Sequoia). |
+| **Android** | 📱 `DeskFlow-<version>-android.apk` / `DeskFlow-android.apk` | Ứng dụng Android 8.0+ (hỗ trợ quét mã QR, Display Over Apps). |
 
 ---
 
