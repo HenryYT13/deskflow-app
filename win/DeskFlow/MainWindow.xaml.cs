@@ -155,6 +155,15 @@ public sealed partial class MainWindow : Window
     private void UpdatePairingStatusLabel()
     {
         bool isPaired = _client.Settings.IsPaired;
+        if (PairingGatePanel != null)
+        {
+            PairingGatePanel.Visibility = isPaired ? Visibility.Collapsed : Visibility.Visible;
+        }
+        if (MainNavView != null)
+        {
+            MainNavView.Visibility = isPaired ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         if (PairStatusDot != null)
         {
             PairStatusDot.Fill = new SolidColorBrush(isPaired ? Windows.UI.Color.FromArgb(255, 16, 185, 129) : Windows.UI.Color.FromArgb(255, 245, 158, 11));
@@ -234,6 +243,59 @@ public sealed partial class MainWindow : Window
         if (tag == "alarms") RefreshAlarms();
         if (tag == "tools") { RenderNotesList(); RenderCountdownsList(); }
         if (tag == "settings") RefreshDevices();
+    }
+
+    private async void GatePairButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GatePairCodeBox == null) return;
+        var code = GatePairCodeBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            if (GateStatusText != null)
+            {
+                GateStatusText.Text = Strings.CurrentLanguage == "vi" ? "Mã ghép nối không được để trống." : "Pairing code cannot be empty.";
+                GateStatusText.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 239, 68, 68));
+                GateStatusText.Visibility = Visibility.Visible;
+            }
+            return;
+        }
+
+        if (GatePairButton != null) GatePairButton.IsEnabled = false;
+        if (GateStatusText != null)
+        {
+            GateStatusText.Text = Strings.CurrentLanguage == "vi" ? "Đang kết nối và xác thực..." : "Connecting and authenticating...";
+            GateStatusText.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 99, 102, 241));
+            GateStatusText.Visibility = Visibility.Visible;
+        }
+
+        var (success, error) = await _client.PairDeviceAsync(code);
+        if (GatePairButton != null) GatePairButton.IsEnabled = true;
+
+        if (success)
+        {
+            if (GatePairCodeBox != null) GatePairCodeBox.Text = string.Empty;
+            if (GateStatusText != null) GateStatusText.Visibility = Visibility.Collapsed;
+            UpdatePairingStatusLabel();
+            ShowBanner(Strings.CurrentLanguage == "vi" ? "Ghép nối thiết bị thành công!" : "Device paired successfully!");
+            _ = RefreshAllDataAsync();
+        }
+        else
+        {
+            if (GateStatusText != null)
+            {
+                GateStatusText.Text = error ?? (Strings.CurrentLanguage == "vi" ? "Ghép nối thất bại. Vui lòng thử lại." : "Pairing failed. Please try again.");
+                GateStatusText.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 239, 68, 68));
+                GateStatusText.Visibility = Visibility.Visible;
+            }
+        }
+    }
+
+    private void GatePairCodeBox_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            GatePairButton_Click(sender, e);
+        }
     }
 
     private async void PairButton_Click(object sender, RoutedEventArgs e)
@@ -845,6 +907,12 @@ public sealed partial class MainWindow : Window
         if (QuoteSectionTitle != null) QuoteSectionTitle.Text = isVi ? "Danh ngôn tạo động lực (Groq AI Quotes)" : "Motivational AI Quotes (Groq AI)";
         if (WeatherSectionTitle != null) WeatherSectionTitle.Text = isVi ? "Dự báo thời tiết 48h (Weather Forecast)" : "48-Hour Weather Forecast";
         if (EcosystemSectionTitle != null) EcosystemSectionTitle.Text = isVi ? "Tổng quan hệ sinh thái" : "Ecosystem Summary";
+
+        if (GateTitleText != null) GateTitleText.Text = isVi ? "Yêu cầu Ghép nối Thiết bị" : "Device Pairing Required";
+        if (GateSubtitleText != null) GateSubtitleText.Text = isVi ? "Để sử dụng Trung tâm điều khiển DeskFlow, bạn phải ghép nối máy tính này với tài khoản hệ sinh thái." : "To access the DeskFlow Control Center, you must pair this PC with your DeskFlow ecosystem.";
+        if (GateInstructionsText != null) GateInstructionsText.Text = isVi ? "Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã ghép nối 8 ký tự:" : "Type /app pair in Discord or open the DeskFlow mobile app to get your 8-char pairing code:";
+        if (GatePairButton != null) GatePairButton.Content = isVi ? "Ghép nối thiết bị" : "Pair Device";
+        if (GateServerUrlText != null) GateServerUrlText.Text = isVi ? $"Máy chủ: {_client.Settings.ServerUrl}" : $"Server: {_client.Settings.ServerUrl}";
 
         UpdatePairingStatusLabel();
     }

@@ -18,6 +18,41 @@
             </StackPanel>
         </Grid>
 
+        <!-- ========================================================================= -->
+        <!-- PAIRING GATE (DISPLAYED WHEN UNPAIRED)                                   -->
+        <!-- ========================================================================= -->
+        <Grid x:Name="PairingGatePanel" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="16" Padding="32" MaxWidth="620">
+                <StackPanel Spacing="20">
+                    <StackPanel HorizontalAlignment="Center" Spacing="10">
+                        <Border Width="64" Height="64" CornerRadius="32" Background="#206366F1" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xE71B;" FontSize="28" Foreground="#6366F1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock x:Name="GateTitleText" Text="Yêu cầu Ghép nối Thiết bị" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="GateSubtitleText" Text="Để sử dụng Trung tâm điều khiển DeskFlow, bạn phải ghép nối máy tính này với tài khoản hệ sinh thái." FontSize="13" Foreground="#94A3B8" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480" />
+                    </StackPanel>
+
+                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10" Padding="16">
+                        <StackPanel Spacing="12">
+                            <TextBlock x:Name="GateInstructionsText" Text="Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã ghép nối 8 ký tự:" FontSize="13" TextWrapping="Wrap" />
+
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                <TextBox x:Name="GatePairCodeBox" PlaceholderText="Mã 8 ký tự (VD: A1B2C3D4)" FontSize="15" Height="40" VerticalContentAlignment="Center" FontFamily="Consolas" CharacterCasing="Upper" KeyDown="GatePairCodeBox_KeyDown" />
+                                <Button Grid.Column="1" x:Name="GatePairButton" Content="Ghép nối thiết bị" Style="{StaticResource AccentButtonStyle}" Height="40" Padding="20,0" Click="GatePairButton_Click" />
+                            </Grid>
+
+                            <TextBlock x:Name="GateStatusText" Text="" Foreground="#EF4444" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+                        <FontIcon Glyph="&#xE774;" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center" />
+                        <TextBlock x:Name="GateServerUrlText" Text="Máy chủ: https://api.10th012013.duckdns.org" FontSize="12" Foreground="#94A3B8" FontFamily="Consolas" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <NavigationView
             Grid.Row="1"
             x:Name="MainNavView"

@@ -1,6 +1,25 @@
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
+#endif
+#if canImport(CoreImage)
+import CoreImage
+
+func generateQRCodeImage(from string: String) -> NSImage? {
+    let context = CIContext()
+    guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+    filter.setValue(Data(string.utf8), forKey: "inputMessage")
+    filter.setValue("H", forKey: "inputCorrectionLevel")
+    if let outputImage = filter.outputImage {
+        let transform = CGAffineTransform(scaleX: 8, y: 8)
+        let scaledImage = outputImage.transformed(by: transform)
+        if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
+            return NSImage(cgImage: cgImage, size: NSSize(width: 170, height: 170))
+        }
+    }
+    return nil
+}
+#endif
 
 extension Color {
     func toHex() -> String? {
@@ -300,7 +319,10 @@ public struct MainSplitView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
+        if !client.isPaired {
+            MacPairingGateView(client: client)
+        } else {
+            NavigationSplitView {
             List(MacSidebarSection.allCases, selection: $selectedSection) { section in
                 NavigationLink(value: section) {
                     HStack(spacing: 12) {
@@ -386,6 +408,174 @@ public struct MainSplitView: View {
                 Button(tr("Cancel"), role: .cancel) {}
             } message: { note in
                 Text(L10n.lang == "vi" ? "Bạn có chắc muốn xóa \"\(note.displayText)\"? Ghi chú cũng sẽ được bỏ ghim khỏi trạm ESP32." : "Are you sure you want to delete \"\(note.displayText)\"? This will also unpin it from the ESP32 Station.")
+            }
+        }
+    }
+}
+
+public struct MacPairingGateView: View {
+    @ObservedObject var client: DeskFlowApiClient
+    @State private var pairCode: String = ""
+    @State private var isPairing: Bool = false
+    @State private var errorMessage: String? = nil
+
+    public init(client: DeskFlowApiClient) {
+        self.client = client
+    }
+
+    public var body: some View {
+        ZStack {
+            LiquidGlassAtmosphere()
+
+            ScrollView {
+                VStack(spacing: 28) {
+                    Spacer(minLength: 40)
+
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(colors: [Color(hex: "#6366f1"), Color(hex: "#a855f7")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 80, height: 80)
+                                .shadow(color: Color(hex: "#6366f1").opacity(0.4), radius: 16, x: 0, y: 8)
+                            Image(systemName: "desktopcomputer.and.arrow.down")
+                                .font(.system(size: 34, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+
+                        Text(client.appLanguage == "vi" ? "Yêu cầu Ghép nối Thiết bị" : "Device Pairing Required")
+                            .font(.system(.largeTitle, design: .rounded).bold())
+
+                        Text(client.appLanguage == "vi" ? "Để sử dụng Trung tâm điều khiển DeskFlow, bạn phải ghép nối máy Mac này với tài khoản hệ sinh thái DeskFlow." : "To access the DeskFlow Control Center, you must pair this Mac with your DeskFlow ecosystem.")
+                            .font(.system(.body, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 520)
+                    }
+
+                    LiquidGlassCard(
+                        client.appLanguage == "vi" ? "Ghép nối thiết bị" : "Pair Device",
+                        icon: "qrcode.viewfinder",
+                        iconColor: .indigo
+                    ) {
+                        VStack(spacing: 24) {
+                            HStack(alignment: .top, spacing: 32) {
+                                VStack(spacing: 12) {
+                                    let qrPayload = "deskflow://pair?server=\(client.apiBaseUrl)&name=\(client.deviceName)"
+                                    #if canImport(CoreImage)
+                                    if let qrImg = generateQRCodeImage(from: qrPayload) {
+                                        Image(nsImage: qrImg)
+                                            .interpolation(.none)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: 160, height: 160)
+                                            .padding(10)
+                                            .background(Color.white)
+                                            .cornerRadius(12)
+                                            .shadow(color: Color.black.opacity(0.1), radius: 8)
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.secondary.opacity(0.15))
+                                            .frame(width: 160, height: 160)
+                                            .overlay(Image(systemName: "qrcode").font(.system(size: 48)).foregroundColor(.secondary))
+                                    }
+                                    #else
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.secondary.opacity(0.15))
+                                        .frame(width: 160, height: 160)
+                                        .overlay(Image(systemName: "qrcode").font(.system(size: 48)).foregroundColor(.secondary))
+                                    #endif
+
+                                    Text(client.appLanguage == "vi" ? "Quét bằng app DeskFlow trên điện thoại" : "Scan with DeskFlow mobile app")
+                                        .font(.system(size: 11, design: .rounded).weight(.medium))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .frame(maxWidth: 170)
+                                }
+
+                                Divider()
+                                    .frame(height: 190)
+
+                                VStack(alignment: .leading, spacing: 14) {
+                                    Text(client.appLanguage == "vi" ? "Hoặc nhập mã ghép nối từ Discord:" : "Or enter pairing code from Discord:")
+                                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+
+                                    HStack(spacing: 6) {
+                                        Text(client.appLanguage == "vi" ? "Gõ lệnh" : "Type")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("/app pair")
+                                            .font(.system(.caption, design: .monospaced).bold())
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.indigo.opacity(0.15))
+                                            .cornerRadius(4)
+                                        Text(client.appLanguage == "vi" ? "trên Discord để nhận mã 8 ký tự." : "in Discord to get your 8-char code.")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(client.appLanguage == "vi" ? "Mã ghép nối (8 ký tự)" : "Pairing Code (8 characters)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.secondary)
+
+                                        HStack {
+                                            TextField("VD: A1B2C3D4", text: $pairCode)
+                                                .textFieldStyle(.plain)
+                                                .font(.system(.title3, design: .monospaced).bold())
+                                                .frame(height: 38)
+                                                .padding(.horizontal, 10)
+                                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.1)))
+
+                                            Button {
+                                                Task {
+                                                    isPairing = true
+                                                    errorMessage = nil
+                                                    let ok = await client.pairDevice(code: pairCode.trimmingCharacters(in: .whitespaces))
+                                                    isPairing = false
+                                                    if !ok {
+                                                        errorMessage = client.errorBannerMessage ?? (client.appLanguage == "vi" ? "Mã ghép nối không hợp lệ hoặc đã hết hạn." : "Invalid or expired pairing code.")
+                                                    }
+                                                }
+                                            } label: {
+                                                HStack(spacing: 6) {
+                                                    if isPairing {
+                                                        ProgressView().scaleEffect(0.7)
+                                                    } else {
+                                                        Image(systemName: "link.badge.plus")
+                                                    }
+                                                    Text(client.appLanguage == "vi" ? "Ghép nối" : "Pair")
+                                                }
+                                                .frame(height: 38)
+                                                .padding(.horizontal, 16)
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .tint(.indigo)
+                                            .disabled(pairCode.trimmingCharacters(in: .whitespaces).count < 6 || isPairing)
+                                        }
+                                    }
+
+                                    if let err = errorMessage {
+                                        Text(err)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.red)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(client.appLanguage == "vi" ? "Máy chủ: \(client.apiBaseUrl)" : "Server: \(client.apiBaseUrl)")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    .frame(maxWidth: 680)
+
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, 24)
             }
         }
     }

@@ -189,13 +189,23 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         root_box.append(self.header_bar)
 
+        # Main deck: switches between Pairing Gate (when unpaired) and Main Dashboard (when paired)
+        self.main_deck = Gtk.Stack()
+        self.main_deck.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.main_deck.set_transition_duration(200)
+        self.main_deck.set_vexpand(True)
+        root_box.append(self.main_deck)
+
+        self.pairing_gate = self._build_pairing_gate_page()
+        self.main_deck.add_named(self.pairing_gate, "gate")
+
         # Split layout: Sidebar + Content Stack
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         paned.set_position(250)
         paned.set_shrink_start_child(False)
         paned.set_shrink_end_child(False)
         paned.set_vexpand(True)
-        root_box.append(paned)
+        self.main_deck.add_named(paned, "main")
 
         # Sidebar
         sidebar_scroll = Gtk.ScrolledWindow()
@@ -250,6 +260,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         first_row = self.sidebar_list.get_row_at_index(0)
         if first_row is not None:
             self.sidebar_list.select_row(first_row)
+
+        self._sync_pairing_state()
 
         # Strict 1-second background telemetry reporting loop
         GLib.timeout_add_seconds(1, self._on_telemetry_tick)
@@ -349,6 +361,106 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             return
         page_id = getattr(row, "page_id", "dashboard")
         self.content_stack.set_visible_child_name(page_id)
+
+    def _sync_pairing_state(self) -> None:
+        """Enforces Pairing Gate: if unpaired, blocks main UI until paired."""
+        is_paired = self.config_store.config.is_paired
+        if is_paired:
+            self.main_deck.set_visible_child_name("main")
+            self.title_widget.set_subtitle(self._connection_subtitle())
+            if hasattr(self, "unpair_btn"):
+                self.unpair_btn.set_sensitive(True)
+        else:
+            self.main_deck.set_visible_child_name("gate")
+            self.title_widget.set_subtitle("Chưa ghép nối • Yêu cầu mã liên kết")
+            if hasattr(self, "unpair_btn"):
+                self.unpair_btn.set_sensitive(False)
+
+    def _build_pairing_gate_page(self) -> Gtk.Widget:
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(660)
+        clamp.set_tightening_threshold(480)
+        clamp.set_margin_top(40)
+        clamp.set_margin_bottom(40)
+        clamp.set_margin_start(24)
+        clamp.set_margin_end(24)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        clamp.set_child(box)
+        scroller.set_child(clamp)
+
+        # Status Page Banner
+        status_page = Adw.StatusPage(
+            icon_name="network-wireless-symbolic",
+            title="Yêu cầu Ghép nối Thiết bị",
+            description="Để sử dụng Trung tâm điều khiển DeskFlow, bạn phải ghép nối máy tính này với tài khoản hệ sinh thái DeskFlow.",
+        )
+        box.append(status_page)
+
+        # Pairing action card
+        group = Adw.PreferencesGroup(
+            title="Nhập mã ghép nối từ Discord hoặc App",
+            description="Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã 8 ký tự.",
+        )
+        box.append(group)
+
+        self.gate_code_entry = Adw.EntryRow(title="Mã ghép nối (8 ký tự, VD: A1B2C3D4)")
+        self.gate_code_entry.connect("entry-activated", lambda *_: self._on_gate_pair_clicked())
+        group.add(self.gate_code_entry)
+
+        action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        action_box.set_halign(Gtk.Align.CENTER)
+        action_box.set_margin_top(14)
+        action_box.set_margin_bottom(6)
+
+        self.gate_pair_btn = Gtk.Button(label="Ghép nối thiết bị")
+        self.gate_pair_btn.add_css_class("suggested-action")
+        self.gate_pair_btn.add_css_class("pill")
+        self.gate_pair_btn.set_size_request(220, 44)
+        self.gate_pair_btn.connect("clicked", lambda *_: self._on_gate_pair_clicked())
+        action_box.append(self.gate_pair_btn)
+
+        group.add(action_box)
+
+        self.gate_status_label = Gtk.Label(label="", wrap=True)
+        self.gate_status_label.add_css_class("error")
+        self.gate_status_label.set_margin_top(8)
+        group.add(self.gate_status_label)
+
+        # Server info row
+        server_row = Adw.ActionRow(
+            title="Máy chủ DeskFlow",
+            subtitle=self.config_store.config.api_url,
+        )
+        group.add(server_row)
+
+        return scroller
+
+    def _on_gate_pair_clicked(self) -> None:
+        code = self.gate_code_entry.get_text().strip().upper()
+        if not code:
+            self.gate_status_label.set_text("Mã ghép nối không được để trống. Hãy gõ /app pair trên Discord.")
+            return
+
+        self.gate_pair_btn.set_sensitive(False)
+        self.gate_status_label.set_text("Đang kết nối và xác thực với máy chủ...")
+
+        def _done(res: ApiResult) -> None:
+            self.gate_pair_btn.set_sensitive(True)
+            if res.ok:
+                self.gate_status_label.set_text("")
+                self.gate_code_entry.set_text("")
+                self.show_toast("Ghép nối thiết bị thành công!")
+                self._sync_pairing_state()
+                self.refresh_all_async()
+            else:
+                self.gate_status_label.set_text(f"Lỗi: {res.error_message}")
+                self.show_toast(f"Ghép nối thất bại: {res.error_message}")
+
+        self._run_bg(lambda: self.api_client.pair_device(code), _done)
 
     # =========================================================================
     # Theme & Scheduled Dark Mode Management
@@ -578,6 +690,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 self.title_widget.set_subtitle(self._connection_subtitle())
                 self.unpair_btn.set_sensitive(True)
                 self.show_toast("Device paired with DeskFlow backend!")
+                self._sync_pairing_state()
                 self.refresh_all_async()
             else:
                 self.pair_status_row.set_subtitle(
@@ -593,6 +706,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self.title_widget.set_subtitle(self._connection_subtitle())
             self.unpair_btn.set_sensitive(False)
             self.show_toast("Device unpaired.")
+            self._sync_pairing_state()
 
         self._run_bg(self.api_client.unpair_device, _done)
 
