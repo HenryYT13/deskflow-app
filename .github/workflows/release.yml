@@ -30,7 +30,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
-      - run: dotnet publish win/DeskFlow/DeskFlow.csproj -c Release -r win-x64 -p:Platform=x64 --self-contained true -o out
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build Windows
+        shell: cmd
+        run: |
+          msbuild win\DeskFlow\DeskFlow.csproj -restore -t:Publish -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:PublishDir=%GITHUB_WORKSPACE%\out\
       - run: Compress-Archive -Path out\* -DestinationPath DeskFlow-windows-x64.zip
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: DeskFlow-windows-x64.zip }
