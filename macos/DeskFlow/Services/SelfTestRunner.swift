@@ -179,10 +179,38 @@ public enum MacSelfTestRunner {
             try assertCondition(lastClockStylePayload == "flip" || client.statusBannerMessage?.contains("flip") == true, "setClockStyle(int) must map 5 to flip string code")
             print("  [PASS] testClockStyleStringPayloadContract")
 
+            // 3g. Pairing Session Create and Poll
+            MockURLProtocol.handler = { req in
+                let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                if req.url?.path == "/api/focus/pair/session/create" {
+                    return (resp, Data(#"{"success":true,"session_id":"sess_123","qr_payload":"deskflow://pair?session=sess_123","expires_in":600}"#.utf8))
+                }
+                if req.url?.path == "/api/focus/pair/session/sess_123" {
+                    return (resp, Data(#"{"success":true,"status":"approved","device_id":"dev_sess_1","device_token":"tok_sess_1","device_name":"Mac"}"#.utf8))
+                }
+                return (resp, Data(#"{"success":true}"#.utf8))
+            }
+            let sessCreate = await client.createPairingSession()
+            try assertCondition(sessCreate?.sessionId == "sess_123", "Session create must decode session_id")
+            let sessPoll = await client.pollPairingSession(sessionId: "sess_123")
+            try assertCondition(sessPoll?.status == "approved" && client.isPaired, "Session poll approved must set isPaired")
+            print("  [PASS] testPairingSessionCreateAndPoll")
+
+            // 3h. Timetable fetching
+            MockURLProtocol.handler = { req in
+                let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                let data = Data(#"{"success":true,"data":{"week_number":"10","today":{"day":"Thứ 2","morning":["Tiết 1: Toán"],"dp_sang":"Chính khóa","has_afternoon":false,"afternoon":[],"dp_chieu":"","has_any_class":true},"tomorrow":{"day":"Thứ 3","morning":[],"dp_sang":"Tự do","has_afternoon":false,"afternoon":[],"dp_chieu":"","has_any_class":false}}}"#.utf8)
+                return (resp, data)
+            }
+            await client.fetchTimetable()
+            try assertCondition(client.timetableData?.weekNumber == "10", "Timetable week number must match")
+            try assertCondition(client.timetableData?.today?.morning?.first == "Tiết 1: Toán", "Timetable today morning must match")
+            print("  [PASS] testTimetableFetchContract")
+
             // Cleanup test defaults
             UserDefaults.standard.removeSuite(named: "DeskFlowUnitTests")
 
-            print("[DeskFlow-macOS-Tests] ALL 8 TEST SUITES PASSED (0 failures).")
+            print("[DeskFlow-macOS-Tests] ALL 10 TEST SUITES PASSED (0 failures).")
             return 0
         } catch {
             print("[DeskFlow-macOS-Tests] FAILED: \(error.localizedDescription)")

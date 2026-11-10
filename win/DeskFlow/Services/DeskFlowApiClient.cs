@@ -240,6 +240,55 @@ public sealed class DeskFlowApiClient
         }
     }
 
+    public async Task<(bool Ok, PairSessionCreateResponse? Data, string Message)> CreatePairSessionAsync(string? deviceName = null, string platform = "windows")
+    {
+        try
+        {
+            var name = !string.IsNullOrWhiteSpace(deviceName) ? deviceName.Trim() : Settings.DeviceName;
+            using var req = CreateRequest(HttpMethod.Post, "/api/focus/pair/session/create", new { device_name = name, platform = platform }, authenticated: false);
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return (false, null, $"HTTP {(int)resp.StatusCode}");
+            }
+            var data = JsonSerializer.Deserialize<PairSessionCreateResponse>(raw, JsonOpts);
+            return (data != null && data.Success, data, "Session created.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, PairSessionStatusResponse? Data, string Message)> GetPairSessionStatusAsync(string sessionId)
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Get, $"/api/focus/pair/session/{Uri.EscapeDataString(sessionId)}", authenticated: false);
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return (false, null, $"HTTP {(int)resp.StatusCode}");
+            }
+            var data = JsonSerializer.Deserialize<PairSessionStatusResponse>(raw, JsonOpts);
+            if (data != null && data.Status == "approved" && !string.IsNullOrWhiteSpace(data.DeviceToken))
+            {
+                Settings.DeviceToken = data.DeviceToken;
+                if (!string.IsNullOrWhiteSpace(data.DeviceId)) Settings.DeviceId = data.DeviceId;
+                if (!string.IsNullOrWhiteSpace(data.DeviceName)) Settings.DeviceName = data.DeviceName;
+                Settings.Save();
+                LogDiagnostic($"[PairSession] Session approved! Saved token & deviceId={Settings.DeviceId}");
+            }
+            return (true, data, "Status retrieved.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
     public async Task<(bool Ok, string Message)> UnpairDeviceAsync()
     {
         try
@@ -528,9 +577,15 @@ public sealed class DeskFlowApiClient
     {
         try
         {
-            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/display/view", new { view }, authenticated: false);
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/display/switch-view", new { view }, authenticated: false);
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Switched OLED view to {view}." : $"HTTP {(int)resp.StatusCode}");
+            if (!resp.IsSuccessStatusCode && resp.StatusCode == HttpStatusCode.NotFound)
+            {
+                using var reqFallback = CreateRequest(HttpMethod.Post, "/api/app/control/display/view", new { view }, authenticated: false);
+                using var respFallback = await _http.SendAsync(reqFallback).ConfigureAwait(false);
+                return (respFallback.IsSuccessStatusCode, respFallback.IsSuccessStatusCode ? $"Switched display view to '{view}'." : $"HTTP {(int)respFallback.StatusCode}");
+            }
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Switched display view to '{view}'." : $"HTTP {(int)resp.StatusCode}");
         }
         catch (Exception ex)
         {
@@ -538,12 +593,16 @@ public sealed class DeskFlowApiClient
         }
     }
 
-    public async Task<(bool Ok, string Message)> SetClockStyleAsync(string styleCode)
+    public async Task<(bool Ok, string Message)> SetClockStyleAsync(string styleCode, string? accentColor = null)
     {
         try
         {
             string code = string.IsNullOrWhiteSpace(styleCode) ? "digital_classic" : styleCode.Trim();
-            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/clock-style", new { style = code }, authenticated: false);
+            object payload = !string.IsNullOrWhiteSpace(accentColor)
+                ? new { style = code, accent_color = accentColor.Trim() }
+                : new { style = code };
+
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/clock-style", payload, authenticated: false);
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
             return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Clock style '{code}' activated." : $"HTTP {(int)resp.StatusCode}");
         }
@@ -553,10 +612,48 @@ public sealed class DeskFlowApiClient
         }
     }
 
-    public Task<(bool Ok, string Message)> SetClockStyleAsync(int style)
+    public Task<(bool Ok, string Message)> SetClockStyleAsync(int style, string? accentColor = null)
     {
         string code = ClockStyleIdToCode.TryGetValue(style, out var mapped) ? mapped : "digital_classic";
-        return SetClockStyleAsync(code);
+        return SetClockStyleAsync(code, accentColor);
+    }
+
+    public async Task<(bool Ok, string Message)> SetClockAccentColorAsync(string accentColor, string? styleCode = null)
+    {
+        try
+        {
+            object payload = !string.IsNullOrWhiteSpace(styleCode)
+                ? new { accent_color = accentColor.Trim(), style = styleCode.Trim() }
+                : new { accent_color = accentColor.Trim() };
+
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/clock-style", payload, authenticated: false);
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Clock accent color '{accentColor}' applied." : $"HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, DualDayTimetableData? Data, string Message)> GetTimetableTodayAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Get, "/api/app/control/timetable/today");
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                return (false, null, $"HTTP {(int)resp.StatusCode}");
+            }
+            var result = JsonSerializer.Deserialize<TimetableTodayResponse>(raw, JsonOpts);
+            return (result != null && result.Success, result?.Data, "Loaded timetable.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
     }
 
     public async Task<(bool Ok, string Message)> TriggerBuzzAsync()

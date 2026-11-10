@@ -8,6 +8,7 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Url
 
 interface FocusApiService {
 
@@ -15,6 +16,28 @@ interface FocusApiService {
     suspend fun pair(
         @Body request: PairRequest
     ): Response<PairResponse>
+
+    @POST
+    suspend fun approvePairSessionUrl(
+        @Url url: String,
+        @Body request: PairSessionApproveRequest
+    ): Response<PairSessionApproveResponse>
+
+    @POST("api/focus/pair/session/{sessionId}/approve")
+    suspend fun approvePairSession(
+        @Path("sessionId") sessionId: String,
+        @Body request: PairSessionApproveRequest
+    ): Response<PairSessionApproveResponse>
+
+    @POST
+    suspend fun rejectPairSessionUrl(
+        @Url url: String
+    ): Response<ActionSuccessResponse>
+
+    @POST("api/focus/pair/session/{sessionId}/reject")
+    suspend fun rejectPairSession(
+        @Path("sessionId") sessionId: String
+    ): Response<ActionSuccessResponse>
 
     @GET("api/focus/status")
     suspend fun getStatus(): Response<StatusResponse>

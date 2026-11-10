@@ -12,6 +12,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,11 +43,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.deskflow.app.R
 import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.model.*
@@ -994,7 +997,7 @@ fun ControlScreen(
                                 )
                             }
 
-                            // Tools > Groq AI Quote & Pomodoro
+                            // Tools > Groq AI Quote & Timer
                             "subcat_tools_ai" -> {
                                 AiToolsControlsCard(
                                     quoteTopicText = quoteTopicText,
@@ -1009,20 +1012,20 @@ fun ControlScreen(
                                             }
                                         }
                                     },
-                                    pomodoroDurationText = pomodoroDurationText,
-                                    onPomodoroDurationChange = { pomodoroDurationText = it },
-                                    pomodoroNoteText = pomodoroNoteText,
-                                    onPomodoroNoteChange = { pomodoroNoteText = it },
-                                    onStartPomodoro = {
+                                    timerDurationText = pomodoroDurationText,
+                                    onTimerDurationChange = { pomodoroDurationText = it },
+                                    timerNoteText = pomodoroNoteText,
+                                    onTimerNoteChange = { pomodoroNoteText = it },
+                                    onStartTimer = {
                                         coroutineScope.launch {
                                             val res = repository.startTimer(
                                                 duration = pomodoroDurationText.trim(),
                                                 note = pomodoroNoteText.trim()
                                             )
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Đã bắt đầu Pomodoro $pomodoroDurationText!")
+                                                showFeedback("Đã bắt đầu hẹn giờ đếm ngược $pomodoroDurationText!")
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Bắt đầu Pomodoro", res))
+                                                showFeedback(formatControlError("Bắt đầu hẹn giờ", res))
                                             }
                                         }
                                     }
@@ -1728,6 +1731,180 @@ fun LedControlsCard(
     }
 }
 
+private data class OledPreviewQuadruple(
+    val badge: String,
+    val title: String,
+    val main: String,
+    val sub: String
+)
+
+@Composable
+fun OledSimulatorView(viewKey: String) {
+    val meta = when (viewKey) {
+        "main" -> OledPreviewQuadruple(
+            "MAIN DASHBOARD",
+            "DESKFLOW STATION (DEFAULT)",
+            "12:45 • Ha Long 28°C",
+            "♫ Spotify Playing • Quotes & Notes"
+        )
+        "stats" -> OledPreviewQuadruple(
+            "SERVER TELEMETRY",
+            "HOST & ESP32 STATS",
+            "CPU 24% • RAM 58%",
+            "UPTIME: 4d 12h • WIFI OK"
+        )
+        "tkb" -> OledPreviewQuadruple(
+            "TIMETABLE",
+            "TKB — SÁNG THỨ 2",
+            "Toán • Vật Lý • Hóa Học",
+            "Anh Văn • Sinh Học"
+        )
+        "weather" -> OledPreviewQuadruple(
+            "WEATHER FORECAST",
+            "THỜI TIẾT HẠ LONG",
+            "28°C  NẮNG ĐẸP",
+            "POP: 20% • ĐỘ ẨM: 65%"
+        )
+        "lyrics" -> OledPreviewQuadruple(
+            "SPOTIFY LYRICS",
+            "♫ NOW PLAYING",
+            "Starboy — The Weeknd",
+            "\"I'm tryna put you in the worst mood...\""
+        )
+        "clock" -> OledPreviewQuadruple(
+            "DIGITAL CLOCK",
+            "DESKFLOW WATCHFACE",
+            "12:30 :45",
+            "CN 08 TH11 • 28°C HCM"
+        )
+        "notes" -> OledPreviewQuadruple(
+            "STICKY NOTE",
+            "★ PINNED NOTE",
+            "Họp nhóm KHKT 14:00",
+            "Review DeskFlow firmware build"
+        )
+        "countdown" -> OledPreviewQuadruple(
+            "TARGET COUNTDOWN",
+            "KỲ THI KHKT 2026",
+            "CÒN 45 NGÀY",
+            "MỤC TIÊU: 15/01/2026"
+        )
+        "focus" -> OledPreviewQuadruple(
+            "FOCUS SESSION",
+            "CHẾ ĐỘ TẬP TRUNG",
+            "24:58",
+            "[████████░░░░] CÒN 72%"
+        )
+        else -> OledPreviewQuadruple(
+            "OLED DISPLAY",
+            "DESKFLOW ESP32",
+            "READY",
+            "128×64 SSD1306"
+        )
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(136.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF000000)),
+        border = BorderStroke(1.5.dp, Color(0xFF334155))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Header row with dot, monitor tag, and view badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981))
+                    )
+                    Text(
+                        text = "128×64 SSD1306 OLED",
+                        color = Color(0xFF94A3B8),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFF0F172A)
+                ) {
+                    Text(
+                        text = meta.badge,
+                        color = Color(0xFF38BDF8),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Screen content
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = meta.title,
+                    color = Color(0xFF94A3B8),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+                Text(
+                    text = meta.main,
+                    color = Color(0xFFFFFFFF),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+                Text(
+                    text = meta.sub,
+                    color = Color(0xFF38BDF8),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
+
+            // Bottom subtle bar
+            Text(
+                text = "● LIVE STATION DISPLAY EMULATOR",
+                color = Color(0xFF64748B),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
 @Composable
 fun DisplayControlsCard(
     currentView: String,
@@ -1757,6 +1934,17 @@ fun DisplayControlsCard(
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            // Live OLED Display Simulator
+            Text(
+                text = "Ví dụ hiển thị màn hình OLED (Live Preview)",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OledSimulatorView(viewKey = currentView)
+
+            Spacer(modifier = Modifier.height(2.dp))
 
             val views = listOf(
                 "main" to stringResource(R.string.view_main),
@@ -3246,11 +3434,11 @@ fun AiToolsControlsCard(
     quoteTopicText: String,
     onQuoteTopicChange: (String) -> Unit,
     onGenerateQuote: () -> Unit,
-    pomodoroDurationText: String,
-    onPomodoroDurationChange: (String) -> Unit,
-    pomodoroNoteText: String,
-    onPomodoroNoteChange: (String) -> Unit,
-    onStartPomodoro: () -> Unit
+    timerDurationText: String,
+    onTimerDurationChange: (String) -> Unit,
+    timerNoteText: String,
+    onTimerNoteChange: (String) -> Unit,
+    onStartTimer: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -3306,7 +3494,7 @@ fun AiToolsControlsCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            // Pomodoro Timer
+            // Countdown Timer
             Text(
                 text = stringResource(R.string.timer_title),
                 style = MaterialTheme.typography.bodyMedium,
@@ -3317,16 +3505,16 @@ fun AiToolsControlsCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
-                    value = pomodoroDurationText,
-                    onValueChange = onPomodoroDurationChange,
+                    value = timerDurationText,
+                    onValueChange = onTimerDurationChange,
                     label = { Text(stringResource(R.string.timer_duration_label)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
-                    value = pomodoroNoteText,
-                    onValueChange = onPomodoroNoteChange,
+                    value = timerNoteText,
+                    onValueChange = onTimerNoteChange,
                     label = { Text(stringResource(R.string.timer_note_label)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -3335,7 +3523,7 @@ fun AiToolsControlsCard(
             }
 
             Button(
-                onClick = onStartPomodoro,
+                onClick = onStartTimer,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {

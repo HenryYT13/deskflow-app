@@ -509,3 +509,180 @@ public struct SpotifyVolumeRequest: Codable {
     public let volume: Int
     public init(volume: Int) { self.volume = volume }
 }
+
+// ================= PAIR SESSION MODELS =================
+
+public struct PairSessionCreateRequest: Codable {
+    public let deviceName: String
+    public let platform: String
+
+    enum CodingKeys: String, CodingKey {
+        case deviceName = "device_name"
+        case platform
+    }
+
+    public init(deviceName: String, platform: String = "macos") {
+        self.deviceName = deviceName
+        self.platform = platform
+    }
+}
+
+public struct PairSessionCreateResponse: Codable {
+    public let success: Bool?
+    public let sessionId: String?
+    public let qrPayload: String?
+    public let expiresIn: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case sessionId = "session_id"
+        case qrPayload = "qr_payload"
+        case expiresIn = "expires_in"
+    }
+
+    public init(success: Bool? = nil, sessionId: String? = nil, qrPayload: String? = nil, expiresIn: Int? = nil) {
+        self.success = success
+        self.sessionId = sessionId
+        self.qrPayload = qrPayload
+        self.expiresIn = expiresIn
+    }
+}
+
+public struct PairSessionStatusResponse: Codable {
+    public let success: Bool?
+    public let status: String?
+    public let deviceId: String?
+    public let deviceToken: String?
+    public let deviceName: String?
+    public let scopes: [String]?
+    public let pairedAt: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case status
+        case deviceId = "device_id"
+        case deviceToken = "device_token"
+        case deviceName = "device_name"
+        case scopes
+        case pairedAt = "paired_at"
+    }
+
+    public init(
+        success: Bool? = nil,
+        status: String? = nil,
+        deviceId: String? = nil,
+        deviceToken: String? = nil,
+        deviceName: String? = nil,
+        scopes: [String]? = nil,
+        pairedAt: Double? = nil
+    ) {
+        self.success = success
+        self.status = status
+        self.deviceId = deviceId
+        self.deviceToken = deviceToken
+        self.deviceName = deviceName
+        self.scopes = scopes
+        self.pairedAt = pairedAt
+    }
+}
+
+// ================= TIMETABLE (TKB) MODELS =================
+
+public struct DayScheduleDto: Codable, Equatable {
+    public let day: String?
+    public let displayDay: String?
+    public let morning: [String]?
+    public let afternoon: [String]?
+    public let uniformMorning: String?
+    public let uniformAfternoon: String?
+    public let hasAfternoon: Bool?
+    public let hasAnyClass: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case day
+        case displayDay = "display_day"
+        case morning
+        case afternoon
+        case uniformMorning = "dp_sang"
+        case uniformAfternoon = "dp_chieu"
+        case hasAfternoon = "has_afternoon"
+        case hasAnyClass = "has_any_class"
+    }
+
+    public init(
+        day: String? = nil,
+        displayDay: String? = nil,
+        morning: [String]? = nil,
+        afternoon: [String]? = nil,
+        uniformMorning: String? = nil,
+        uniformAfternoon: String? = nil,
+        hasAfternoon: Bool? = nil,
+        hasAnyClass: Bool? = nil
+    ) {
+        self.day = day
+        self.displayDay = displayDay
+        self.morning = morning
+        self.afternoon = afternoon
+        self.uniformMorning = uniformMorning
+        self.uniformAfternoon = uniformAfternoon
+        self.hasAfternoon = hasAfternoon
+        self.hasAnyClass = hasAnyClass
+    }
+}
+
+public struct TimetableDataWrapper: Codable, Equatable {
+    public let weekNumber: String?
+    public let today: DayScheduleDto?
+    public let tomorrow: DayScheduleDto?
+
+    enum CodingKeys: String, CodingKey {
+        case weekNumber = "week_number"
+        case today
+        case tomorrow
+    }
+
+    public init(weekNumber: String? = nil, today: DayScheduleDto? = nil, tomorrow: DayScheduleDto? = nil) {
+        self.weekNumber = weekNumber
+        self.today = today
+        self.tomorrow = tomorrow
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let str = try? container.decode(String.self, forKey: .weekNumber) {
+            self.weekNumber = str
+        } else if let num = try? container.decode(Int.self, forKey: .weekNumber) {
+            self.weekNumber = "\(num)"
+        } else {
+            self.weekNumber = nil
+        }
+        self.today = try? container.decodeIfPresent(DayScheduleDto.self, forKey: .today)
+        self.tomorrow = try? container.decodeIfPresent(DayScheduleDto.self, forKey: .tomorrow)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(weekNumber, forKey: .weekNumber)
+        try container.encodeIfPresent(today, forKey: .today)
+        try container.encodeIfPresent(tomorrow, forKey: .tomorrow)
+    }
+}
+
+public struct TimetableResponse: Codable {
+    public let success: Bool?
+    public let data: TimetableDataWrapper?
+    public let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case data
+        case error
+    }
+
+    public init(success: Bool? = nil, data: TimetableDataWrapper? = nil, error: String? = nil) {
+        self.success = success
+        self.data = data
+        self.error = error
+    }
+}
+

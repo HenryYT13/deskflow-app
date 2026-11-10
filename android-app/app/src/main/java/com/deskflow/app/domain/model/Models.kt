@@ -8,7 +8,11 @@ data class FocusState(
     val serverTime: String? = null,
     val activeChallenge: ChallengeInfo? = null,
     val lastSyncedTime: Long = 0L,
-    val isOnline: Boolean = true
+    val isOnline: Boolean = true,
+    val remainingSeconds: Long? = null,
+    val endsAt: String? = null,
+    val durationMinutes: Int = 25,
+    val reason: String = ""
 ) {
     val isActive: Boolean
         get() = enabled && focusActive

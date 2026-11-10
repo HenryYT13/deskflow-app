@@ -32,9 +32,25 @@
                         <TextBlock x:Name="GateSubtitleText" Text="Để sử dụng Trung tâm điều khiển DeskFlow, bạn phải ghép nối máy tính này với tài khoản hệ sinh thái." FontSize="13" Foreground="#94A3B8" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480" />
                     </StackPanel>
 
+                    <!-- QR Code Auto-Pairing Card -->
+                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="12" Padding="20">
+                        <StackPanel Spacing="12" HorizontalAlignment="Center">
+                            <TextBlock Text="Quét mã QR bằng ứng dụng Android DeskFlow" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
+                            <TextBlock Text="Mở app Android -> Cài đặt -> Quét mã QR liên kết thiết bị khác" FontSize="12" Foreground="#94A3B8" HorizontalAlignment="Center" />
+                            <Border Background="White" Padding="12" CornerRadius="12" HorizontalAlignment="Center">
+                                <Image x:Name="GateQrImage" Width="180" Height="180" Stretch="Uniform" />
+                            </Border>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                                <ProgressRing x:Name="GateQrProgressRing" IsActive="True" Width="18" Height="18" />
+                                <TextBlock x:Name="GateQrStatusText" Text="Đang chờ quét và phê duyệt từ điện thoại..." FontSize="12" Foreground="#38BDF8" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button x:Name="GateRegenerateQrBtn" Content="Tạo lại mã QR" HorizontalAlignment="Center" Click="GateRegenerateQr_Click" />
+                        </StackPanel>
+                    </Border>
+
                     <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10" Padding="16">
                         <StackPanel Spacing="12">
-                            <TextBlock x:Name="GateInstructionsText" Text="Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã ghép nối 8 ký tự:" FontSize="13" TextWrapping="Wrap" />
+                            <TextBlock x:Name="GateInstructionsText" Text="Hoặc gõ /app pair trên Discord để nhận mã ghép nối 8 ký tự:" FontSize="13" TextWrapping="Wrap" />
 
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                 <TextBox x:Name="GatePairCodeBox" PlaceholderText="Mã 8 ký tự (VD: A1B2C3D4)" FontSize="15" Height="40" VerticalContentAlignment="Center" FontFamily="Consolas" CharacterCasing="Upper" KeyDown="GatePairCodeBox_KeyDown" />
@@ -64,6 +80,7 @@
 
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="NavSystemItem" Icon="Home" Content="Giám sát hệ thống &amp; Đo từ xa" Tag="system" />
+                <NavigationViewItem x:Name="NavTimetableItem" Icon="Calendar" Content="Thời khóa biểu (TKB)" Tag="timetable" />
                 <NavigationViewItem x:Name="NavStationItem" Icon="AllApps" Content="Phần cứng &amp; Trạm ESP32" Tag="station" />
                 <NavigationViewItem x:Name="NavSpotifyItem" Icon="Audio" Content="Spotify &amp; Âm nhạc" Tag="spotify" />
                 <NavigationViewItem x:Name="NavAlarmsItem" Icon="Important" Content="Báo thức &amp; Còi báo" Tag="alarms" />
@@ -468,11 +485,24 @@
                             </Button>
                         </VariableSizedWrapGrid>
 
+                        <!-- Clock Accent Color -->
+                        <TextBlock Text="Màu điểm nhấn đồng hồ (Clock Accent Color)" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Sky Blue" Tag="#38BDF8" Click="ClockAccentColor_Click" Background="#38BDF8" Foreground="Black" FontWeight="SemiBold" />
+                            <Button Content="Emerald" Tag="#10B981" Click="ClockAccentColor_Click" Background="#10B981" Foreground="Black" FontWeight="SemiBold" />
+                            <Button Content="Amber" Tag="#F59E0B" Click="ClockAccentColor_Click" Background="#F59E0B" Foreground="Black" FontWeight="SemiBold" />
+                            <Button Content="Rose" Tag="#EF4444" Click="ClockAccentColor_Click" Background="#EF4444" Foreground="White" FontWeight="SemiBold" />
+                            <Button Content="Purple" Tag="#8B5CF6" Click="ClockAccentColor_Click" Background="#8B5CF6" Foreground="White" FontWeight="SemiBold" />
+                            <Button Content="Pink" Tag="#EC4899" Click="ClockAccentColor_Click" Background="#EC4899" Foreground="White" FontWeight="SemiBold" />
+                            <Button Content="White" Tag="#FFFFFF" Click="ClockAccentColor_Click" Background="#FFFFFF" Foreground="Black" FontWeight="SemiBold" />
+                        </StackPanel>
+
                         <!-- OLED Display Views -->
                         <TextBlock Text="Chuyển màn hình OLED" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Chính (Default)" Tag="main" Click="SwitchViewButton_Click" Style="{StaticResource AccentButtonStyle}" />
                             <Button Content="Đồng hồ" Tag="clock" Click="SwitchViewButton_Click" />
+                            <Button Content="Thời khóa biểu" Tag="tkb" Click="SwitchViewButton_Click" />
                             <Button Content="Thời tiết" Tag="weather" Click="SwitchViewButton_Click" />
                             <Button Content="Ghi chú" Tag="notes" Click="SwitchViewButton_Click" />
                             <Button Content="Đếm ngược" Tag="countdown" Click="SwitchViewButton_Click" />
@@ -540,6 +570,72 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                    </StackPanel>
+
+
+                    <!-- ========================================================================= -->
+                    <!-- 2b. THỜI KHÓA BIỂU (TKB / TIMETABLE)                                      -->
+                    <!-- ========================================================================= -->
+                    <StackPanel x:Name="TkbPanel" Spacing="16" Visibility="Collapsed">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="20">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Thời khóa biểu (TKB) &amp; Lịch học" FontSize="20" FontWeight="Bold" />
+                                    <TextBlock Text="Đồng bộ lịch học các tiết sáng chiều và đồng phục lên vi điều khiển ESP32." Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Border Background="#20F59E0B" CornerRadius="8" Padding="10,4">
+                                        <TextBlock x:Name="TkbWeekText" Text="Tuần --" Foreground="#F59E0B" FontWeight="Bold" FontSize="12" />
+                                    </Border>
+                                    <Button Content="Hiển thị TKB lên ESP32" Style="{StaticResource AccentButtonStyle}" Click="TkbSyncEsp32_Click" />
+                                    <Button Content="Làm mới" Click="TkbRefresh_Click" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                            <!-- Hôm nay -->
+                            <Border Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="12">
+                                    <TextBlock x:Name="TkbTodayTitle" Text="Lịch học Hôm nay" FontSize="16" FontWeight="SemiBold" Foreground="#38BDF8" />
+                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8" Padding="12">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="BUỔI SÁNG" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" />
+                                            <TextBlock x:Name="TkbTodayMorningUniform" Text="Đồng phục: --" FontSize="12" Foreground="#F59E0B" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="TkbTodayMorningClasses" Text="Đang tải..." FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8" Padding="12">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="BUỔI CHIỀU" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" />
+                                            <TextBlock x:Name="TkbTodayAfternoonUniform" Text="Đồng phục: --" FontSize="12" Foreground="#10B981" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="TkbTodayAfternoonClasses" Text="Đang tải..." FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Ngày mai -->
+                            <Border Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="12">
+                                    <TextBlock x:Name="TkbTomorrowTitle" Text="Lịch học Ngày mai" FontSize="16" FontWeight="SemiBold" Foreground="#A78BFA" />
+                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8" Padding="12">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="BUỔI SÁNG" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" />
+                                            <TextBlock x:Name="TkbTomorrowMorningUniform" Text="Đồng phục: --" FontSize="12" Foreground="#F59E0B" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="TkbTomorrowMorningClasses" Text="Đang tải..." FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8" Padding="12">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="BUỔI CHIỀU" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" />
+                                            <TextBlock x:Name="TkbTomorrowAfternoonUniform" Text="Đồng phục: --" FontSize="12" Foreground="#10B981" FontWeight="SemiBold" />
+                                            <TextBlock x:Name="TkbTomorrowAfternoonClasses" Text="Đang tải..." FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </StackPanel>
 
 

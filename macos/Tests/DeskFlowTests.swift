@@ -67,4 +67,61 @@ final class DeskFlowTests: XCTestCase {
         XCTAssertEqual(DeskFlowApiClient.clockStyleIdToCode[6], "binary")
         XCTAssertEqual(DeskFlowApiClient.clockStyleIdToCode[7], "word")
     }
+
+    func testTimetableResponseDecoding() throws {
+        let json = """
+        {
+            "success": true,
+            "data": {
+                "week_number": "10",
+                "today": {
+                    "day": "Thứ 2",
+                    "display_day": "Thứ 2",
+                    "morning": ["Tiết 1: Toán", "Tiết 2: Ngữ Văn"],
+                    "afternoon": ["Tiết 1: GDQP"],
+                    "dp_sang": "Chính khóa",
+                    "dp_chieu": "Thể dục",
+                    "has_afternoon": true,
+                    "has_any_class": true
+                },
+                "tomorrow": {
+                    "day": "Thứ 3",
+                    "display_day": "Thứ 3",
+                    "morning": ["Tiết 1: Hóa Học"],
+                    "afternoon": [],
+                    "dp_sang": "Tự do",
+                    "dp_chieu": "",
+                    "has_afternoon": false,
+                    "has_any_class": true
+                }
+            }
+        }
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(TimetableResponse.self, from: json)
+        XCTAssertEqual(decoded.success, true)
+        XCTAssertEqual(decoded.data?.weekNumber, "10")
+        XCTAssertEqual(decoded.data?.today?.day, "Thứ 2")
+        XCTAssertEqual(decoded.data?.today?.morning?.count, 2)
+        XCTAssertEqual(decoded.data?.today?.uniformMorning, "Chính khóa")
+        XCTAssertEqual(decoded.data?.today?.uniformAfternoon, "Thể dục")
+        XCTAssertEqual(decoded.data?.tomorrow?.morning?.count, 1)
+        XCTAssertEqual(decoded.data?.tomorrow?.hasAfternoon, false)
+    }
+
+    func testPairSessionModelsDecoding() throws {
+        let createJson = """
+        {"success": true, "session_id": "s_123", "qr_payload": "deskflow://pair?session=s_123", "expires_in": 600}
+        """.data(using: .utf8)!
+        let createDecoded = try JSONDecoder().decode(PairSessionCreateResponse.self, from: createJson)
+        XCTAssertEqual(createDecoded.sessionId, "s_123")
+        XCTAssertEqual(createDecoded.expiresIn, 600)
+
+        let statusJson = """
+        {"success": true, "status": "approved", "device_id": "dev_1", "device_token": "tok_1", "device_name": "MacBook"}
+        """.data(using: .utf8)!
+        let statusDecoded = try JSONDecoder().decode(PairSessionStatusResponse.self, from: statusJson)
+        XCTAssertEqual(statusDecoded.status, "approved")
+        XCTAssertEqual(statusDecoded.deviceId, "dev_1")
+        XCTAssertEqual(statusDecoded.deviceToken, "tok_1")
+    }
 }

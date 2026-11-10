@@ -106,7 +106,11 @@ class FocusRepository(
                     serverTime = body.serverTime,
                     activeChallenge = chInfo,
                     lastSyncedTime = System.currentTimeMillis(),
-                    isOnline = true
+                    isOnline = true,
+                    remainingSeconds = body.remainingSeconds ?: _focusState.value.remainingSeconds,
+                    endsAt = body.endsAt ?: _focusState.value.endsAt,
+                    durationMinutes = _focusState.value.durationMinutes,
+                    reason = _focusState.value.reason
                 )
                 updateFocusState(newState)
                 ApiResult.Success(newState)
@@ -180,7 +184,12 @@ class FocusRepository(
                     enabled = body.enabled,
                     focusActive = body.focusActive,
                     version = body.version,
-                    lastSyncedTime = System.currentTimeMillis()
+                    serverTime = body.serverTime,
+                    lastSyncedTime = System.currentTimeMillis(),
+                    isOnline = true,
+                    remainingSeconds = (durationMinutes * 60).toLong(),
+                    durationMinutes = durationMinutes,
+                    reason = reason
                 )
                 updateFocusState(newState)
                 activityStore.logEvent(
@@ -345,6 +354,54 @@ class FocusRepository(
             _isPaired.value = false
             updateFocusState(FocusState())
             ApiResult.Success(true)
+        }
+    }
+
+    suspend fun approvePairSession(
+        serverUrl: String? = null,
+        sessionId: String,
+        deviceName: String
+    ): ApiResult<PairSessionApproveResponse> {
+        val req = PairSessionApproveRequest(
+            deviceName = deviceName.ifBlank { "DeskFlow Desktop" },
+            scopes = listOf("focus", "control", "spotify"),
+            platform = "desktop"
+        )
+        return try {
+            val response = if (!serverUrl.isNullOrBlank()) {
+                val fullUrl = serverUrl.trimEnd('/') + "/api/focus/pair/session/$sessionId/approve"
+                apiService.approvePairSessionUrl(fullUrl, req)
+            } else {
+                apiService.approvePairSession(sessionId, req)
+            }
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
+        }
+    }
+
+    suspend fun rejectPairSession(
+        serverUrl: String? = null,
+        sessionId: String
+    ): ApiResult<ActionSuccessResponse> {
+        return try {
+            val response = if (!serverUrl.isNullOrBlank()) {
+                val fullUrl = serverUrl.trimEnd('/') + "/api/focus/pair/session/$sessionId/reject"
+                apiService.rejectPairSessionUrl(fullUrl)
+            } else {
+                apiService.rejectPairSession(sessionId)
+            }
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
         }
     }
 

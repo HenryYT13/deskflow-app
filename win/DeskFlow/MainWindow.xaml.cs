@@ -7,6 +7,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace DeskFlow;
 
@@ -15,6 +16,8 @@ public sealed partial class MainWindow : Window
     private readonly DeskFlowApiClient _client;
     private readonly DispatcherQueueTimer _themeTimer;
     private readonly List<PairedDeviceItemDto> _devicesCache = new();
+    private DispatcherQueueTimer? _pairPollTimer;
+    private string? _activePairSessionId;
 
     public MainWindow()
     {
@@ -164,6 +167,15 @@ public sealed partial class MainWindow : Window
             MainNavView.Visibility = isPaired ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        if (!isPaired)
+        {
+            _ = StartQrPairingSessionAsync();
+        }
+        else
+        {
+            StopQrPairingSession();
+        }
+
         if (PairStatusDot != null)
         {
             PairStatusDot.Fill = new SolidColorBrush(isPaired ? Windows.UI.Color.FromArgb(255, 16, 185, 129) : Windows.UI.Color.FromArgb(255, 245, 158, 11));
@@ -235,10 +247,12 @@ public sealed partial class MainWindow : Window
         StationPanel.Visibility = (tag == "station" || tag == "hardware") ? Visibility.Visible : Visibility.Collapsed;
         SpotifyPanel.Visibility = (tag == "spotify") ? Visibility.Visible : Visibility.Collapsed;
         AlarmsPanel.Visibility = (tag == "alarms") ? Visibility.Visible : Visibility.Collapsed;
+        TkbPanel.Visibility = (tag == "timetable") ? Visibility.Visible : Visibility.Collapsed;
         ToolsPanel.Visibility = (tag == "tools" || tag == "notes" || tag == "countdowns" || tag == "weather" || tag == "morse" || tag == "focus") ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanel.Visibility = (tag == "settings") ? Visibility.Visible : Visibility.Collapsed;
 
         if (tag == "system" || tag == "dashboard") _ = RefreshAllDataAsync();
+        if (tag == "timetable") _ = LoadTimetableAsync();
         if (tag == "spotify") _ = RefreshSpotifyAsync();
         if (tag == "alarms") RefreshAlarms();
         if (tag == "tools") { RenderNotesList(); RenderCountdownsList(); }
@@ -287,6 +301,113 @@ public sealed partial class MainWindow : Window
                 GateStatusText.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 239, 68, 68));
                 GateStatusText.Visibility = Visibility.Visible;
             }
+        }
+    }
+
+    private async Task StartQrPairingSessionAsync()
+    {
+        try
+        {
+            var (ok, data, _) = await _client.CreatePairSessionAsync(_client.Settings.DeviceName ?? "DeskFlow Windows", "windows");
+            if (ok && data != null && !string.IsNullOrWhiteSpace(data.QrPayload))
+            {
+                _activePairSessionId = data.SessionId;
+                if (GateQrImage != null)
+                {
+                    var qrUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(data.QrPayload)}";
+                    GateQrImage.Source = new BitmapImage(new Uri(qrUrl));
+                }
+
+                if (_pairPollTimer == null)
+                {
+                    _pairPollTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+                    _pairPollTimer.Interval = TimeSpan.FromSeconds(2);
+                    _pairPollTimer.Tick += async (_, _) => await PollPairSessionAsync();
+                }
+                _pairPollTimer.Start();
+            }
+        }
+        catch {}
+    }
+
+    private void StopQrPairingSession()
+    {
+        _pairPollTimer?.Stop();
+        _pairPollTimer = null;
+        _activePairSessionId = null;
+    }
+
+    private async Task PollPairSessionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_activePairSessionId)) return;
+        try
+        {
+            var (ok, data, _) = await _client.GetPairSessionStatusAsync(_activePairSessionId);
+            if (ok && data != null && data.Status == "approved")
+            {
+                StopQrPairingSession();
+                UpdatePairingStatusLabel();
+                ShowBanner(Strings.CurrentLanguage == "vi" ? "Ghép nối thiết bị thành công qua QR!" : "Device paired successfully via QR!");
+                _ = RefreshAllDataAsync();
+            }
+        }
+        catch {}
+    }
+
+    private async void GateRegenerateQr_Click(object sender, RoutedEventArgs e)
+    {
+        await StartQrPairingSessionAsync();
+    }
+
+    private async Task LoadTimetableAsync()
+    {
+        try
+        {
+            var (ok, data, _) = await _client.GetTimetableTodayAsync();
+            if (ok && data != null)
+            {
+                if (TkbWeekText != null) TkbWeekText.Text = data.WeekNumber;
+
+                if (data.Today != null)
+                {
+                    if (TkbTodayTitle != null) TkbTodayTitle.Text = $"Lịch học Hôm nay ({data.Today.DisplayDay ?? data.Today.Day})";
+                    if (TkbTodayMorningUniform != null) TkbTodayMorningUniform.Text = $"Đồng phục sáng: {data.Today.DpSang}";
+                    if (TkbTodayMorningClasses != null) TkbTodayMorningClasses.Text = data.Today.MorningSummary;
+                    if (TkbTodayAfternoonUniform != null) TkbTodayAfternoonUniform.Text = $"Đồng phục chiều: {data.Today.DpChieu ?? "Không có"}";
+                    if (TkbTodayAfternoonClasses != null) TkbTodayAfternoonClasses.Text = data.Today.AfternoonSummary;
+                }
+
+                if (data.Tomorrow != null)
+                {
+                    if (TkbTomorrowTitle != null) TkbTomorrowTitle.Text = $"Lịch học Ngày mai ({data.Tomorrow.DisplayDay ?? data.Tomorrow.Day})";
+                    if (TkbTomorrowMorningUniform != null) TkbTomorrowMorningUniform.Text = $"Đồng phục sáng: {data.Tomorrow.DpSang}";
+                    if (TkbTomorrowMorningClasses != null) TkbTomorrowMorningClasses.Text = data.Tomorrow.MorningSummary;
+                    if (TkbTomorrowAfternoonUniform != null) TkbTomorrowAfternoonUniform.Text = $"Đồng phục chiều: {data.Tomorrow.DpChieu ?? "Không có"}";
+                    if (TkbTomorrowAfternoonClasses != null) TkbTomorrowAfternoonClasses.Text = data.Tomorrow.AfternoonSummary;
+                }
+            }
+        }
+        catch {}
+    }
+
+    private async void TkbSyncEsp32_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, msg) = await _client.SwitchDisplayViewAsync("tkb");
+        ShowBanner(msg, !ok);
+    }
+
+    private async void TkbRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        await LoadTimetableAsync();
+        ShowBanner(Strings.CurrentLanguage == "vi" ? "Đã làm mới Thời khóa biểu!" : "Timetable refreshed!");
+    }
+
+    private async void ClockAccentColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string hex)
+        {
+            var (ok, msg) = await _client.SetClockAccentColorAsync(hex);
+            ShowBanner(msg, !ok);
         }
     }
 

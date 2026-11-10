@@ -262,6 +262,48 @@ class WeatherInterval:
 
 
 @dataclass
+class TimetableDay:
+    day: str = ""
+    display_day: str = ""
+    morning: List[str] = field(default_factory=list)
+    dp_sang: str = "Tự do"
+    has_afternoon: bool = False
+    afternoon: List[str] = field(default_factory=list)
+    dp_chieu: str = ""
+    has_any_class: bool = False
+
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "TimetableDay":
+        return cls(
+            day=str(raw.get("day") or ""),
+            display_day=str(raw.get("display_day") or raw.get("day") or ""),
+            morning=list(raw.get("morning") or []),
+            dp_sang=str(raw.get("dp_sang") or "Tự do"),
+            has_afternoon=bool(raw.get("has_afternoon", False)),
+            afternoon=list(raw.get("afternoon") or []),
+            dp_chieu=str(raw.get("dp_chieu") or ""),
+            has_any_class=bool(raw.get("has_any_class", False)),
+        )
+
+
+@dataclass
+class DualDayTimetable:
+    week_number: str = "N/A"
+    today: TimetableDay = field(default_factory=TimetableDay)
+    tomorrow: TimetableDay = field(default_factory=TimetableDay)
+
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "DualDayTimetable":
+        today_raw = raw.get("today") if isinstance(raw.get("today"), dict) else {}
+        tomorrow_raw = raw.get("tomorrow") if isinstance(raw.get("tomorrow"), dict) else {}
+        return cls(
+            week_number=str(raw.get("week_number") or "N/A"),
+            today=TimetableDay.from_dict(today_raw),
+            tomorrow=TimetableDay.from_dict(tomorrow_raw),
+        )
+
+
+@dataclass
 class SpotifyStatus:
     is_playing: bool = False
     connected: bool = False

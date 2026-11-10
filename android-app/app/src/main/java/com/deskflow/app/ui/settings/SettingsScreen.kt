@@ -1,6 +1,9 @@
 package com.deskflow.app.ui.settings
 
+import android.net.Uri
 import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -16,14 +19,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.deskflow.app.R
 import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.repository.ApiHealthTestResult
+import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
 import com.deskflow.app.ui.theme.ScheduledDarkModeEvaluator
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -58,6 +65,161 @@ fun SettingsScreen(
     // API Health Test state
     var healthTestResult by remember { mutableStateOf<ApiHealthTestResult?>(null) }
     var isTestingHealth by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+
+    // Other Device QR Login state
+    var pendingPairSessionId by remember { mutableStateOf<String?>(null) }
+    var pendingPairServerUrl by remember { mutableStateOf<String?>(null) }
+    var pendingPairDeviceName by remember { mutableStateOf("DeskFlow Desktop") }
+    var showPairConfirmDialog by remember { mutableStateOf(false) }
+    var isApprovingPair by remember { mutableStateOf(false) }
+
+    val scanOtherDeviceLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val raw = result.contents ?: return@rememberLauncherForActivityResult
+        var parsedSession: String? = null
+        var parsedServer: String? = null
+        var parsedName: String? = null
+
+        try {
+            val uri = Uri.parse(raw)
+            if (uri != null && uri.isHierarchical) {
+                parsedSession = uri.getQueryParameter("session") ?: uri.getQueryParameter("session_id")
+                parsedServer = uri.getQueryParameter("server") ?: uri.getQueryParameter("server_url")
+                parsedName = uri.getQueryParameter("name") ?: uri.getQueryParameter("device_name")
+            }
+        } catch (_: Exception) {}
+
+        if (parsedSession == null) {
+            val sessionRegex = Regex("(?i)(?:session|session_id)=([A-Za-z0-9_-]+)").find(raw)
+            if (sessionRegex != null) {
+                parsedSession = sessionRegex.groupValues[1]
+            }
+        }
+        if (parsedServer == null) {
+            val serverRegex = Regex("(?i)(?:server|server_url)=([^&\\s]+)").find(raw)
+            if (serverRegex != null) {
+                parsedServer = serverRegex.groupValues[1]
+            }
+        }
+        if (parsedName == null) {
+            val nameRegex = Regex("(?i)(?:name|device_name)=([^&\\s]+)").find(raw)
+            if (nameRegex != null) {
+                parsedName = try { java.net.URLDecoder.decode(nameRegex.groupValues[1], "UTF-8") } catch (_: Exception) { nameRegex.groupValues[1] }
+            }
+        }
+
+        if (!parsedSession.isNullOrBlank()) {
+            pendingPairSessionId = parsedSession
+            pendingPairServerUrl = parsedServer?.takeIf { it.isNotBlank() } ?: securePreferences.apiUrl
+            pendingPairDeviceName = parsedName?.takeIf { it.isNotBlank() } ?: "DeskFlow Desktop"
+            showPairConfirmDialog = true
+        } else {
+            Toast.makeText(context, context.getString(R.string.pair_session_invalid_qr), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    if (showPairConfirmDialog && pendingPairSessionId != null) {
+        val sessionId = pendingPairSessionId!!
+        val serverUrl = pendingPairServerUrl
+        AlertDialog(
+            onDismissRequest = {
+                if (!isApprovingPair) {
+                    showPairConfirmDialog = false
+                    coroutineScope.launch {
+                        repository.rejectPairSession(serverUrl, sessionId)
+                    }
+                    Toast.makeText(context, context.getString(R.string.pair_session_cancelled_msg), Toast.LENGTH_SHORT).show()
+                }
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.QrCodeScanner,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.dialog_pair_session_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.dialog_pair_session_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = pendingPairDeviceName,
+                        onValueChange = { pendingPairDeviceName = it },
+                        label = { Text(stringResource(R.string.dialog_pair_session_device_name_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            isApprovingPair = true
+                            val res = repository.approvePairSession(serverUrl, sessionId, pendingPairDeviceName)
+                            isApprovingPair = false
+                            showPairConfirmDialog = false
+                            when (res) {
+                                is ApiResult.Success -> {
+                                    val finalName = res.data.deviceName ?: pendingPairDeviceName
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.pair_session_success_msg, finalName),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                is ApiResult.Error -> {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.pair_session_failed_msg, res.message),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isApprovingPair && pendingPairDeviceName.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isApprovingPair) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(stringResource(R.string.dialog_pair_session_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showPairConfirmDialog = false
+                        coroutineScope.launch {
+                            repository.rejectPairSession(serverUrl, sessionId)
+                        }
+                        Toast.makeText(context, context.getString(R.string.pair_session_cancelled_msg), Toast.LENGTH_SHORT).show()
+                    },
+                    enabled = !isApprovingPair
+                ) {
+                    Text(stringResource(R.string.dialog_pair_session_cancel))
+                }
+            }
+        )
+    }
 
     if (showUnpairConfirm) {
         AlertDialog(
@@ -753,6 +915,57 @@ fun SettingsScreen(
                                 ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             )
                         }) { Text(stringResource(R.string.overlay_grant)) }
+                    }
+                }
+            }
+
+            // ================= LIÊN KẾT THIẾT BỊ KHÁC =================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_other_devices_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.settings_other_devices_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            val options = ScanOptions().apply {
+                                setPrompt(context.getString(R.string.settings_other_devices_prompt))
+                                setBeepEnabled(false)
+                                setOrientationLocked(false)
+                                setBarcodeImageEnabled(false)
+                            }
+                            scanOtherDeviceLauncher.launch(options)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.btn_scan_qr_other_device))
                     }
                 }
             }

@@ -79,7 +79,7 @@
 
     <!-- Pairing -->
     <string name="pair_title">Pair with DeskFlow</string>
-    <string name="pair_desc">Generate an 8-character pairing code using Discord (/focus_mode pair) and enter it below.</string>
+    <string name="pair_desc">Generate an 8-character pairing code using Discord (/app pair) and enter it below.</string>
     <string name="pairing_code_label">Pairing Code</string>
     <string name="pairing_code_placeholder">e.g. A1B2C3D4</string>
     <string name="device_name_label">Device Name</string>
@@ -93,7 +93,7 @@
     <string name="start_focus_title">Start Focus Session</string>
     <string name="duration_label">Duration (Minutes)</string>
     <string name="duration_15m">15m</string>
-    <string name="duration_25m">25m (Pomodoro)</string>
+    <string name="duration_25m">25m</string>
     <string name="duration_45m">45m</string>
     <string name="duration_60m">60m</string>
     <string name="reason_label">Study Goal / Notes</string>
@@ -187,7 +187,7 @@
     <string name="api_test_http_status">HTTP Status: %1$d</string>
     <string name="api_test_diagnostics">Diagnostic Information</string>
     <string name="about_title">About DeskFlow</string>
-    <string name="version_label">Version 1.0.0</string>
+    <string name="version_label">Version 1.0.3</string>
     <string name="about_desc">DeskFlow is an IoT and multi-client productivity ecosystem connecting Discord, browser extensions, IoT hardware, and Android.</string>
 
     <!-- Dedicated Timetable Screen -->
@@ -261,11 +261,11 @@
     <string name="quote_generate_btn">Generate &amp; Push Quote</string>
     <string name="quote_success">AI quote pushed to station!</string>
 
-    <string name="timer_title">Pomodoro Focus Timer</string>
+    <string name="timer_title">Countdown Timer</string>
     <string name="timer_duration_label">Duration (e.g. 25m, 1h)</string>
     <string name="timer_note_label">Goal / Subject</string>
-    <string name="timer_start_btn">Start Pomodoro</string>
-    <string name="timer_success">Pomodoro timer started!</string>
+    <string name="timer_start_btn">Start Timer</string>
+    <string name="timer_success">Timer started!</string>
 
     <string name="settings_darkmode_title">Dark Mode Schedule</string>
     <string name="settings_weather_title">Morning Weather Alert</string>
@@ -280,7 +280,7 @@
     <string name="cat_alarms">Alarms &amp; Sound</string>
     <string name="cat_alarms_desc">Math alarm status, solve challenge, and scheduling</string>
     <string name="cat_tools">Productivity &amp; AI Tools</string>
-    <string name="cat_tools_desc">Sticky notes, exam countdown, AI quotes &amp; Pomodoro</string>
+    <string name="cat_tools_desc">Sticky notes, exam countdown, AI quotes &amp; timer</string>
     <string name="cat_settings">Remote Configuration</string>
     <string name="cat_settings_desc">Dark mode schedule, rain alert, battery thresholds</string>
     <string name="cat_system">System &amp; Telemetry</string>
@@ -298,7 +298,7 @@
     <string name="subcat_alarm_schedule_desc">Set future math alarm wake-up times</string>
     <string name="subcat_tools_notes">Notes &amp; Countdowns</string>
     <string name="subcat_tools_notes_desc">Pin screen sticky notes and exam countdowns</string>
-    <string name="subcat_tools_ai">AI Quotes &amp; Pomodoro</string>
+    <string name="subcat_tools_ai">AI Quotes &amp; Timer</string>
     <string name="subcat_tools_ai_desc">Groq motivational quotes and study timers</string>
     <string name="subcat_settings_display">Dark Mode Schedule</string>
     <string name="subcat_settings_display_desc">Auto dark mode schedule and styles</string>
@@ -335,4 +335,19 @@
     <string name="overlay_grant">Grant permission</string>
     <string name="overlay_granted">Permission granted</string>
     <string name="overlay_banner">Focus Mode is active</string>
+
+    <!-- Other Device Pairing / QR Login -->
+    <string name="settings_other_devices_title">Link Other Devices</string>
+    <string name="settings_other_devices_desc">Scan the QR code displayed on Desktop or other devices to log in quickly.</string>
+    <string name="settings_other_devices_prompt">Point camera at QR code on Desktop screen</string>
+    <string name="btn_scan_qr_other_device">Scan QR to log in on desktop / other device</string>
+    <string name="dialog_pair_session_title">Log in other device</string>
+    <string name="dialog_pair_session_desc">Do you want to log in and grant permissions to this device?</string>
+    <string name="dialog_pair_session_device_name_label">Device name:</string>
+    <string name="dialog_pair_session_confirm">Log in</string>
+    <string name="dialog_pair_session_cancel">Cancel</string>
+    <string name="pair_session_success_msg">Successfully logged in for %1$s!</string>
+    <string name="pair_session_failed_msg">Device login failed: %1$s</string>
+    <string name="pair_session_cancelled_msg">Device login cancelled</string>
+    <string name="pair_session_invalid_qr">Invalid QR code or missing pairing session.</string>
 </resources>

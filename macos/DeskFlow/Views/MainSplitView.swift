@@ -60,6 +60,7 @@ func generateQRCodeImage(from string: String) -> NSImage? {
 public enum MacSidebarSection: String, CaseIterable, Identifiable {
     case system = "system"
     case hardware = "hardware"
+    case timetable = "timetable"
     case spotify = "spotify"
     case alarms = "alarms"
     case tools = "tools"
@@ -71,6 +72,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
         switch self {
         case .system: return isVi ? "Giám sát hệ thống & Đo từ xa" : "System & Telemetry"
         case .hardware: return isVi ? "Phần cứng & Trạm ESP32" : "Hardware & ESP32 Station"
+        case .timetable: return isVi ? "Thời khóa biểu (TKB)" : "Timetable (TKB)"
         case .spotify: return isVi ? "Spotify & Âm nhạc" : "Spotify & Media"
         case .alarms: return isVi ? "Báo thức & Còi báo" : "Alarms & Buzzer"
         case .tools: return isVi ? "Công cụ & Groq AI" : "Tools & Groq AI"
@@ -82,6 +84,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
         switch self {
         case .system: return "gauge.with.dots.needle.50percent"
         case .hardware: return "display.2"
+        case .timetable: return "calendar.badge.clock"
         case .spotify: return "music.note"
         case .alarms: return "bell.badge.fill"
         case .tools: return "wand.and.stars"
@@ -93,6 +96,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
         switch self {
         case .system: return Color(hex: "#10b981")
         case .hardware: return Color(hex: "#38bdf8")
+        case .timetable: return Color(hex: "#06b6d4")
         case .spotify: return Color(hex: "#1db954")
         case .alarms: return Color(hex: "#f59e0b")
         case .tools: return Color(hex: "#a855f7")
@@ -353,6 +357,8 @@ public struct MainSplitView: View {
                             DashboardMacView(client: client)
                         case .hardware:
                             StationMacView(client: client)
+                        case .timetable:
+                            TimetableMacView(client: client)
                         case .spotify:
                             SpotifyMacView(client: client)
                         case .alarms:
@@ -419,9 +425,48 @@ public struct MacPairingGateView: View {
     @State private var pairCode: String = ""
     @State private var isPairing: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var qrPayload: String = ""
+    @State private var sessionId: String? = nil
+    @State private var isLoadingQR: Bool = false
+    @State private var pollingTask: Task<Void, Never>? = nil
 
     public init(client: DeskFlowApiClient) {
         self.client = client
+    }
+
+    private func startPairingSession() {
+        pollingTask?.cancel()
+        isLoadingQR = true
+        errorMessage = nil
+        pollingTask = Task { @MainActor in
+            let fallbackPayload = "deskflow://pair?server=\(client.apiUrl)&name=\(client.deviceName)"
+            if qrPayload.isEmpty {
+                qrPayload = fallbackPayload
+            }
+            if let res = await client.createPairingSession(),
+               let sid = res.sessionId,
+               let payload = res.qrPayload {
+                self.sessionId = sid
+                self.qrPayload = payload
+                self.isLoadingQR = false
+
+                while !Task.isCancelled && !client.isPaired {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    if Task.isCancelled || client.isPaired { break }
+
+                    if let pollRes = await client.pollPairingSession(sessionId: sid) {
+                        if pollRes.status == "approved" {
+                            break
+                        } else if pollRes.status == "rejected" {
+                            errorMessage = client.appLanguage == "vi" ? "Yêu cầu ghép nối bị từ chối." : "Pairing request rejected."
+                            break
+                        }
+                    }
+                }
+            } else {
+                isLoadingQR = false
+            }
+        }
     }
 
     public var body: some View {
@@ -461,9 +506,15 @@ public struct MacPairingGateView: View {
                         VStack(spacing: 24) {
                             HStack(alignment: .top, spacing: 32) {
                                 VStack(spacing: 12) {
-                                    let qrPayload = "deskflow://pair?server=\(client.apiUrl)&name=\(client.deviceName)"
+                                    let activePayload = !qrPayload.isEmpty ? qrPayload : "deskflow://pair?server=\(client.apiUrl)&name=\(client.deviceName)"
                                     #if canImport(CoreImage)
-                                    if let qrImg = generateQRCodeImage(from: qrPayload) {
+                                    if isLoadingQR && qrPayload.isEmpty {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.white)
+                                            .frame(width: 160, height: 160)
+                                            .overlay(ProgressView())
+                                            .shadow(color: Color.black.opacity(0.1), radius: 8)
+                                    } else if let qrImg = generateQRCodeImage(from: activePayload) {
                                         Image(nsImage: qrImg)
                                             .interpolation(.none)
                                             .resizable()
@@ -491,10 +542,31 @@ public struct MacPairingGateView: View {
                                         .foregroundColor(.secondary)
                                         .multilineTextAlignment(.center)
                                         .frame(maxWidth: 170)
+
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(Color.green)
+                                            .frame(width: 6, height: 6)
+                                        Text(client.appLanguage == "vi" ? "Tự động nhận diện khi quét" : "Auto-detecting approval")
+                                            .font(.system(size: 10, design: .rounded))
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    Button {
+                                        startPairingSession()
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "arrow.clockwise")
+                                            Text(client.appLanguage == "vi" ? "Tạo lại mã QR" : "Regenerate QR")
+                                        }
+                                        .font(.system(size: 10, weight: .medium))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundColor(.indigo)
                                 }
 
                                 Divider()
-                                    .frame(height: 190)
+                                    .frame(height: 220)
 
                                 VStack(alignment: .leading, spacing: 14) {
                                     Text(client.appLanguage == "vi" ? "Hoặc nhập mã ghép nối từ Discord:" : "Or enter pairing code from Discord:")
@@ -578,6 +650,13 @@ public struct MacPairingGateView: View {
                 }
                 .padding(.horizontal, 24)
             }
+        }
+        .onAppear {
+            startPairingSession()
+        }
+        .onDisappear {
+            pollingTask?.cancel()
+            pollingTask = nil
         }
     }
 }
@@ -970,7 +1049,7 @@ private struct ToolsMacView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Picker(tr("Chức năng công cụ"), selection: $toolTab) {
-                Text(client.appLanguage == "vi" ? "Danh ngôn AI & Pomodoro" : "AI Quotes & Pomodoro").tag(0)
+                Text(client.appLanguage == "vi" ? "Danh ngôn AI & Chế độ tập trung" : "AI Quotes & Focus Mode").tag(0)
                 Text(client.appLanguage == "vi" ? "Giấy nhớ & Đếm ngược" : "Notes & Countdowns").tag(1)
                 Text(client.appLanguage == "vi" ? "Mã Morse Studio" : "Morse Studio").tag(2)
             }
@@ -1046,7 +1125,7 @@ private struct FocusMacView: View {
                 }
             }
 
-            LiquidGlassCard("Start Focus Session (Pomodoro)", icon: "timer", iconColor: .purple) {
+            LiquidGlassCard(client.appLanguage == "vi" ? "Bắt đầu phiên tập trung" : "Start Focus Session", icon: "timer", iconColor: .purple) {
                 VStack(alignment: .leading, spacing: 12) {
                     Stepper("Duration: \(duration) minutes", value: $duration, in: 5...180, step: 5)
                     TextField(tr("Session Goal"), text: $reason)
@@ -1589,13 +1668,27 @@ private struct StationMacView: View {
         ClockStyleOption(id: 7, code: "word", name: "Word Clock", desc: "Spelled out text clock")
     ]
 
+    private let clockPresetColors: [(hex: String, name: String)] = [
+        ("#38BDF8", "Sky Blue"),
+        ("#10B981", "Emerald"),
+        ("#F59E0B", "Amber"),
+        ("#EF4444", "Rose"),
+        ("#8B5CF6", "Purple"),
+        ("#EC4899", "Pink"),
+        ("#FFFFFF", "White")
+    ]
+
+    private var clockAccent: Color {
+        Color(hex: client.clockAccentColor)
+    }
+
     private let oledViews: [OledViewOption] = [
         OledViewOption(id: "main", name: "Main Dashboard (Default)", icon: "square.grid.2x2", desc: "Clock, Weather, Music & Quotes"),
         OledViewOption(id: "clock", name: "Clock Face", icon: "clock.fill", desc: "Active watch face"),
         OledViewOption(id: "weather", name: "Weather", icon: "cloud.sun.fill", desc: "24h forecast & temp"),
         OledViewOption(id: "notes", name: "Sticky Note", icon: "note.text", desc: "Pinned note display"),
         OledViewOption(id: "countdown", name: "Countdown", icon: "calendar.badge.clock", desc: "Exam & target days left"),
-        OledViewOption(id: "focus", name: "Focus Mode", icon: "timer", desc: "Pomodoro countdown"),
+        OledViewOption(id: "focus", name: "Focus Mode", icon: "timer", desc: "Focus Mode countdown"),
         OledViewOption(id: "stats", name: "Server Stats", icon: "cpu", desc: "CPU, RAM & Uptime"),
         OledViewOption(id: "tkb", name: "Timetable", icon: "book.closed.fill", desc: "School class schedule"),
         OledViewOption(id: "lyrics", name: "Spotify Lyrics", icon: "music.note", desc: "Real-time music lyrics")
@@ -1701,7 +1794,7 @@ private struct StationMacView: View {
                                     isApplying = true
                                     if previewView == "clock" {
                                         let code = clockStyles.first(where: { $0.id == selectedClockStyle })?.code ?? "digital_classic"
-                                        await client.setClockStyle(style: code)
+                                        await client.setClockStyle(style: code, accentColor: client.clockAccentColor)
                                         await client.switchDisplayView(view: "clock")
                                     } else {
                                         await client.switchDisplayView(view: previewView)
@@ -1723,10 +1816,52 @@ private struct StationMacView: View {
                     icon: "clock.arrow.circlepath",
                     iconColor: .indigo
                 ) {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 14) {
                         Text(client.appLanguage == "vi" ? "Chọn và xem trước mặt đồng hồ cho màn hình OLED ESP32:" : "Select and preview clock faces for the ESP32 OLED display:")
                             .font(.caption)
                             .foregroundColor(.secondary)
+
+                        // Clock Accent Color Selector
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(client.appLanguage == "vi" ? "Màu nhấn đồng hồ (Accent Color):" : "Clock Accent Color:")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(client.clockAccentColor)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(clockAccent)
+                            }
+
+                            HStack(spacing: 12) {
+                                ForEach(clockPresetColors, id: \.hex) { item in
+                                    let isSelected = client.clockAccentColor.uppercased() == item.hex.uppercased()
+                                    Button {
+                                        client.clockAccentColor = item.hex
+                                        Task {
+                                            let code = clockStyles.first(where: { $0.id == selectedClockStyle })?.code ?? "digital_classic"
+                                            await client.setClockStyle(style: code, accentColor: item.hex)
+                                        }
+                                    } label: {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color(hex: item.hex))
+                                                .frame(width: 24, height: 24)
+                                                .shadow(color: Color(hex: item.hex).opacity(0.4), radius: isSelected ? 4 : 0)
+                                            if isSelected {
+                                                Circle()
+                                                    .stroke(Color.white, lineWidth: 2)
+                                                    .frame(width: 30, height: 30)
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(item.name)
+                                }
+                            }
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.04)))
 
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 12) {
                             ForEach(clockStyles) { style in
@@ -1734,7 +1869,7 @@ private struct StationMacView: View {
                                 Button(action: {
                                     selectedClockStyle = style.id
                                     previewView = "clock"
-                                    Task { await client.setClockStyle(style: style.code) }
+                                    Task { await client.setClockStyle(style: style.code, accentColor: client.clockAccentColor) }
                                 }) {
                                     VStack(alignment: .leading, spacing: 6) {
                                         // Miniature Graphic Preview Box
@@ -1940,21 +2075,21 @@ private struct StationMacView: View {
                     .foregroundColor(.white)
                 Text("Sun, 08 Nov • 28°C HCM")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(red: 0.3, green: 0.7, blue: 1.0))
+                    .foregroundColor(clockAccent)
             }
         case 3: // Neon Cyber
             VStack(spacing: 3) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.cyan, lineWidth: 1.5)
+                        .stroke(clockAccent, lineWidth: 1.5)
                         .frame(width: 130, height: 42)
                     Text("12:30")
                         .font(.system(size: 26, weight: .black, design: .monospaced))
-                        .foregroundColor(.cyan)
+                        .foregroundColor(clockAccent)
                 }
                 Text("CYBER STATION • SEC: 45")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.cyan.opacity(0.8))
+                    .foregroundColor(clockAccent.opacity(0.8))
             }
         case 4: // Analog Dial
             HStack(spacing: 20) {
@@ -1978,7 +2113,7 @@ private struct StationMacView: View {
                         .rotationEffect(.degrees(60))
                     // Minute Hand
                     Rectangle()
-                        .fill(Color.cyan)
+                        .fill(clockAccent)
                         .frame(width: 1.5, height: 22)
                         .offset(y: -11)
                         .rotationEffect(.degrees(180))
@@ -1997,7 +2132,7 @@ private struct StationMacView: View {
                         .foregroundColor(.white)
                     Text("SUN 08 NOV")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.cyan)
+                        .foregroundColor(clockAccent)
                     Text("ANALOG OLED")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundColor(.secondary)
@@ -2009,7 +2144,7 @@ private struct StationMacView: View {
                     flipBox(digits: "12")
                     Text(":")
                         .font(.system(size: 20, weight: .black, design: .monospaced))
-                        .foregroundColor(.orange)
+                        .foregroundColor(clockAccent)
                     flipBox(digits: "30")
                 }
                 Text("RETRO FLIP • SEC 45")
@@ -2023,7 +2158,7 @@ private struct StationMacView: View {
                         HStack(spacing: 5) {
                             ForEach(0..<4) { col in
                                 Circle()
-                                    .fill((row + col) % 2 == 1 ? Color.cyan : Color.white.opacity(0.15))
+                                    .fill((row + col) % 2 == 1 ? clockAccent : Color.white.opacity(0.15))
                                     .frame(width: 8, height: 8)
                             }
                         }
@@ -2032,7 +2167,7 @@ private struct StationMacView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("BCD 8-4-2-1")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.cyan)
+                        .foregroundColor(clockAccent)
                     Text("12:30:45")
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
@@ -2048,17 +2183,17 @@ private struct StationMacView: View {
                     .foregroundColor(.white)
                 Text("THIRTY")
                     .font(.system(size: 16, weight: .heavy, design: .monospaced))
-                    .foregroundColor(.cyan)
+                    .foregroundColor(clockAccent)
                 Text("FORTY FIVE SECONDS")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.orange)
+                    .foregroundColor(clockAccent.opacity(0.8))
             }
         default: // Style 1: Digital Classic
             VStack(spacing: 4) {
                 HStack(alignment: .bottom, spacing: 2) {
                     Text("12:30")
                         .font(.system(size: 32, weight: .bold, design: .monospaced))
-                        .foregroundColor(.cyan)
+                        .foregroundColor(clockAccent)
                     Text(":45")
                         .font(.system(size: 16, weight: .semibold, design: .monospaced))
                         .foregroundColor(.white.opacity(0.8))
@@ -2070,7 +2205,7 @@ private struct StationMacView: View {
                         .foregroundColor(.white)
                     Text("28°C HCM")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.orange)
+                        .foregroundColor(clockAccent)
                 }
             }
         }
@@ -2105,21 +2240,21 @@ private struct StationMacView: View {
         case 3: // Neon
             Text("12:30")
                 .font(.system(size: 13, weight: .black, design: .monospaced))
-                .foregroundColor(.cyan)
+                .foregroundColor(clockAccent)
                 .padding(3)
-                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.cyan, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(clockAccent, lineWidth: 1))
         case 4: // Analog
             ZStack {
                 Circle().stroke(Color.white.opacity(0.4), lineWidth: 1).frame(width: 28, height: 28)
                 Rectangle().fill(Color.white).frame(width: 1.5, height: 9).offset(y: -4.5).rotationEffect(.degrees(60))
-                Rectangle().fill(Color.cyan).frame(width: 1, height: 12).offset(y: -6).rotationEffect(.degrees(180))
+                Rectangle().fill(clockAccent).frame(width: 1, height: 12).offset(y: -6).rotationEffect(.degrees(180))
                 Circle().fill(Color.orange).frame(width: 2.5, height: 2.5)
             }
         case 5: // Flip
             HStack(spacing: 2) {
                 Text("12").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.white)
                     .padding(2).background(Color(red: 0.12, green: 0.16, blue: 0.24)).cornerRadius(2)
-                Text(":").font(.system(size: 10, weight: .bold)).foregroundColor(.orange)
+                Text(":").font(.system(size: 10, weight: .bold)).foregroundColor(clockAccent)
                 Text("30").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.white)
                     .padding(2).background(Color(red: 0.12, green: 0.16, blue: 0.24)).cornerRadius(2)
             }
@@ -2128,7 +2263,7 @@ private struct StationMacView: View {
                 ForEach(0..<4) { c in
                     VStack(spacing: 3) {
                         ForEach(0..<3) { r in
-                            Circle().fill((c + r) % 2 == 1 ? Color.cyan : Color.white.opacity(0.2)).frame(width: 3.5, height: 3.5)
+                            Circle().fill((c + r) % 2 == 1 ? clockAccent : Color.white.opacity(0.2)).frame(width: 3.5, height: 3.5)
                         }
                     }
                 }
@@ -2136,11 +2271,11 @@ private struct StationMacView: View {
         case 7: // Word
             VStack(spacing: 1) {
                 Text("TWELVE").font(.system(size: 7, weight: .black, design: .monospaced)).foregroundColor(.white)
-                Text("THIRTY").font(.system(size: 7, weight: .black, design: .monospaced)).foregroundColor(.cyan)
+                Text("THIRTY").font(.system(size: 7, weight: .black, design: .monospaced)).foregroundColor(clockAccent)
             }
         default: // Classic
             HStack(alignment: .bottom, spacing: 1) {
-                Text("12:30").font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundColor(.cyan)
+                Text("12:30").font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundColor(clockAccent)
                 Text(":45").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundColor(.white)
             }
         }
@@ -2231,7 +2366,7 @@ private struct StationMacView: View {
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(.red)
                 Spacer()
-                Text("POMODORO").font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundColor(.secondary)
+                Text("FOCUS").font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundColor(.secondary)
             }
             Text("24:58")
                 .font(.system(size: 26, weight: .heavy, design: .monospaced))
@@ -2297,6 +2432,286 @@ private struct StationMacView: View {
                 .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .foregroundColor(.cyan)
                 .lineLimit(1)
+        }
+    }
+}
+
+// MARK: - Timetable (TKB) View
+
+private struct TimetableMacView: View {
+    @ObservedObject var client: DeskFlowApiClient
+    @State private var isRefreshing: Bool = false
+    @State private var isSwitchingOled: Bool = false
+
+    var body: some View {
+        let isVi = client.appLanguage == "vi"
+
+        VStack(alignment: .leading, spacing: 20) {
+            // Header bar
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isVi ? "Thời khóa biểu (TKB)" : "Class Timetable (TKB)")
+                        .font(.system(.largeTitle, design: .rounded).bold())
+                    Text(isVi ? "Lịch học theo tuần và đồng phục được đồng bộ tự động." : "Weekly school schedule and uniform auto-synchronized.")
+                        .font(.system(.body, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+
+                HStack(spacing: 10) {
+                    if let week = client.timetableData?.weekNumber, !week.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "number.circle.fill")
+                                .foregroundColor(.cyan)
+                            Text(isVi ? "Tuần \(week)" : "Week \(week)")
+                                .font(.system(.callout, design: .rounded).bold())
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.cyan.opacity(0.15))
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.3), lineWidth: 1))
+                    }
+
+                    Button {
+                        Task {
+                            isSwitchingOled = true
+                            await client.switchDisplayView(view: "tkb")
+                            isSwitchingOled = false
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "display.2")
+                            Text(isVi ? "Hiện lên ESP32" : "Display on ESP32")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.indigo)
+                    .disabled(isSwitchingOled)
+
+                    Button {
+                        Task {
+                            isRefreshing = true
+                            await client.fetchTimetable()
+                            isRefreshing = false
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isRefreshing || client.isFetchingTimetable {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text(isVi ? "Làm mới" : "Refresh")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isRefreshing || client.isFetchingTimetable)
+                }
+            }
+
+            if client.isFetchingTimetable && client.timetableData == nil {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text(isVi ? "Đang tải dữ liệu thời khóa biểu..." : "Loading timetable data...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 200)
+            } else if let tt = client.timetableData {
+                VStack(spacing: 18) {
+                    // 1. TODAY AT TOP (MANDATORY REQUIREMENT)
+                    DayTimetableCard(
+                        title: isVi ? "Lịch học hôm nay" : "Today's Schedule",
+                        dayDto: tt.today,
+                        isToday: true,
+                        isVi: isVi
+                    )
+
+                    // 2. TOMORROW / NEXT SCHOOL DAY UNDERNEATH
+                    DayTimetableCard(
+                        title: isVi ? "Lịch học kế tiếp" : "Next School Day",
+                        dayDto: tt.tomorrow,
+                        isToday: false,
+                        isVi: isVi
+                    )
+                }
+            } else {
+                LiquidGlassCard(
+                    isVi ? "Thời khóa biểu trống" : "No Timetable Available",
+                    icon: "calendar.badge.exclamationmark",
+                    iconColor: .orange
+                ) {
+                    VStack(spacing: 14) {
+                        Text(isVi ? "Chưa có dữ liệu thời khóa biểu hoặc máy chủ đang ngoại tuyến." : "No timetable data available or server is offline.")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+
+                        Button(isVi ? "Tải lại lịch học" : "Fetch Schedule") {
+                            Task { await client.fetchTimetable() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                }
+            }
+        }
+        .onAppear {
+            if client.timetableData == nil {
+                Task { await client.fetchTimetable() }
+            }
+        }
+    }
+}
+
+private struct DayTimetableCard: View {
+    let title: String
+    let dayDto: DayScheduleDto?
+    let isToday: Bool
+    let isVi: Bool
+
+    var body: some View {
+        let dayName = dayDto?.displayDay ?? dayDto?.day ?? (isToday ? (isVi ? "Hôm nay" : "Today") : (isVi ? "Ngày mai" : "Tomorrow"))
+        let hasClasses = dayDto?.hasAnyClass ?? false
+        let dpSang = (dayDto?.uniformMorning ?? "").isEmpty ? (isVi ? "Tự do" : "Casual") : dayDto!.uniformMorning!
+        let dpChieu = dayDto?.uniformAfternoon ?? ""
+        let morningList = dayDto?.morning ?? []
+        let afternoonList = dayDto?.afternoon ?? []
+
+        LiquidGlassCard(
+            "\(title) • \(dayName)",
+            icon: isToday ? "sun.max.fill" : "calendar",
+            iconColor: isToday ? .cyan : .indigo
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Uniform Badges Row
+                HStack(spacing: 12) {
+                    // Morning uniform badge
+                    HStack(spacing: 6) {
+                        Image(systemName: "tshirt.fill")
+                            .foregroundColor(.orange)
+                        Text("\(isVi ? "Đồng phục sáng" : "AM Uniform"): \(dpSang)")
+                            .font(.system(.caption, design: .rounded).bold())
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.12))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.25), lineWidth: 1))
+
+                    // Afternoon uniform badge (if afternoon exists)
+                    if (dayDto?.hasAfternoon == true || !dpChieu.isEmpty) && !dpChieu.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "figure.walk")
+                                .foregroundColor(.pink)
+                            Text("\(isVi ? "Đồng phục chiều" : "PM Uniform"): \(dpChieu)")
+                                .font(.system(.caption, design: .rounded).bold())
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.pink.opacity(0.12))
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.pink.opacity(0.25), lineWidth: 1))
+                    }
+
+                    Spacer()
+
+                    if isToday {
+                        Text(isVi ? "HÔM NAY" : "TODAY")
+                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.cyan.opacity(0.2))
+                            .foregroundColor(.cyan)
+                            .cornerRadius(6)
+                    }
+                }
+
+                if !hasClasses && morningList.isEmpty && afternoonList.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "moon.stars.fill")
+                            .foregroundColor(.secondary)
+                        Text(isVi ? "Không có tiết học (Nghỉ học)" : "No classes scheduled (Day off)")
+                            .font(.system(.body, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 10)
+                } else {
+                    HStack(alignment: .top, spacing: 18) {
+                        // Morning Column
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sun.and.horizon.fill")
+                                    .foregroundColor(.orange)
+                                Text(isVi ? "Tiết học sáng" : "Morning Sessions")
+                                    .font(.system(.subheadline, design: .rounded).bold())
+                            }
+
+                            if morningList.isEmpty {
+                                Text(isVi ? "Nghỉ học sáng" : "No morning classes")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.vertical, 4)
+                            } else {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(Array(morningList.enumerated()), id: \.offset) { _, period in
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(Color.cyan)
+                                                .frame(width: 5, height: 5)
+                                            Text(period)
+                                                .font(.system(.body, design: .rounded).weight(.medium))
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.04)))
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider()
+
+                        // Afternoon Column
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sunset.fill")
+                                    .foregroundColor(.purple)
+                                Text(isVi ? "Tiết học chiều" : "Afternoon Sessions")
+                                    .font(.system(.subheadline, design: .rounded).bold())
+                            }
+
+                            if afternoonList.isEmpty {
+                                Text(isVi ? "Nghỉ học chiều" : "No afternoon classes")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.vertical, 4)
+                            } else {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(Array(afternoonList.enumerated()), id: \.offset) { _, period in
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(Color.purple)
+                                                .frame(width: 5, height: 5)
+                                            Text(period)
+                                                .font(.system(.body, design: .rounded).weight(.medium))
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.04)))
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 }

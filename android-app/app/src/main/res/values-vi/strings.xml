@@ -79,7 +79,7 @@
 
     <!-- Pairing -->
     <string name="pair_title">Ghép đôi với DeskFlow</string>
-    <string name="pair_desc">Tạo mã ghép đôi 8 ký tự qua Discord (/focus_mode pair) và nhập vào ô bên dưới.</string>
+    <string name="pair_desc">Tạo mã ghép đôi 8 ký tự qua Discord (/app pair) và nhập vào ô bên dưới.</string>
     <string name="pairing_code_label">Mã ghép đôi</string>
     <string name="pairing_code_placeholder">Ví dụ: A1B2C3D4</string>
     <string name="device_name_label">Tên thiết bị</string>
@@ -93,7 +93,7 @@
     <string name="start_focus_title">Bắt đầu phiên học</string>
     <string name="duration_label">Thời lượng (Phút)</string>
     <string name="duration_15m">15 phút</string>
-    <string name="duration_25m">25 phút (Pomodoro)</string>
+    <string name="duration_25m">25 phút</string>
     <string name="duration_45m">45 phút</string>
     <string name="duration_60m">60 phút</string>
     <string name="reason_label">Mục tiêu / Ghi chú</string>
@@ -187,7 +187,7 @@
     <string name="api_test_http_status">Mã trạng thái HTTP: %1$d</string>
     <string name="api_test_diagnostics">Thông tin chẩn đoán</string>
     <string name="about_title">Giới thiệu DeskFlow</string>
-    <string name="version_label">Phiên bản 1.0.0</string>
+    <string name="version_label">Phiên bản 1.0.3</string>
     <string name="about_desc">DeskFlow là hệ sinh thái năng suất IoT kết nối đa nền tảng gồm Discord, tiện ích web, phần cứng IoT và ứng dụng Android.</string>
 
     <!-- Dedicated Timetable Screen -->
@@ -261,11 +261,11 @@
     <string name="quote_generate_btn">Sinh danh ngôn đẩy xuống trạm</string>
     <string name="quote_success">Đã sinh và đẩy danh ngôn xuống trạm!</string>
 
-    <string name="timer_title">Hẹn giờ Pomodoro tập trung</string>
+    <string name="timer_title">Hẹn giờ đếm ngược</string>
     <string name="timer_duration_label">Thời lượng (VD: 25m, 1h)</string>
     <string name="timer_note_label">Mục tiêu học tập</string>
-    <string name="timer_start_btn">Bắt đầu Pomodoro</string>
-    <string name="timer_success">Đã bắt đầu chế độ Pomodoro!</string>
+    <string name="timer_start_btn">Bắt đầu đếm ngược</string>
+    <string name="timer_success">Đã bắt đầu hẹn giờ đếm ngược!</string>
 
     <string name="settings_darkmode_title">Lịch trình Dark Mode</string>
     <string name="settings_weather_title">Cảnh báo mưa buổi sáng</string>
@@ -280,7 +280,7 @@
     <string name="cat_alarms">Báo thức &amp; Còi báo</string>
     <string name="cat_alarms_desc">Báo thức toán học, dập còi và hẹn giờ</string>
     <string name="cat_tools">Công cụ học tập &amp; AI</string>
-    <string name="cat_tools_desc">Giấy nhớ, đếm ngược thi, danh ngôn &amp; Pomodoro</string>
+    <string name="cat_tools_desc">Giấy nhớ, đếm ngược thi, danh ngôn &amp; hẹn giờ</string>
     <string name="cat_settings">Cấu hình trạm từ xa</string>
     <string name="cat_settings_desc">Lịch Dark Mode, cảnh báo mưa, ngưỡng bảo vệ pin</string>
     <string name="cat_system">Giám sát hệ thống</string>
@@ -298,7 +298,7 @@
     <string name="subcat_alarm_schedule_desc">Cài đặt mốc giờ báo thức dậy học bài</string>
     <string name="subcat_tools_notes">Ghi chú &amp; Đếm ngược</string>
     <string name="subcat_tools_notes_desc">Ghim giấy nhớ lên trạm và đếm ngược ngày thi</string>
-    <string name="subcat_tools_ai">Groq AI &amp; Pomodoro</string>
+    <string name="subcat_tools_ai">Groq AI &amp; Hẹn giờ đếm ngược</string>
     <string name="subcat_tools_ai_desc">Sinh danh ngôn tạo động lực và hẹn giờ học</string>
     <string name="subcat_settings_display">Lịch trình Dark Mode</string>
     <string name="subcat_settings_display_desc">Tùy chỉnh khung giờ Dark Mode tự động</string>
@@ -335,4 +335,19 @@
     <string name="overlay_grant">Cấp quyền</string>
     <string name="overlay_granted">Đã cấp quyền</string>
     <string name="overlay_banner">Chế độ tập trung đang bật</string>
+
+    <!-- Other Device Pairing / QR Login -->
+    <string name="settings_other_devices_title">Liên kết thiết bị khác</string>
+    <string name="settings_other_devices_desc">Quét mã QR hiển thị trên Desktop hoặc thiết bị khác để đăng nhập tài khoản nhanh chóng.</string>
+    <string name="settings_other_devices_prompt">Hướng camera về phía mã QR trên màn hình Desktop</string>
+    <string name="btn_scan_qr_other_device">Quét mã QR liên kết thiết bị khác</string>
+    <string name="dialog_pair_session_title">Đăng nhập thiết bị khác</string>
+    <string name="dialog_pair_session_desc">Bạn có muốn đăng nhập và cấp quyền cho thiết bị này không?</string>
+    <string name="dialog_pair_session_device_name_label">Tên thiết bị:</string>
+    <string name="dialog_pair_session_confirm">Đăng nhập</string>
+    <string name="dialog_pair_session_cancel">Hủy</string>
+    <string name="pair_session_success_msg">Đã đăng nhập thành công cho %1$s!</string>
+    <string name="pair_session_failed_msg">Đăng nhập thiết bị thất bại: %1$s</string>
+    <string name="pair_session_cancelled_msg">Đã hủy đăng nhập thiết bị</string>
+    <string name="pair_session_invalid_qr">Mã QR không hợp lệ hoặc thiếu mã phiên liên kết.</string>
 </resources>

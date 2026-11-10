@@ -32,8 +32,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import android.content.Intent
 import com.deskflow.app.DeskFlowApp
+import com.deskflow.app.data.local.SecurePreferences
+import com.deskflow.app.data.repository.ApiResult
+import com.deskflow.app.domain.model.ChallengeInfo
 import com.deskflow.app.service.FocusNotificationService
+import com.deskflow.app.ui.focus.ChallengeDialog
 import com.deskflow.app.ui.focus.FocusActiveNoticeDialog
 import com.deskflow.app.ui.navigation.Screen
 import com.deskflow.app.ui.onboarding.OnboardingScreen
@@ -44,8 +49,42 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
+    private val pendingOpenChallengeState = mutableStateOf(false)
+
+    override fun attachBaseContext(newBase: Context?) {
+        if (newBase == null) {
+            super.attachBaseContext(null)
+            return
+        }
+        val lang = try {
+            SecurePreferences(newBase).language
+        } catch (_: Exception) {
+            "vi"
+        }
+        val locale = Locale(lang.ifBlank { "vi" })
+        Locale.setDefault(locale)
+        val config = Configuration(newBase.resources.configuration).apply {
+            setLocale(locale)
+            setLayoutDirection(locale)
+        }
+        val localizedContext = newBase.createConfigurationContext(config)
+        super.attachBaseContext(localizedContext)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_CHALLENGE, false)) {
+            pendingOpenChallengeState.value = true
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (intent?.getBooleanExtra(EXTRA_OPEN_CHALLENGE, false) == true) {
+            pendingOpenChallengeState.value = true
+        }
 
         val app = application as DeskFlowApp
         val repository = app.focusRepository
@@ -103,6 +142,31 @@ class MainActivity : ComponentActivity() {
                         // State to ensure the Active Focus popup appears once per session transition
                         var hasShownActiveDialogForCurrentSession by rememberSaveable { mutableStateOf(false) }
                         var showActiveNoticeDialog by remember { mutableStateOf(false) }
+                        var activeChallengeInfo by remember { mutableStateOf<ChallengeInfo?>(null) }
+
+                        LaunchedEffect(pendingOpenChallengeState.value) {
+                            if (pendingOpenChallengeState.value) {
+                                pendingOpenChallengeState.value = false
+                                val res = repository.requestChallenge()
+                                if (res is ApiResult.Success) {
+                                    activeChallengeInfo = res.data
+                                }
+                            }
+                        }
+
+                        if (activeChallengeInfo != null) {
+                            ChallengeDialog(
+                                initialChallenge = activeChallengeInfo!!,
+                                repository = repository,
+                                onDismiss = { activeChallengeInfo = null },
+                                onSuccessUnlocked = {
+                                    activeChallengeInfo = null
+                                    coroutineScope.launch {
+                                        repository.refreshAll()
+                                    }
+                                }
+                            )
+                        }
 
                         // Automatically manage persistent notification service based on Focus Mode state
                         LaunchedEffect(focusState.isActive) {
@@ -127,6 +191,12 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onRequestDeactivation = {
                                     showActiveNoticeDialog = false
+                                    coroutineScope.launch {
+                                        val res = repository.requestChallenge()
+                                        if (res is ApiResult.Success) {
+                                            activeChallengeInfo = res.data
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -224,5 +294,9 @@ class MainActivity : ComponentActivity() {
 
         override val activityResultRegistry: ActivityResultRegistry
             get() = activity.activityResultRegistry
+    }
+
+    companion object {
+        const val EXTRA_OPEN_CHALLENGE = "com.deskflow.app.OPEN_CHALLENGE"
     }
 }

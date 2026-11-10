@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MACOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="$MACOS_DIR/dist"
-VERSION="${1:-${VERSION:-1.0.0}}"
+VERSION="${1:-${VERSION:-1.0.3}}"
 VERSION="${VERSION#v}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then

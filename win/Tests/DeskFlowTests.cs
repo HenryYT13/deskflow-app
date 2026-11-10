@@ -322,4 +322,84 @@ public class DeskFlowTests
         Assert.True(ok, msg);
         Assert.Equal("/api/app/control/morse/stop", capturedPath);
     }
+
+    [Fact]
+    public async Task GetTimetableTodayAsync_ParsesPayloadCorrectly()
+    {
+        var handler = new StubHttpMessageHandler(req =>
+        {
+            Assert.Equal("/api/app/control/timetable/today", req.RequestUri?.AbsolutePath);
+            var json = """
+            {
+                "success": true,
+                "data": {
+                    "week_number": "Tuần 10",
+                    "today": {
+                        "day": "Thứ 3",
+                        "display_day": "Thứ Ba",
+                        "morning": ["Toán", "Văn"],
+                        "dp_sang": "Áo trắng",
+                        "has_afternoon": true,
+                        "afternoon": ["Thể dục"],
+                        "dp_chieu": "Đồ thể dục",
+                        "has_any_class": true
+                    },
+                    "tomorrow": {
+                        "day": "Thứ 4",
+                        "morning": ["Lý", "Hóa"],
+                        "dp_sang": "Áo trắng",
+                        "has_afternoon": false,
+                        "afternoon": [],
+                        "dp_chieu": null,
+                        "has_any_class": true
+                    }
+                }
+            }
+            """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        });
+
+        var client = new DeskFlowApiClient(new WindowsAppSettings { ApiUrl = "https://mock.deskflow.local" }, new HttpClient(handler));
+        var (ok, data, _) = await client.GetTimetableTodayAsync();
+
+        Assert.True(ok);
+        Assert.NotNull(data);
+        Assert.Equal("Tuần 10", data.WeekNumber);
+        Assert.Equal("Áo trắng", data.Today?.DpSang);
+        Assert.Equal("Toán • Văn", data.Today?.MorningSummary);
+    }
+
+    [Fact]
+    public async Task CreatePairSessionAsync_SendsRequestAndParsesResponse()
+    {
+        string? capturedBody = null;
+        var handler = new StubHttpMessageHandler(async req =>
+        {
+            Assert.Equal("/api/focus/pair/session/create", req.RequestUri?.AbsolutePath);
+            capturedBody = await req.Content!.ReadAsStringAsync();
+            var json = """
+            {
+                "success": true,
+                "session_id": "sess-test-win",
+                "qr_payload": "deskflow://pair?session=sess-test-win",
+                "expires_in": 600
+            }
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        var client = new DeskFlowApiClient(new WindowsAppSettings { ApiUrl = "https://mock.deskflow.local" }, new HttpClient(handler));
+        var (ok, data, _) = await client.CreatePairSessionAsync("My PC", "windows");
+
+        Assert.True(ok);
+        Assert.NotNull(data);
+        Assert.Equal("sess-test-win", data.SessionId);
+        Assert.Contains("My PC", capturedBody);
+    }
 }

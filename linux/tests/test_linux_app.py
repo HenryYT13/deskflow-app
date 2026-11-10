@@ -87,6 +87,50 @@ class _MockBackendHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if self.path.startswith("/api/focus/pair/session/"):
+            self._send_json(
+                200,
+                {
+                    "success": True,
+                    "status": "approved",
+                    "device_id": "dev_qr_linux",
+                    "device_token": "token-qr-linux-888",
+                    "device_name": "Linux QR Workstation",
+                    "scopes": ["focus", "control", "spotify"],
+                },
+            )
+            return
+        if self.path == "/api/app/control/timetable/today":
+            self._send_json(
+                200,
+                {
+                    "success": True,
+                    "data": {
+                        "week_number": "Tuần 24",
+                        "today": {
+                            "day": "Thứ 4",
+                            "display_day": "Thứ 4",
+                            "morning": ["Tiết 1: Toán", "Tiết 2: Ngữ văn"],
+                            "dp_sang": "Áo trắng",
+                            "has_afternoon": True,
+                            "afternoon": ["Tiết 1: Thể dục"],
+                            "dp_chieu": "Đồ thể dục",
+                            "has_any_class": True,
+                        },
+                        "tomorrow": {
+                            "day": "Thứ 5",
+                            "display_day": "Thứ 5",
+                            "morning": ["Tiết 1: Vật lý"],
+                            "dp_sang": "Áo dài",
+                            "has_afternoon": False,
+                            "afternoon": [],
+                            "dp_chieu": "",
+                            "has_any_class": True,
+                        },
+                    },
+                },
+            )
+            return
         # Emulate backend cors_middleware behavior on unknown route (404 -> invalid_request)
         self._send_json(404, {"error": {"code": "invalid_request"}})
 
@@ -146,6 +190,26 @@ class _MockBackendHandler(BaseHTTPRequestHandler):
             }
             self.notes_db.append(new_note)
             self._send_json(200, {"success": True, "notes": list(self.notes_db)})
+            return
+
+        if self.path == "/api/focus/pair/session/create":
+            self._send_json(
+                200,
+                {
+                    "success": True,
+                    "session_id": "sess_linux_test_123",
+                    "qr_payload": "deskflow://pair?session=sess_linux_test_123&server=http://localhost&name=Linux",
+                    "expires_in": 600,
+                },
+            )
+            return
+
+        if self.path == "/api/app/control/clock-style":
+            self._send_json(200, {"success": True, "data": body})
+            return
+
+        if self.path in ("/api/app/control/display/switch-view", "/api/app/control/display/view"):
+            self._send_json(200, {"success": True, "view": body.get("view")})
             return
 
         # Unknown POST route -> backend returns 404/405 wrapped as invalid_request
@@ -486,6 +550,52 @@ class TestDeskFlowLinuxApp(unittest.TestCase):
         self.assertEqual(encoded, "... --- ...")
         decoded = MorseCodeConverter.morse_to_text("... --- ...")
         self.assertEqual(decoded, "SOS")
+
+    def test_qr_session_pairing_flow(self) -> None:
+        """Verifies QR session creation, polling approval, and auto-pairing."""
+        # 1. Create pair session
+        res_create = self.client.create_pair_session(device_name="Linux Workstation", platform="linux")
+        self.assertTrue(res_create.ok)
+        self.assertEqual(res_create.data.get("session_id"), "sess_linux_test_123")
+        self.assertIn("deskflow://pair?session=", res_create.data.get("qr_payload", ""))
+
+        # 2. Poll session status -> returns approved and auto-saves token/device_id
+        res_status = self.client.get_pair_session_status("sess_linux_test_123")
+        self.assertTrue(res_status.ok)
+        self.assertEqual(res_status.data.get("status"), "approved")
+        self.assertTrue(self.store.config.is_paired)
+        self.assertEqual(self.store.config.device_id, "dev_qr_linux")
+        self.assertEqual(self.store.config.device_token, "token-qr-linux-888")
+
+    def test_clock_accent_color(self) -> None:
+        """Verifies accent color inclusion in clock style requests."""
+        # Test set_clock_style with accent_color
+        res = self.client.set_clock_style(3, accent_color="#38BDF8")
+        self.assertTrue(res.ok)
+        body = _MockBackendHandler.last_request_body
+        self.assertEqual(body.get("style"), "digital_neon")
+        self.assertEqual(body.get("accent_color"), "#38BDF8")
+
+        # Test set_clock_accent_color directly
+        res2 = self.client.set_clock_accent_color("#10B981")
+        self.assertTrue(res2.ok)
+        body2 = _MockBackendHandler.last_request_body
+        self.assertEqual(body2.get("accent_color"), "#10B981")
+
+    def test_timetable_and_view_switching(self) -> None:
+        """Verifies timetable retrieval and display view switching to tkb."""
+        res, tt = self.client.get_timetable_today()
+        self.assertTrue(res.ok)
+        self.assertIsNotNone(tt)
+        self.assertEqual(tt.week_number, "Tuần 24")
+        self.assertEqual(tt.today.day, "Thứ 4")
+        self.assertEqual(tt.today.dp_sang, "Áo trắng")
+        self.assertEqual(tt.today.morning, ["Tiết 1: Toán", "Tiết 2: Ngữ văn"])
+        self.assertEqual(tt.tomorrow.day, "Thứ 5")
+
+        # Switch view to tkb
+        res_view = self.client.switch_display_view("tkb")
+        self.assertTrue(res_view.ok)
 
 
 if __name__ == "__main__":

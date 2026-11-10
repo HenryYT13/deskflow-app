@@ -12,7 +12,14 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .models import ConfigStore, CountdownItem, NoteItem, WeatherInterval
+from .models import (
+    ConfigStore,
+    CountdownItem,
+    DualDayTimetable,
+    NoteItem,
+    TimetableDay,
+    WeatherInterval,
+)
 
 
 def _configure_logger() -> logging.Logger:
@@ -360,6 +367,36 @@ class DeskFlowApiClient:
         )
         return res
 
+    def create_pair_session(self, device_name: Optional[str] = None, platform: str = "linux") -> ApiResult:
+        name = (device_name or self.config_store.config.device_name or "DeskFlow Linux GTK4").strip()
+        logger.info("[PairingSession] Creating dynamic QR pairing session for device_name='%s'", name)
+        return self.request(
+            "POST",
+            "/api/focus/pair/session/create",
+            payload={"device_name": name, "platform": platform},
+            authenticated=False,
+        )
+
+    def get_pair_session_status(self, session_id: str) -> ApiResult:
+        res = self.request(
+            "GET",
+            f"/api/focus/pair/session/{urllib.parse.quote(str(session_id).strip(), safe='')}",
+            authenticated=False,
+        )
+        if res.ok and isinstance(res.data, dict) and res.data.get("status") == "approved":
+            token = res.data.get("device_token")
+            dev_id = res.data.get("device_id")
+            if token and dev_id:
+                self.config_store.config.device_token = str(token).strip()
+                self.config_store.config.device_id = str(dev_id).strip()
+                if res.data.get("device_name"):
+                    self.config_store.config.device_name = str(res.data["device_name"]).strip()
+                if isinstance(res.data.get("scopes"), list):
+                    self.config_store.config.scopes = [str(s) for s in res.data["scopes"]]
+                self.config_store.save()
+                logger.info("[PairingSession] Session approved! Saved device credentials: %s", dev_id)
+        return res
+
     def unpair_device(self, device_id: Optional[str] = None) -> ApiResult:
         target_id = device_id or self.config_store.config.device_id
         payload = {"device_id": target_id} if target_id else {}
@@ -681,22 +718,48 @@ class DeskFlowApiClient:
     }
 
     def switch_display_view(self, view: str) -> ApiResult:
-        return self.request(
+        res = self.request(
             "POST",
-            "/api/app/control/display/view",
+            "/api/app/control/display/switch-view",
             payload={"view": view},
             authenticated=False,
         )
+        if not res.ok and res.status_code == 404:
+            res = self.request(
+                "POST",
+                "/api/app/control/display/view",
+                payload={"view": view},
+                authenticated=False,
+            )
+        return res
 
-    def set_clock_style(self, style: Any) -> ApiResult:
+    def set_clock_style(self, style: Any, accent_color: Optional[str] = None) -> ApiResult:
         if isinstance(style, int) or (isinstance(style, str) and style.isdigit()):
             code = self.CLOCK_STYLE_ID_TO_CODE.get(int(style), "digital_classic")
         else:
             code = str(style).strip()
+        payload: Dict[str, Any] = {"style": code}
+        if accent_color:
+            payload["accent_color"] = str(accent_color).strip()
         return self.request(
             "POST",
             "/api/app/control/clock-style",
-            payload={"style": code},
+            payload=payload,
+            authenticated=False,
+        )
+
+    def set_clock_accent_color(self, accent_color: str, style: Optional[Any] = None) -> ApiResult:
+        payload: Dict[str, Any] = {"accent_color": str(accent_color).strip()}
+        if style is not None:
+            if isinstance(style, int) or (isinstance(style, str) and style.isdigit()):
+                code = self.CLOCK_STYLE_ID_TO_CODE.get(int(style), "digital_classic")
+            else:
+                code = str(style).strip()
+            payload["style"] = code
+        return self.request(
+            "POST",
+            "/api/app/control/clock-style",
+            payload=payload,
             authenticated=False,
         )
 
@@ -723,8 +786,14 @@ class DeskFlowApiClient:
             payload={"duration": max(50, min(5000, int(duration_ms)))},
         )
 
-    def get_timetable_today(self) -> ApiResult:
-        return self.request("GET", "/api/app/control/timetable/today")
+    def get_timetable_today(self) -> Tuple[ApiResult, Optional[DualDayTimetable]]:
+        res = self.request("GET", "/api/app/control/timetable/today")
+        tt: Optional[DualDayTimetable] = None
+        if res.ok and isinstance(res.data, dict):
+            raw_data = res.data.get("data") if ("data" in res.data and isinstance(res.data["data"], dict)) else res.data
+            if isinstance(raw_data, dict):
+                tt = DualDayTimetable.from_dict(raw_data)
+        return res, tt
 
     def get_spotify_status(self) -> ApiResult:
         return self.request("GET", "/api/app/spotify/status")

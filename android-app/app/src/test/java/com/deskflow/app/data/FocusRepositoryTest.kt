@@ -617,7 +617,7 @@ class FocusRepositoryTest {
 
         // startTimer
         mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("""{"success": true, "duration": "25m"}"""))
-        val timerRes = repository.startTimer("25m", "Tap trung", true)
+        val timerRes = repository.startTimer("25m", "Tap trung")
         assertTrue(timerRes is ApiResult.Success)
     }
 
@@ -840,5 +840,50 @@ class FocusRepositoryTest {
             val body = recorded.body.readUtf8()
             assertTrue(body.contains("\"view\":\"$viewKey\""))
         }
+    }
+
+    @Test
+    fun testApprovePairSessionSuccess() = runTest {
+        testToken = "valid-token"
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"success": true, "device_id": "desk-123", "device_name": "My Laptop"}""")
+        )
+
+        val res = repository.approvePairSession(
+            serverUrl = null,
+            sessionId = "sess_abc123",
+            deviceName = "My Laptop"
+        )
+        assertTrue(res is ApiResult.Success)
+        val data = (res as ApiResult.Success).data
+        assertTrue(data.success)
+        assertEquals("desk-123", data.deviceId)
+        assertEquals("My Laptop", data.deviceName)
+
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("/api/focus/pair/session/sess_abc123/approve", recorded.path)
+        val body = recorded.body.readUtf8()
+        assertTrue(body.contains("\"device_name\":\"My Laptop\""))
+        assertTrue(body.contains("\"platform\":\"desktop\""))
+    }
+
+    @Test
+    fun testRejectPairSessionSuccess() = runTest {
+        testToken = "valid-token"
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"success": true}""")
+        )
+
+        val res = repository.rejectPairSession(
+            serverUrl = null,
+            sessionId = "sess_abc123"
+        )
+        assertTrue(res is ApiResult.Success)
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("/api/focus/pair/session/sess_abc123/reject", recorded.path)
     }
 }

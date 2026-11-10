@@ -535,3 +535,102 @@ public sealed class SpotifyVolumeRequest
     [JsonPropertyName("volume")]
     public int Volume { get; set; } = 50;
 }
+
+public sealed class PairSessionCreateRequest
+{
+    [JsonPropertyName("device_name")]
+    public string DeviceName { get; set; } = "DeskFlow Windows";
+
+    [JsonPropertyName("platform")]
+    public string Platform { get; set; } = "windows";
+}
+
+public sealed class PairSessionCreateResponse
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("session_id")]
+    public string? SessionId { get; set; }
+
+    [JsonPropertyName("qr_payload")]
+    public string? QrPayload { get; set; }
+
+    [JsonPropertyName("expires_in")]
+    public int ExpiresIn { get; set; } = 600;
+}
+
+public sealed class PairSessionStatusResponse
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "pending";
+
+    [JsonPropertyName("device_id")]
+    public string? DeviceId { get; set; }
+
+    [JsonPropertyName("device_token")]
+    public string? DeviceToken { get; set; }
+
+    [JsonPropertyName("device_name")]
+    public string? DeviceName { get; set; }
+
+    [JsonPropertyName("scopes")]
+    public List<string>? Scopes { get; set; }
+}
+
+public sealed class TimetableDayDto
+{
+    [JsonPropertyName("day")]
+    public string Day { get; set; } = string.Empty;
+
+    [JsonPropertyName("display_day")]
+    public string? DisplayDay { get; set; }
+
+    [JsonPropertyName("morning")]
+    public List<string> Morning { get; set; } = new();
+
+    [JsonPropertyName("dp_sang")]
+    public string DpSang { get; set; } = "Tự do";
+
+    [JsonPropertyName("has_afternoon")]
+    public bool HasAfternoon { get; set; }
+
+    [JsonPropertyName("afternoon")]
+    public List<string> Afternoon { get; set; } = new();
+
+    [JsonPropertyName("dp_chieu")]
+    public string? DpChieu { get; set; }
+
+    [JsonPropertyName("has_any_class")]
+    public bool HasAnyClass { get; set; }
+
+    [JsonIgnore]
+    public string MorningSummary => Morning.Count > 0 ? string.Join(" • ", Morning) : "Nghỉ sáng";
+
+    [JsonIgnore]
+    public string AfternoonSummary => (HasAfternoon && Afternoon.Count > 0) ? string.Join(" • ", Afternoon) : "Không có tiết chiều";
+}
+
+public sealed class DualDayTimetableData
+{
+    [JsonPropertyName("week_number")]
+    public string WeekNumber { get; set; } = "N/A";
+
+    [JsonPropertyName("today")]
+    public TimetableDayDto? Today { get; set; }
+
+    [JsonPropertyName("tomorrow")]
+    public TimetableDayDto? Tomorrow { get; set; }
+}
+
+public sealed class TimetableTodayResponse
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("data")]
+    public DualDayTimetableData? Data { get; set; }
+}

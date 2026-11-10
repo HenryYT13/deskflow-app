@@ -56,8 +56,13 @@ public final class DeskFlowApiClient: ObservableObject {
             Task { await setEsp32Theme(mode: esp32ThemeMode) }
         }
     }
+    @Published public var clockAccentColor: String {
+        didSet { defaults.set(clockAccentColor, forKey: "deskflow.clockAccentColor") }
+    }
 
     // Published domain state
+    @Published public private(set) var timetableData: TimetableDataWrapper?
+    @Published public private(set) var isFetchingTimetable: Bool = false
     @Published public private(set) var notes: [NoteItem] = []
     @Published public private(set) var deletingNoteIds: Set<String> = []
     @Published public private(set) var countdowns: [CountdownItem] = []
@@ -143,6 +148,7 @@ public final class DeskFlowApiClient: ObservableObject {
         self.appLanguage = initialLang
         L10n.lang = initialLang
         self.esp32ThemeMode = defaults.string(forKey: "deskflow.esp32ThemeMode") ?? "sync"
+        self.clockAccentColor = defaults.string(forKey: "deskflow.clockAccentColor") ?? "#38BDF8"
     }
 
     private func logDiagnostic(_ message: String) {
@@ -296,6 +302,66 @@ public final class DeskFlowApiClient: ObservableObject {
         deviceToken = nil
         deviceId = nil
         statusBannerMessage = "Device unpaired."
+    }
+
+    // MARK: - Dynamic Pairing Session (QR & Polling)
+
+    public func createPairingSession() async -> PairSessionCreateResponse? {
+        do {
+            let req = try buildRequest(
+                path: "/api/focus/pair/session/create",
+                method: "POST",
+                body: [
+                    "device_name": deviceName,
+                    "platform": "macos"
+                ],
+                authenticated: false
+            )
+            let (data, response) = try await session.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return nil }
+            logDiagnostic("[PairingSession] <- POST /api/focus/pair/session/create status=\(http.statusCode)")
+            if http.statusCode == 200 {
+                return try? JSONDecoder().decode(PairSessionCreateResponse.self, from: data)
+            }
+            return nil
+        } catch {
+            logDiagnostic("[PairingSession] Create network error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    public func pollPairingSession(sessionId: String) async -> PairSessionStatusResponse? {
+        let cleanId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanId.isEmpty else { return nil }
+        do {
+            let req = try buildRequest(
+                path: "/api/focus/pair/session/\(cleanId)",
+                method: "GET",
+                authenticated: false
+            )
+            let (data, response) = try await session.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return nil }
+            if http.statusCode == 200 {
+                guard let decoded = try? JSONDecoder().decode(PairSessionStatusResponse.self, from: data) else { return nil }
+                if decoded.status == "approved",
+                   let token = decoded.deviceToken, !token.isEmpty,
+                   let did = decoded.deviceId, !did.isEmpty {
+                    self.deviceToken = token
+                    self.deviceId = did
+                    if let dname = decoded.deviceName, !dname.isEmpty {
+                        self.deviceName = dname
+                    }
+                    self.statusBannerMessage = appLanguage == "vi" ? "Ghép nối thành công!" : "Paired with DeskFlow backend!"
+                    self.errorBannerMessage = nil
+                    logDiagnostic("[PairingSession] Approved and credentials saved for device_id=\(did)")
+                    await refreshAll()
+                }
+                return decoded
+            }
+            return nil
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Notes CRUD & Authoritative Deletion (/api/app/control/notes)
@@ -601,12 +667,17 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
 
-    public func setClockStyle(style: String) async {
+    public func setClockStyle(style: String, accentColor: String? = nil) async {
         let code = style.trimmingCharacters(in: .whitespacesAndNewlines)
+        let color = accentColor ?? clockAccentColor
+        var body: [String: Any] = [
+            "style": code,
+            "accent_color": color
+        ]
         guard let req = try? buildRequest(
             path: "/api/app/control/clock-style",
             method: "POST",
-            body: ["style": code],
+            body: body,
             authenticated: false
         ) else { return }
         do {
@@ -622,9 +693,43 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
 
-    public func setClockStyle(style: Int) async {
+    public func setClockStyle(style: Int, accentColor: String? = nil) async {
         let code = Self.clockStyleIdToCode[style] ?? "digital_classic"
-        await setClockStyle(style: code)
+        await setClockStyle(style: code, accentColor: accentColor)
+    }
+
+    public func setClockAccentColor(_ hex: String) async {
+        let clean = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        self.clockAccentColor = clean
+        guard let req = try? buildRequest(
+            path: "/api/app/control/clock-style",
+            method: "POST",
+            body: ["accent_color": clean],
+            authenticated: false
+        ) else { return }
+        _ = try? await session.data(for: req)
+        statusBannerMessage = appLanguage == "vi" ? "Đã đổi màu nhấn đồng hồ: \(clean)" : "Clock accent color updated to \(clean)."
+    }
+
+    // MARK: - Timetable (/api/app/control/timetable/today)
+
+    public func fetchTimetable() async {
+        isFetchingTimetable = true
+        defer { isFetchingTimetable = false }
+        do {
+            let req = try buildRequest(path: "/api/app/control/timetable/today", method: "GET", authenticated: true)
+            let (data, response) = try await session.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return }
+            if http.statusCode == 200 {
+                let decoded = try JSONDecoder().decode(TimetableResponse.self, from: data)
+                self.timetableData = decoded.data
+                logDiagnostic("[Timetable] Successfully loaded schedule for week \(decoded.data?.weekNumber ?? "N/A")")
+            } else {
+                logDiagnostic("[Timetable] Server returned status \(http.statusCode)")
+            }
+        } catch {
+            logDiagnostic("[Timetable] Fetch error: \(error.localizedDescription)")
+        }
     }
 
     public func refreshAll() async {
@@ -637,6 +742,7 @@ public final class DeskFlowApiClient: ObservableObject {
         await fetchSelectedDisplayDevice()
         await fetchSystemStatus()
         await fetchSpotifyStatus()
+        await fetchTimetable()
     }
 
     public func fetchSpotifyStatus() async {

@@ -25,6 +25,20 @@ data class PairResponse(
 )
 
 @Serializable
+data class PairSessionApproveRequest(
+    @SerialName("device_name") val deviceName: String,
+    @SerialName("scopes") val scopes: List<String>,
+    @SerialName("platform") val platform: String
+)
+
+@Serializable
+data class PairSessionApproveResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("device_id") val deviceId: String? = null,
+    @SerialName("device_name") val deviceName: String? = null
+)
+
+@Serializable
 data class ChallengeDto(
     @SerialName("active") val active: Boolean = true,
     @SerialName("challenge_id") val challengeId: String,

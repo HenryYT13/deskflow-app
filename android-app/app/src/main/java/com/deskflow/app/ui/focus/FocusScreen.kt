@@ -1,7 +1,12 @@
 package com.deskflow.app.ui.focus
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,16 +21,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.deskflow.app.R
 import com.deskflow.app.data.model.FocusSessionDto
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
 import com.deskflow.app.domain.model.ChallengeInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -49,6 +58,21 @@ fun FocusScreen(
 
     var activeDialogChallenge by remember { mutableStateOf<ChallengeInfo?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Countdown State for Active Session
+    var liveRemainingSeconds by remember(focusState.remainingSeconds, focusState.isActive) {
+        mutableLongStateOf(
+            focusState.remainingSeconds?.takeIf { it > 0 }
+                ?: (focusState.durationMinutes.coerceAtLeast(1) * 60L)
+        )
+    }
+
+    LaunchedEffect(focusState.isActive, liveRemainingSeconds) {
+        if (focusState.isActive && liveRemainingSeconds > 0) {
+            delay(1000L)
+            liveRemainingSeconds--
+        }
+    }
 
     LaunchedEffect(Unit) {
         repository.refreshStatus()
@@ -80,17 +104,31 @@ fun FocusScreen(
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = if (focusState.isActive)
-                                stringResource(R.string.status_active)
-                            else
-                                stringResource(R.string.status_inactive),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (focusState.isActive)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (focusState.isActive) Color(0xFF10B981)
+                                        else MaterialTheme.colorScheme.outline
+                                    )
+                            )
+                            Text(
+                                text = if (focusState.isActive)
+                                    stringResource(R.string.status_active)
+                                else
+                                    stringResource(R.string.status_inactive),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (focusState.isActive)
+                                    Color(0xFF10B981)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -168,55 +206,185 @@ fun FocusScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        if (focusState.focusActive) {
-                            // Active Session State Card
+                        if (focusState.isActive) {
+                            // ==================== ACTIVE FOCUS MODE ====================
+                            val totalSec = (focusState.durationMinutes.coerceAtLeast(1) * 60L).toFloat()
+                            val progress = if (totalSec > 0) {
+                                (liveRemainingSeconds.toFloat() / totalSec).coerceIn(0f, 1f)
+                            } else 1f
+                            val animatedProgress by animateFloatAsState(
+                                targetValue = progress,
+                                animationSpec = tween(durationMillis = 500),
+                                label = "gauge_progress"
+                            )
+
+                            val elapsedSec = (totalSec.toLong() - liveRemainingSeconds).coerceAtLeast(0L)
+                            val elapsedMin = elapsedSec / 60
+                            val elapsedRestSec = elapsedSec % 60
+
+                            val remMin = liveRemainingSeconds / 60
+                            val remSec = liveRemainingSeconds % 60
+                            val timeDisplay = String.format(Locale.getDefault(), "%02d:%02d", remMin, remSec)
+
+                            // Glowing circular countdown gauge Card
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(24.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                shape = RoundedCornerShape(28.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(24.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(20.dp)
                                 ) {
+                                    // Circular Countdown Gauge
                                     Box(
-                                        modifier = Modifier
-                                            .size(72.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.size(230.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(40.dp),
-                                            tint = MaterialTheme.colorScheme.error
+                                        // Background Track Ring
+                                        CircularProgressIndicator(
+                                            progress = { 1f },
+                                            modifier = Modifier.fillMaxSize(),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            strokeWidth = 14.dp,
+                                            trackColor = Color.Transparent
+                                        )
+
+                                        // Glowing Active Progress Arc
+                                        CircularProgressIndicator(
+                                            progress = { animatedProgress },
+                                            modifier = Modifier.fillMaxSize(),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            strokeWidth = 14.dp,
+                                            trackColor = Color.Transparent
+                                        )
+
+                                        // Gauge Center Info
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Lock,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                            Text(
+                                                text = timeDisplay,
+                                                style = MaterialTheme.typography.displaySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.time_remaining).uppercase(),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                letterSpacing = 1.2.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    // Target Goal Badge
+                                    val goalText = focusState.reason.ifBlank {
+                                        stringResource(R.string.card_focus_title)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Flag,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = goalText,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+
+                                    // Stats Row: Total Duration vs Elapsed
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = "Mục tiêu ban đầu",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(Modifier.height(4.dp))
+                                                Text(
+                                                    text = "${focusState.durationMinutes} phút",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = "Đã trôi qua",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(Modifier.height(4.dp))
+                                                Text(
+                                                    text = String.format(Locale.getDefault(), "%02d:%02d", elapsedMin, elapsedRestSec),
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (actionError != null) {
+                                        Text(
+                                            text = actionError!!,
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = TextAlign.Center
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    Text(
-                                        text = stringResource(R.string.status_active),
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Text(
-                                        text = stringResource(R.string.focus_active_notice),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
-                                    )
-
-                                    Spacer(modifier = Modifier.height(24.dp))
-
+                                    // Sleek Unlock Math Challenge Button
                                     Button(
                                         onClick = {
                                             isLoading = true
@@ -235,93 +403,147 @@ fun FocusScreen(
                                             }
                                         },
                                         enabled = !isLoading,
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        ),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(52.dp),
-                                        shape = RoundedCornerShape(14.dp)
+                                            .height(54.dp),
+                                        shape = RoundedCornerShape(16.dp)
                                     ) {
                                         if (isLoading) {
-                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.onError
+                                            )
                                         } else {
                                             Icon(imageVector = Icons.Default.Calculate, contentDescription = null)
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text(stringResource(R.string.btn_request_challenge), fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = stringResource(R.string.btn_request_challenge),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
                             }
                         } else {
-                            // Idle State Card (Start Focus Session)
+                            // ==================== IDLE STATE: START FOCUS ====================
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(24.dp),
+                                shape = RoundedCornerShape(28.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(22.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        .padding(24.dp),
+                                    verticalArrangement = Arrangement.spacedBy(18.dp)
                                 ) {
+                                    // Header with Gradient Accent Icon
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                                .size(48.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(
+                                                    Brush.linearGradient(
+                                                        listOf(Color(0xFF0284C7), Color(0xFF6366F1))
+                                                    )
+                                                ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.PlayArrow,
+                                                imageVector = Icons.Default.SelfImprovement,
                                                 contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary
+                                                tint = Color.White,
+                                                modifier = Modifier.size(28.dp)
                                             )
                                         }
+                                        Column {
+                                            Text(
+                                                text = stringResource(R.string.start_focus_title),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Khóa xao nhãng & đồng bộ mọi thiết bị",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                                    // Duration Selector: 15m, 25m, 45m, 60m, 90m
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(
-                                            text = stringResource(R.string.start_focus_title),
-                                            style = MaterialTheme.typography.titleLarge,
+                                            text = stringResource(R.string.duration_label),
+                                            style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
-                                    }
-
-                                    Text(
-                                        text = stringResource(R.string.duration_label),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-
-                                    // Preset Duration Chips
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        listOf(15, 25, 45, 60).forEach { mins ->
-                                            val isSelected = selectedDuration == mins
-                                            FilterChip(
-                                                selected = isSelected,
-                                                onClick = { selectedDuration = mins },
-                                                label = { Text("${mins}m") },
-                                                modifier = Modifier.weight(1f)
-                                            )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            listOf(15, 25, 45, 60, 90).forEach { mins ->
+                                                val isSelected = selectedDuration == mins
+                                                FilterChip(
+                                                    selected = isSelected,
+                                                    onClick = { selectedDuration = mins },
+                                                    label = {
+                                                        Text(
+                                                            text = "${mins}m",
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                    },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
                                         }
                                     }
 
-                                    OutlinedTextField(
-                                        value = reasonText,
-                                        onValueChange = { reasonText = it },
-                                        label = { Text(stringResource(R.string.reason_label)) },
-                                        placeholder = { Text(stringResource(R.string.reason_placeholder)) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                        singleLine = true
-                                    )
+                                    // Study Goal Input
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.reason_label),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        OutlinedTextField(
+                                            value = reasonText,
+                                            onValueChange = { reasonText = it },
+                                            placeholder = { Text(stringResource(R.string.reason_placeholder)) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp),
+                                            singleLine = true
+                                        )
+
+                                        // Quick suggestion chips
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            listOf("Ôn thi Toán", "Lập trình", "Đọc sách", "Tiếng Anh").forEach { suggestion ->
+                                                SuggestionChip(
+                                                    onClick = { reasonText = suggestion },
+                                                    label = { Text(suggestion, style = MaterialTheme.typography.labelSmall) },
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                            }
+                                        }
+                                    }
 
                                     if (actionError != null) {
                                         Text(
@@ -331,6 +553,7 @@ fun FocusScreen(
                                         )
                                     }
 
+                                    // Animated Start Focus Button
                                     Button(
                                         onClick = {
                                             isLoading = true
@@ -346,15 +569,26 @@ fun FocusScreen(
                                         enabled = !isLoading,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(52.dp),
-                                        shape = RoundedCornerShape(14.dp)
+                                            .height(54.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary
+                                        )
                                     ) {
                                         if (isLoading) {
-                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.onPrimary
+                                            )
                                         } else {
                                             Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text(stringResource(R.string.btn_start_focus), fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = stringResource(R.string.btn_start_focus),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
@@ -363,7 +597,7 @@ fun FocusScreen(
                     }
                 }
                 1 -> {
-                    // TAB 1: HISTORY (MANDATORY REQUIREMENT: REAL PERSISTED HISTORY)
+                    // TAB 1: HISTORY (PERSISTED HISTORY)
                     if (focusHistory.isEmpty()) {
                         Box(
                             modifier = Modifier

@@ -12,15 +12,18 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk
 
+import io
 from .api_client import ApiResult, DeskFlowApiClient, logger
 from .models import (
     AlarmItem,
     ConfigStore,
     CountdownItem,
+    DualDayTimetable,
     MorseCodeConverter,
     NoteItem,
     PairedDeviceItem,
     ScheduledDarkModeEvaluator,
+    TimetableDay,
     WeatherInterval,
 )
 
@@ -55,6 +58,15 @@ CUSTOM_CSS = """
 }
 .deskflow-mono {
     font-family: "JetBrains Mono", "Monospace", monospace;
+}
+.deskflow-qr-frame {
+    background-color: #FFFFFF;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.oled-accent-text {
+    color: #38BDF8 !important;
 }
 .oled-bezel {
     background-color: #060911;
@@ -102,6 +114,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         ("station", "Phần cứng & Trạm ESP32", "preferences-desktop-display-symbolic"),
         ("spotify", "Spotify & Âm nhạc", "audio-x-generic-symbolic"),
         ("alarms", "Báo thức & Còi báo", "alarm-symbolic"),
+        ("tkb", "Thời khóa biểu (TKB)", "x-office-calendar-symbolic"),
         ("tools", "Công cụ & Groq AI", "document-edit-symbolic"),
         ("settings", "Cài đặt & Giao diện", "emblem-system-symbolic"),
     ]
@@ -112,7 +125,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         ("weather", "Weather", "Ha Long temperature & forecast"),
         ("notes", "Sticky Note", "Pinned reminder on station"),
         ("countdown", "Countdown", "Exam deadline countdown"),
-        ("focus", "Focus Mode", "Active Pomodoro timer"),
+        ("focus", "Chế độ tập trung", "Bộ hẹn giờ tập trung chuyên sâu"),
         ("stats", "Server Stats", "Host CPU & RAM utilization"),
         ("tkb", "Timetable", "Class schedule & uniform"),
         ("lyrics", "Spotify", "Live lyrics & now playing"),
@@ -146,10 +159,16 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self._deleting_countdown_ids: set[str] = set()
         self.preview_oled_view: str = "clock"
         self.preview_clock_style: int = 1
+        self.clock_accent_color: str = "#38BDF8"
+        self._qr_session_id: Optional[str] = None
+        self._qr_poll_source_id: Optional[int] = None
+        self._is_polling_qr: bool = False
+        self.clock_accent_provider = Gtk.CssProvider()
 
         self._load_css()
         self._build_ui()
         self.apply_theme_preference()
+        self._apply_clock_accent_color(self.clock_accent_color, notify_backend=False)
 
         # Periodic timer (every 15s) to evaluate Scheduled Dark Mode boundaries
         GLib.timeout_add_seconds(15, self._on_theme_timer_tick)
@@ -161,6 +180,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         if display is not None:
             Gtk.StyleContext.add_provider_for_display(
                 display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+            Gtk.StyleContext.add_provider_for_display(
+                display, self.clock_accent_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 10
             )
 
     def _build_ui(self) -> None:
@@ -232,6 +254,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.content_stack.add_named(self._build_station_page(), "station")
         self.content_stack.add_named(self._build_spotify_page(), "spotify")
         self.content_stack.add_named(self._build_alarms_page(), "alarms")
+        self.content_stack.add_named(self._build_tkb_page(), "tkb")
         self.content_stack.add_named(self._build_tools_page(), "tools")
         self.content_stack.add_named(self._build_settings_page(), "settings")
         # Direct aliases
@@ -362,19 +385,132 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         page_id = getattr(row, "page_id", "dashboard")
         self.content_stack.set_visible_child_name(page_id)
 
+    def _generate_qr_texture(self, payload: str) -> Optional[Gdk.Texture]:
+        try:
+            import qrcode
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                box_size=6,
+                border=2,
+            )
+            qr.add_data(payload)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            data = buf.getvalue()
+            gbytes = GLib.Bytes.new(data)
+            return Gdk.Texture.new_from_bytes(gbytes)
+        except Exception as e:
+            logger.error("[QR] Failed to generate QR texture: %s", e)
+            return None
+
+    def _start_qr_pairing_session(self) -> None:
+        if not hasattr(self, "gate_qr_picture"):
+            return
+        self._stop_qr_pairing_session()
+        self.gate_qr_status.set_text("Đang tạo phiên mã QR...")
+        self.gate_qr_picture.set_paintable(None)
+
+        def _on_created(res: ApiResult) -> None:
+            if not res.ok or not isinstance(res.data, dict) or not res.data.get("session_id"):
+                err = res.error_message or "Không thể tạo phiên ghép nối QR."
+                self.gate_qr_status.set_text(f"Lỗi: {err}")
+                return
+            sess_id = str(res.data["session_id"])
+            qr_payload = str(res.data.get("qr_payload") or "")
+            self._qr_session_id = sess_id
+            tex = self._generate_qr_texture(qr_payload)
+            if tex:
+                self.gate_qr_picture.set_paintable(tex)
+                self.gate_qr_status.set_text("Mở app DeskFlow trên điện thoại > Quét mã QR để ghép nối tự động.")
+            else:
+                self.gate_qr_status.set_text("Không thể tạo hình ảnh QR.")
+
+            self._is_polling_qr = True
+            self._qr_poll_source_id = GLib.timeout_add(1500, self._poll_pair_session_tick)
+
+        self._run_bg(lambda: self.api_client.create_pair_session(platform="linux"), _on_created)
+
+    def _poll_pair_session_tick(self) -> bool:
+        if not self._is_polling_qr or not self._qr_session_id or self.config_store.config.is_paired:
+            return False
+
+        sess_id = self._qr_session_id
+
+        def _check() -> None:
+            res = self.api_client.get_pair_session_status(sess_id)
+
+            def _handle_ui() -> bool:
+                if not self._is_polling_qr or self._qr_session_id != sess_id:
+                    return False
+                if res.ok and isinstance(res.data, dict):
+                    status = res.data.get("status")
+                    if status == "approved":
+                        self._stop_qr_pairing_session()
+                        self.show_toast("Đã ghép nối thiết bị thành công qua mã QR!")
+                        self._sync_pairing_state()
+                        self.refresh_all_async()
+                        return False
+                    elif status in ("rejected", "expired"):
+                        self._stop_qr_pairing_session()
+                        self.gate_qr_status.set_text("Phiên mã QR đã hết hạn hoặc bị từ chối. Bấm nút dưới để tạo lại.")
+                        return False
+                return False
+
+            GLib.idle_add(_handle_ui)
+
+        threading.Thread(target=_check, daemon=True).start()
+        return True
+
+    def _stop_qr_pairing_session(self) -> None:
+        self._is_polling_qr = False
+        if self._qr_poll_source_id is not None:
+            try:
+                GLib.source_remove(self._qr_poll_source_id)
+            except Exception:
+                pass
+            self._qr_poll_source_id = None
+
+    def _apply_clock_accent_color(self, hex_val: str, notify_backend: bool = True) -> None:
+        clean = (hex_val or "").strip().upper()
+        if not clean.startswith("#"):
+            clean = f"#{clean}"
+        if len(clean) != 7:
+            return
+        self.clock_accent_color = clean
+        css = f"""
+        .oled-accent-text {{
+            color: {clean} !important;
+        }}
+        """
+        self.clock_accent_provider.load_from_string(css)
+        self._update_oled_preview()
+        if hasattr(self, "clock_accent_entry"):
+            if self.clock_accent_entry.get_text().strip().upper() != clean:
+                self.clock_accent_entry.set_text(clean)
+        if notify_backend:
+            self._run_bg(
+                lambda: self.api_client.set_clock_style(self.preview_clock_style, accent_color=self.clock_accent_color),
+                lambda r: self.show_toast(f"Đã cập nhật màu đồng hồ: {clean}" if r.ok else r.error_message),
+            )
+
     def _sync_pairing_state(self) -> None:
         """Enforces Pairing Gate: if unpaired, blocks main UI until paired."""
         is_paired = self.config_store.config.is_paired
         if is_paired:
+            self._stop_qr_pairing_session()
             self.main_deck.set_visible_child_name("main")
             self.title_widget.set_subtitle(self._connection_subtitle())
             if hasattr(self, "unpair_btn"):
                 self.unpair_btn.set_sensitive(True)
         else:
             self.main_deck.set_visible_child_name("gate")
-            self.title_widget.set_subtitle("Chưa ghép nối • Yêu cầu mã liên kết")
+            self.title_widget.set_subtitle("Chưa ghép nối • Quét mã QR hoặc nhập mã")
             if hasattr(self, "unpair_btn"):
                 self.unpair_btn.set_sensitive(False)
+            self._start_qr_pairing_session()
 
     def _build_pairing_gate_page(self) -> Gtk.Widget:
         scroller = Gtk.ScrolledWindow()
@@ -383,12 +519,12 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         clamp = Adw.Clamp()
         clamp.set_maximum_size(660)
         clamp.set_tightening_threshold(480)
-        clamp.set_margin_top(40)
-        clamp.set_margin_bottom(40)
+        clamp.set_margin_top(30)
+        clamp.set_margin_bottom(30)
         clamp.set_margin_start(24)
         clamp.set_margin_end(24)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         clamp.set_child(box)
         scroller.set_child(clamp)
 
@@ -400,9 +536,48 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         box.append(status_page)
 
-        # Pairing action card
+        # QR Code Pairing Card
+        qr_group = Adw.PreferencesGroup(
+            title="Quét mã QR để ghép nối tức thì",
+            description="Mở ứng dụng DeskFlow trên điện thoại > Quét mã QR để tự động đăng nhập thiết bị.",
+        )
+        box.append(qr_group)
+
+        qr_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        qr_card.set_halign(Gtk.Align.CENTER)
+        qr_card.set_margin_top(8)
+        qr_card.set_margin_bottom(8)
+
+        qr_frame = Gtk.Box()
+        qr_frame.set_size_request(220, 220)
+        qr_frame.set_halign(Gtk.Align.CENTER)
+        qr_frame.add_css_class("deskflow-qr-frame")
+
+        self.gate_qr_picture = Gtk.Picture()
+        self.gate_qr_picture.set_size_request(200, 200)
+        self.gate_qr_picture.set_can_shrink(True)
+        self.gate_qr_picture.set_halign(Gtk.Align.CENTER)
+        self.gate_qr_picture.set_valign(Gtk.Align.CENTER)
+        qr_frame.append(self.gate_qr_picture)
+        qr_card.append(qr_frame)
+
+        self.gate_qr_status = Gtk.Label(label="Đang tạo phiên mã QR...")
+        self.gate_qr_status.add_css_class("caption")
+        self.gate_qr_status.set_wrap(True)
+        self.gate_qr_status.set_justify(Gtk.Justification.CENTER)
+        qr_card.append(self.gate_qr_status)
+
+        refresh_qr_btn = Gtk.Button(label="Làm mới mã QR")
+        refresh_qr_btn.add_css_class("flat")
+        refresh_qr_btn.set_halign(Gtk.Align.CENTER)
+        refresh_qr_btn.connect("clicked", lambda *_: self._start_qr_pairing_session())
+        qr_card.append(refresh_qr_btn)
+
+        qr_group.add(qr_card)
+
+        # Pairing action card (manual 8-character code entry)
         group = Adw.PreferencesGroup(
-            title="Nhập mã ghép nối từ Discord hoặc App",
+            title="Hoặc nhập mã ghép nối 8 ký tự thủ công",
             description="Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã 8 ký tự.",
         )
         box.append(group)
@@ -1153,6 +1328,143 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self._run_bg(self.api_client.get_alarms, _done)
 
     # =========================================================================
+    # Page: Thời khóa biểu (TKB / Timetable)
+    # =========================================================================
+    def _build_tkb_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        header_group = Adw.PreferencesGroup(
+            title="Thời khóa biểu (TKB) & Lịch học",
+            description="Lịch học các tiết Sáng, Chiều và quy định Đồng phục đồng bộ với vi điều khiển ESP32.",
+        )
+        page.add(header_group)
+
+        action_row = Adw.ActionRow(
+            title="Thông tin tuần học",
+            subtitle="Đang tải dữ liệu thời khóa biểu...",
+        )
+        self.tkb_action_row = action_row
+
+        self.tkb_week_badge = Gtk.Label(label="Tuần: --")
+        self.tkb_week_badge.add_css_class("deskflow-badge-pinned")
+        self.tkb_week_badge.set_valign(Gtk.Align.CENTER)
+        action_row.add_suffix(self.tkb_week_badge)
+
+        btn_sync_esp = Gtk.Button(label="Hiển thị TKB lên màn hình ESP32", valign=Gtk.Align.CENTER)
+        btn_sync_esp.add_css_class("suggested-action")
+        btn_sync_esp.connect("clicked", lambda *_: self._sync_tkb_to_esp32())
+        action_row.add_suffix(btn_sync_esp)
+
+        btn_refresh = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER)
+        btn_refresh.set_tooltip_text("Làm mới thời khóa biểu")
+        btn_refresh.connect("clicked", lambda *_: self.refresh_tkb_async())
+        action_row.add_suffix(btn_refresh)
+
+        header_group.add(action_row)
+
+        # Today Group
+        self.tkb_today_group = Adw.PreferencesGroup(
+            title="Hôm nay",
+            description="Lịch học và quy định đồng phục hôm nay.",
+        )
+        page.add(self.tkb_today_group)
+
+        self.tkb_today_dp_row = Adw.ActionRow(
+            title="Quy định đồng phục hôm nay",
+            subtitle="Sáng: Tự do • Chiều: Tự do",
+        )
+        self.tkb_today_group.add(self.tkb_today_dp_row)
+
+        self.tkb_today_morning_row = Adw.ActionRow(
+            title="Tiết học buổi Sáng",
+            subtitle="Đang cập nhật...",
+        )
+        self.tkb_today_group.add(self.tkb_today_morning_row)
+
+        self.tkb_today_afternoon_row = Adw.ActionRow(
+            title="Tiết học buổi Chiều",
+            subtitle="Đang cập nhật...",
+        )
+        self.tkb_today_group.add(self.tkb_today_afternoon_row)
+
+        # Tomorrow Group
+        self.tkb_tomorrow_group = Adw.PreferencesGroup(
+            title="Ngày mai / Kế tiếp",
+            description="Lịch học và quy định đồng phục ngày mai / buổi học kế tiếp.",
+        )
+        page.add(self.tkb_tomorrow_group)
+
+        self.tkb_tomorrow_dp_row = Adw.ActionRow(
+            title="Quy định đồng phục kế tiếp",
+            subtitle="Sáng: Tự do • Chiều: Tự do",
+        )
+        self.tkb_tomorrow_group.add(self.tkb_tomorrow_dp_row)
+
+        self.tkb_tomorrow_morning_row = Adw.ActionRow(
+            title="Tiết học buổi Sáng",
+            subtitle="Đang cập nhật...",
+        )
+        self.tkb_tomorrow_group.add(self.tkb_tomorrow_morning_row)
+
+        self.tkb_tomorrow_afternoon_row = Adw.ActionRow(
+            title="Tiết học buổi Chiều",
+            subtitle="Đang cập nhật...",
+        )
+        self.tkb_tomorrow_group.add(self.tkb_tomorrow_afternoon_row)
+
+        return page
+
+    def _sync_tkb_to_esp32(self) -> None:
+        self._run_bg(
+            lambda: self.api_client.switch_display_view("tkb"),
+            lambda r: self.show_toast("Đã gửi yêu cầu hiển thị TKB lên ESP32!" if r.ok else r.error_message),
+        )
+
+    def _apply_tkb_ui(self, tt: Optional[DualDayTimetable]) -> None:
+        if not tt or not hasattr(self, "tkb_action_row"):
+            return
+        self.tkb_week_badge.set_text(f"Tuần: {tt.week_number}")
+        self.tkb_action_row.set_subtitle(f"Tuần học hiện tại: {tt.week_number}")
+
+        today = tt.today
+        self.tkb_today_group.set_title(f"Hôm nay ({today.day})")
+        dp_today = f"Sáng: {today.dp_sang}" + (f" • Chiều: {today.dp_chieu}" if (today.has_afternoon and today.dp_chieu) else "")
+        self.tkb_today_dp_row.set_subtitle(dp_today)
+        m_today = " • ".join(today.morning) if today.morning else "Nghỉ học buổi sáng"
+        self.tkb_today_morning_row.set_subtitle(m_today)
+        if today.has_afternoon and today.afternoon:
+            a_today = " • ".join(today.afternoon)
+            self.tkb_today_afternoon_row.set_subtitle(a_today)
+        else:
+            self.tkb_today_afternoon_row.set_subtitle("Không có tiết học buổi chiều")
+
+        tom = tt.tomorrow
+        disp_tom = tom.display_day or tom.day
+        self.tkb_tomorrow_group.set_title(f"Ngày mai / Kế tiếp ({disp_tom})")
+        dp_tom = f"Sáng: {tom.dp_sang}" + (f" • Chiều: {tom.dp_chieu}" if (tom.has_afternoon and tom.dp_chieu) else "")
+        self.tkb_tomorrow_dp_row.set_subtitle(dp_tom)
+        m_tom = " • ".join(tom.morning) if tom.morning else "Nghỉ học buổi sáng"
+        self.tkb_tomorrow_morning_row.set_subtitle(m_tom)
+        if tom.has_afternoon and tom.afternoon:
+            a_tom = " • ".join(tom.afternoon)
+            self.tkb_tomorrow_afternoon_row.set_subtitle(a_tom)
+        else:
+            self.tkb_tomorrow_afternoon_row.set_subtitle("Không có tiết học buổi chiều")
+
+        if hasattr(self, "timetable_row"):
+            self.timetable_row.set_subtitle(f"{today.day}: {m_today} | ĐP: {today.dp_sang}")
+
+    def refresh_tkb_async(self) -> None:
+        def _done(res_and_tt: Tuple[ApiResult, Optional[DualDayTimetable]]) -> None:
+            res, tt = res_and_tt
+            if res.ok and tt:
+                self._apply_tkb_ui(tt)
+            else:
+                self.show_toast(f"TKB: {res.error_message or 'Không thể tải lịch học'}")
+
+        self._run_bg(self.api_client.get_timetable_today, _done)
+
+    # =========================================================================
     # Page 3: Sticky Notes (CRUD + Pin + Confirmation Dialog + Authoritative Delete)
     # =========================================================================
     def _build_notes_page(self) -> Gtk.Widget:
@@ -1763,6 +2075,55 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         clock_group.add(clock_flow)
 
+        # 2b. Clock Accent Color (7 Palette Swatches & Custom Hex)
+        accent_group = Adw.PreferencesGroup(
+            title="Màu điểm nhấn đồng hồ (Accent Color)",
+            description="Tùy chỉnh màu sắc kim và chữ số hiển thị trên màn hình OLED đồng hồ.",
+        )
+        page.add(accent_group)
+
+        swatches_row = Adw.ActionRow(
+            title="Bảng màu gợi ý",
+            subtitle="Sky Blue, Emerald Green, Amber Orange, Rose Red, Purple, Pink, White.",
+        )
+        accent_swatches = [
+            ("Sky Blue", "#38BDF8"),
+            ("Emerald", "#10B981"),
+            ("Amber", "#F59E0B"),
+            ("Rose", "#EF4444"),
+            ("Purple", "#8B5CF6"),
+            ("Pink", "#EC4899"),
+            ("White", "#FFFFFF"),
+        ]
+        for name, hx in accent_swatches:
+            b = Gtk.Button(label=name, valign=Gtk.Align.CENTER)
+            b.connect("clicked", lambda _b, col=hx: self._apply_clock_accent_color(col))
+            swatches_row.add_suffix(b)
+        accent_group.add(swatches_row)
+
+        self.clock_accent_entry = Adw.EntryRow(title="Mã màu Hex (#RRGGBB)")
+        self.clock_accent_entry.set_text(self.clock_accent_color)
+        apply_accent_btn = Gtk.Button(label="Áp dụng màu", valign=Gtk.Align.CENTER)
+        apply_accent_btn.add_css_class("suggested-action")
+        apply_accent_btn.connect("clicked", lambda *_: self._apply_clock_accent_color(self.clock_accent_entry.get_text().strip()))
+        self.clock_accent_entry.add_suffix(apply_accent_btn)
+
+        try:
+            acc_color_dialog = Gtk.ColorDialog()
+            self.acc_color_dialog_btn = Gtk.ColorDialogButton(dialog=acc_color_dialog)
+            self.acc_color_dialog_btn.set_valign(Gtk.Align.CENTER)
+            self.acc_color_dialog_btn.set_tooltip_text("Mở bảng chọn màu chi tiết")
+            def _on_acc_color_notify(btn, _pspec):
+                rgba = btn.get_rgba()
+                hex_val = f"#{int(rgba.red * 255):02X}{int(rgba.green * 255):02X}{int(rgba.blue * 255):02X}"
+                self._apply_clock_accent_color(hex_val)
+            self.acc_color_dialog_btn.connect("notify::rgba", _on_acc_color_notify)
+            self.clock_accent_entry.add_suffix(self.acc_color_dialog_btn)
+        except Exception:
+            pass
+
+        accent_group.add(self.clock_accent_entry)
+
         # 3. OLED Display View Switcher (8 Views with Visual Cards)
         view_group = Adw.PreferencesGroup(
             title="ESP32 OLED Display View Switcher (Clock Page System)",
@@ -1929,7 +2290,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.preview_oled_view = "clock"
         self._update_oled_preview()
         self._run_bg(
-            lambda: self.api_client.set_clock_style(style_id),
+            lambda: self.api_client.set_clock_style(style_id, accent_color=self.clock_accent_color),
             lambda r: self.show_toast(f"Watch Face Style #{style_id} activated!" if r.ok else r.error_message),
         )
 
@@ -1949,7 +2310,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self.oled_screen_sub.set_text("♫ Spotify Playing • Quotes & Notes")
         elif self.preview_oled_view == "clock":
             def _apply() -> ApiResult:
-                r1 = self.api_client.set_clock_style(self.preview_clock_style)
+                r1 = self.api_client.set_clock_style(self.preview_clock_style, accent_color=self.clock_accent_color)
                 if not r1.ok:
                     return r1
                 return self.api_client.switch_display_view("clock")
@@ -1967,11 +2328,13 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         if not hasattr(self, "oled_glass"):
             return
         if self.preview_oled_view == "main":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("MAIN DASHBOARD")
             self.oled_screen_title.set_text("DESKFLOW STATION (DEFAULT)")
             self.oled_screen_main.set_text("12:45 • Ha Long 28°C")
             self.oled_screen_sub.set_text("♫ Spotify Playing • Quotes & Notes")
         elif self.preview_oled_view == "clock":
+            self.oled_screen_main.add_css_class("oled-accent-text")
             style = self.preview_clock_style
             self.oled_mode_badge.set_text(f"WATCH FACE #{style}")
             if style == 2:
@@ -2003,36 +2366,43 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 self.oled_screen_main.set_text("12:30 :45")
                 self.oled_screen_sub.set_text("SUN 08 NOV • 28°C HCM")
         elif self.preview_oled_view == "weather":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("WEATHER FORECAST")
             self.oled_screen_title.set_text("HO CHI MINH CITY")
             self.oled_screen_main.set_text("28°C  SUNNY")
             self.oled_screen_sub.set_text("POP: 20% • HUMIDITY: 65%")
         elif self.preview_oled_view == "notes":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("STICKY NOTE")
             self.oled_screen_title.set_text("★ PINNED NOTE")
             self.oled_screen_main.set_text("Meeting at 2:00 PM")
             self.oled_screen_sub.set_text("Review DeskFlow firmware build")
         elif self.preview_oled_view == "countdown":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("TARGET COUNTDOWN")
             self.oled_screen_title.set_text("KHKT 2026 EXAM")
             self.oled_screen_main.set_text("45 DAYS LEFT")
             self.oled_screen_sub.set_text("TARGET: 15/01/2026")
         elif self.preview_oled_view == "focus":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("FOCUS SESSION")
-            self.oled_screen_title.set_text("POMODORO ACTIVE")
+            self.oled_screen_title.set_text("FOCUS ACTIVE")
             self.oled_screen_main.set_text("24:58")
             self.oled_screen_sub.set_text("[████████░░░░] 72% LEFT")
         elif self.preview_oled_view == "stats":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("SERVER TELEMETRY")
             self.oled_screen_title.set_text("HOST & ESP32 STATS")
             self.oled_screen_main.set_text("CPU 24% • RAM 58%")
             self.oled_screen_sub.set_text("UPTIME: 4d 12h • WIFI OK")
         elif self.preview_oled_view == "tkb":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("TIMETABLE")
             self.oled_screen_title.set_text("TKB — SANG THU 2")
             self.oled_screen_main.set_text("Toan • Ly • Hoa")
             self.oled_screen_sub.set_text("Anh • Sinh Hoc")
         elif self.preview_oled_view == "lyrics":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("SPOTIFY LYRICS")
             self.oled_screen_title.set_text("♫ NOW PLAYING")
             self.oled_screen_main.set_text("Starboy — The Weeknd")
@@ -2257,8 +2627,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.refresh_weather_async()
         self.refresh_alarms_async()
         self.refresh_devices_async()
+        self.refresh_tkb_async()
 
-        def _fetch_all() -> Dict[str, ApiResult]:
+        def _fetch_all() -> Dict[str, Any]:
             return {
                 "status": self.api_client.get_focus_status(),
                 "system": self.api_client.get_system_status(),
@@ -2267,7 +2638,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 "timetable": self.api_client.get_timetable_today(),
             }
 
-        def _done(results: Dict[str, ApiResult]) -> None:
+        def _done(results: Dict[str, Any]) -> None:
             self._render_countdowns_list(self.api_client.countdowns)
 
             st_res = results["status"]
@@ -2300,13 +2671,19 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 playing = "Playing" if sp_res.data.get("is_playing") else "Paused"
                 self.spotify_row.set_subtitle(f"{playing}: {track} — {artist}")
 
-            tt_res = results["timetable"]
-            if tt_res.ok and isinstance(tt_res.data, dict):
-                today = (tt_res.data.get("data") or {}).get("today") or {}
-                day_lbl = today.get("day", "Today")
-                morn = ", ".join(today.get("morning") or []) or "None"
-                aft = ", ".join(today.get("afternoon") or []) or "None"
-                self.timetable_row.set_subtitle(f"{day_lbl} • AM: {morn} | PM: {aft}")
+            tt_val = results["timetable"]
+            if isinstance(tt_val, tuple):
+                tt_res, tt_obj = tt_val
+                if tt_res.ok and tt_obj:
+                    self._apply_tkb_ui(tt_obj)
+            elif isinstance(tt_val, ApiResult):
+                tt_res = tt_val
+                if tt_res.ok and isinstance(tt_res.data, dict):
+                    today = (tt_res.data.get("data") or {}).get("today") or {}
+                    day_lbl = today.get("day", "Today")
+                    morn = ", ".join(today.get("morning") or []) or "None"
+                    aft = ", ".join(today.get("afternoon") or []) or "None"
+                    self.timetable_row.set_subtitle(f"{day_lbl} • AM: {morn} | PM: {aft}")
 
         self._run_bg(_fetch_all, _done)
 
