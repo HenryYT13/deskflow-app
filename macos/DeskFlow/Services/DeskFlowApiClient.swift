@@ -139,8 +139,9 @@ public final class DeskFlowApiClient: ObservableObject {
             defaults.string(forKey: "deskflow.darkModeEnd"),
             fallback: "06:00"
         )
-        self.appLanguage = defaults.string(forKey: "deskflow.language") ?? "vi"
-        L10n.lang = self.appLanguage
+        let initialLang = defaults.string(forKey: "deskflow.language") ?? "vi"
+        self.appLanguage = initialLang
+        L10n.lang = initialLang
         self.esp32ThemeMode = defaults.string(forKey: "deskflow.esp32ThemeMode") ?? "sync"
     }
 
