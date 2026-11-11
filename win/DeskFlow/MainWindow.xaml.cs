@@ -333,7 +333,9 @@ public sealed partial class MainWindow : Window
                 _activePairSessionId = data.SessionId;
                 if (GateQrImage != null)
                 {
-                    var qrUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(data.QrPayload)}";
+                    var qrUrl = !string.IsNullOrWhiteSpace(data.QrImageUrl)
+                        ? data.QrImageUrl
+                        : $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(data.QrPayload)}";
                     GateQrImage.Source = new BitmapImage(new Uri(qrUrl));
                 }
 

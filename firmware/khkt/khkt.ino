@@ -231,16 +231,20 @@ void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
 }
 
 void updateLampLed() {
-  if (!ledState || ledBrightness == 0) {
+  if (!ledState || ledBrightness <= 0) {
     strip.clear();
     strip.show();
     return;
   }
   uint8_t r = 255, g = 255, b = 255;
   parseHexColor(srvStats.lampColor, r, g, b);
-  strip.setBrightness((ledBrightness * 255) / 100);
+  // Direct linear brightness scaling without Adafruit lossy multiply roll-over
+  uint8_t scaledR = (uint16_t)r * ledBrightness / 100;
+  uint8_t scaledG = (uint16_t)g * ledBrightness / 100;
+  uint8_t scaledB = (uint16_t)b * ledBrightness / 100;
+  strip.setBrightness(255);
   for (int i = 0; i < NUM_LEDS; i++) {
-    strip.setPixelColor(i, strip.Color(r, g, b));
+    strip.setPixelColor(i, strip.Color(scaledR, scaledG, scaledB));
   }
   strip.show();
 }
@@ -2073,7 +2077,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       screenNeedUpdate = true;
       addLog("LED", "Lamp turned off");
     }
-    else if (topicStr == "deskflow/display" && action == "dim") {
+    else if ((topicStr == "deskflow/display" || topicStr == "deskflow/hardware") && (action == "dim" || action == "lamp_dim")) {
       int b = -1;
       if (doc.containsKey("led_bright")) b = doc["led_bright"].as<int>();
       else if (doc.containsKey("led_brightness")) b = doc["led_brightness"].as<int>();

@@ -556,6 +556,12 @@ public sealed class PairSessionCreateResponse
     [JsonPropertyName("qr_payload")]
     public string? QrPayload { get; set; }
 
+    [JsonPropertyName("qr_image_url")]
+    public string? QrImageUrl { get; set; }
+
+    [JsonPropertyName("qr_data_url")]
+    public string? QrDataUrl { get; set; }
+
     [JsonPropertyName("expires_in")]
     public int ExpiresIn { get; set; } = 600;
 }
