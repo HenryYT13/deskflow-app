@@ -15,7 +15,7 @@ Tất cả các bản dựng mới nhất được tự động biên dịch và
 |---|---|---|
 | **Windows 10/11** | 🪟 `DeskFlow-<version>-windows-setup.exe`<br>🪟 `DeskFlow-<version>-win-x64.zip` | Bộ cài đặt Inno Setup Wizard hoặc bản portable zip tự chạy (WinUI 3 x64 self-contained). |
 | **Linux** | 🐧 `deskflow_<version>_amd64.deb`<br>🐧 `deskflow-<version>-1.x86_64.rpm`<br>🐧 `DeskFlow-<version>-x86_64.AppImage`<br>🐧 `DeskFlow-<version>-linux-x86_64.tar.gz` | Đầy đủ định dạng cho Ubuntu/Debian (.deb), Fedora/RHEL (.rpm), file chạy độc lập (.AppImage) và tarball. |
-| **macOS** | 🍏 `DeskFlow-<version>-macOS.dmg` | Bộ cài đặt DMG kéo thả cho macOS 13.0+ (Ventura, Sonoma, Sequoia). |
+| **macOS** | 🍏 `DeskFlow-<version>-macOS.dmg`<br>🍏 `DeskFlow-<version>-macOS.zip` | Bộ cài đặt DMG kéo thả và bản Portable ZIP cho macOS 13.0+ (Ventura, Sonoma, Sequoia). Xem [Hướng dẫn cài đặt & Gatekeeper](docs/MACOS_INSTALL.md). |
 | **Android** | 📱 `DeskFlow-<version>-android.apk` / `DeskFlow-android.apk` | Ứng dụng Android 8.0+ (hỗ trợ quét mã QR, Display Over Apps). |
 
 ---
@@ -48,10 +48,11 @@ Tất cả các bản dựng mới nhất được tự động biên dịch và
 
 ### 4. macOS (`macos/`)
 Ứng dụng Apple gốc viết bằng **Swift 5.9** + **SwiftUI**:
-- Tương thích macOS 13.0 trở lên.
+- Tương thích macOS 13.0 trở lên (Ventura, Sonoma, Sequoia).
 - **Bản địa hoá tiếng Việt 100%**: Tất cả các tab, nút bấm, thông báo đều hỗ trợ tiếng Việt đầy đủ.
 - Giao diện Split-View gọn gàng, chia khu vực làm việc trực quan.
-- Tự động đóng gói thành `.dmg` hoàn chỉnh kèm hình nền cài đặt kéo thả.
+- Tự động đóng gói thành `.dmg` kéo thả hoàn chỉnh và file `.zip` (bảo toàn quyền thực thi qua `ditto`).
+- Hướng dẫn chi tiết cách mở ứng dụng trên macOS không cần chứng chỉ trả phí: [Xem Hướng dẫn Cài đặt & Gatekeeper](docs/MACOS_INSTALL.md).
 
 ### 5. ESP32 Station Firmware (`firmware/khkt/`)
 Firmware trạm điều khiển phần cứng viết bằng **Arduino C++** cho board **ESP32-WROOM-32**:

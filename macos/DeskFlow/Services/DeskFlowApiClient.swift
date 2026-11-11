@@ -678,7 +678,7 @@ public final class DeskFlowApiClient: ObservableObject {
     public func setClockStyle(style: String, accentColor: String? = nil) async {
         let code = style.trimmingCharacters(in: .whitespacesAndNewlines)
         let color = accentColor ?? clockAccentColor
-        var body: [String: Any] = [
+        let body: [String: Any] = [
             "style": code,
             "accent_color": color
         ]
