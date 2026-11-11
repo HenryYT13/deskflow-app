@@ -1334,34 +1334,70 @@ void drawPhysicalScreen() {
   }
   // 3. VIEW STATS
   else if (srvStats.activeView == "stats") {
-    if (viewChanged) {
-      printCenteredText("HARDWARE STATS", 38, 2, COL_PURPLE, COL_BG);
+    static float lastLpCpu = -999.0;
+    static float lastLpRam = -999.0;
+    static int lastLpBat = -999;
+    static float lastSrvCpu = -999.0;
+    static float lastSrvRam = -999.0;
+    static String lastSrvUptime = "";
+    static int lastEspBatPct = -999;
 
+    if (viewChanged) {
+      tft->fillScreen(COL_BG);
+      printCenteredText("HARDWARE STATS", 38, 2, COL_PURPLE, COL_BG);
+      tft->drawFastHLine(16, 150, 208, COL_BORDER);
+      lastLpCpu = -999.0;
+      lastLpRam = -999.0;
+      lastLpBat = -999;
+      lastSrvCpu = -999.0;
+      lastSrvRam = -999.0;
+      lastSrvUptime = "";
+      lastEspBatPct = -999;
+    }
+
+    // Dynamic Laptop stats - live 1-second refresh
+    if (viewChanged || srvStats.lp_cpu != lastLpCpu || srvStats.lp_ram != lastLpRam || srvStats.lp_bat != lastLpBat) {
+      tft->fillRect(16, 68, 208, 14, COL_BG);
       tft->setTextSize(1);
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(16, 70);
       tft->print("Laptop: ");
       tft->setTextColor(COL_CYAN, COL_BG);
       tft->printf("%d%% | %.1f%% | %.1f%%", srvStats.lp_bat, srvStats.lp_ram, srvStats.lp_cpu);
-      drawProgressBarSmooth(16, 84, 208, 8, srvStats.lp_bat, COL_CYAN);
+      drawProgressBarSmooth(16, 84, 208, 8, constrain((int)srvStats.lp_cpu, 0, 100), COL_CYAN);
+      lastLpCpu = srvStats.lp_cpu;
+      lastLpRam = srvStats.lp_ram;
+      lastLpBat = srvStats.lp_bat;
+    }
 
+    // Dynamic Server stats - live 1-second refresh
+    if (viewChanged || srvStats.cpu != lastSrvCpu || srvStats.ram_pct != lastSrvRam || srvStats.uptime != lastSrvUptime) {
+      tft->fillRect(16, 108, 208, 14, COL_BG);
+      tft->setTextSize(1);
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(16, 110);
       tft->print("Server: ");
       tft->setTextColor(COL_GREEN, COL_BG);
       tft->printf("%s | %.1f%% | %.1f%%", srvStats.uptime.c_str(), srvStats.ram_pct, srvStats.cpu);
-      drawProgressBarSmooth(16, 124, 208, 8, (int)srvStats.ram_pct, COL_GREEN);
+      drawProgressBarSmooth(16, 124, 208, 8, constrain((int)srvStats.cpu, 0, 100), COL_GREEN);
+      lastSrvCpu = srvStats.cpu;
+      lastSrvRam = srvStats.ram_pct;
+      lastSrvUptime = srvStats.uptime;
+    }
 
-      tft->drawFastHLine(16, 150, 208, COL_BORDER);
-
-      float vEsp = readBatteryVoltage();
-      int pctEsp = calculateBatteryPct(vEsp);
+    // Dynamic ESP32 Battery voltage and pct
+    float vEsp = readBatteryVoltage();
+    int pctEsp = calculateBatteryPct(vEsp);
+    if (viewChanged || pctEsp != lastEspBatPct) {
+      tft->fillRect(16, 166, 208, 14, COL_BG);
+      tft->setTextSize(1);
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(16, 168);
       tft->print("ESP32 Pin: ");
       tft->setTextColor(COL_AMBER, COL_BG);
       tft->printf("%.2fV (%d%%)", vEsp, pctEsp);
-      drawProgressBarSmooth(16, 184, 208, 8, pctEsp, COL_AMBER);
+      drawProgressBarSmooth(16, 184, 208, 8, constrain(pctEsp, 0, 100), COL_AMBER);
+      lastEspBatPct = pctEsp;
     }
   }
   // 4. VIEW TKB
@@ -1950,14 +1986,41 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       stopMorsePlayback();
     } else if (action == "melody_play") {
       stopMorsePlayback();
-      if (melodyStart(SAMPLE_MELODY_MID, sizeof(SAMPLE_MELODY_MID))) {
-        addLog("MELODY", "Phat giai dieu mau (" + String(melodyCount) + " not)");
+      String title = doc["title"] | "Custom Melody";
+      if (doc.containsKey("notes")) {
+        JsonArray arr = doc["notes"].as<JsonArray>();
+        int count = arr.size();
+        if (count > 0) {
+          melodyStop();
+          int nNotes = min(count, (int)MELODY_MAX_NOTES);
+          for (int i = 0; i < nNotes; i++) {
+            JsonArray pair = arr[i].as<JsonArray>();
+            uint16_t freq = pair[0] | 0;
+            uint16_t dur = pair[1] | 100;
+            melodyNotes[i] = { freq, dur };
+          }
+          melodyCount = nNotes;
+          melodyCurrentTitle = title;
+          melodyIdx = 0;
+          melodyPlaying = true;
+          melodyToneOn = false;
+          melodyStepStart = 0;
+          addLog("MELODY", "Phat nhac: " + title + " (" + String(melodyCount) + " not)");
+        }
       } else {
-        addLog("MELODY", "Loi doc file MIDI");
+        melodyCurrentTitle = "Sample Melody";
+        if (melodyStart(SAMPLE_MELODY_MID, sizeof(SAMPLE_MELODY_MID))) {
+          addLog("MELODY", "Phat giai dieu mau (" + String(melodyCount) + " not)");
+        } else {
+          addLog("MELODY", "Loi doc file MIDI");
+        }
       }
+      screenNeedUpdate = true;
     } else if (action == "melody_stop") {
       melodyStop();
       stopBuzzer();
+      addLog("MELODY", "Da dung phat nhac MIDI.");
+      screenNeedUpdate = true;
     } else {
       unsigned long d = doc["duration"] | 250;
       triggerBuzz(d, true);

@@ -15,7 +15,7 @@ static const uint8_t SAMPLE_MELODY_MID[] PROGMEM = {
   0xFF, 0x2F, 0x00
 };
 
-#define MELODY_MAX_NOTES 128
+#define MELODY_MAX_NOTES 512
 struct MelodyNote { uint16_t freq; uint16_t durMs; };  // freq 0 = rest
 static MelodyNote melodyNotes[MELODY_MAX_NOTES];
 static int melodyCount = 0;
@@ -23,6 +23,7 @@ static int melodyIdx = 0;
 static bool melodyPlaying = false;
 static bool melodyToneOn = false;
 static unsigned long melodyStepStart = 0;
+static String melodyCurrentTitle = "";
 
 static uint32_t _mRead(const uint8_t* d, size_t len, size_t& p, int n) {
   uint32_t v = 0;

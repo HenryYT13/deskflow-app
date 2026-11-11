@@ -1,6 +1,10 @@
 package com.deskflow.app.ui.control
 
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -906,6 +910,12 @@ fun ControlScreen(
                                         selectedCategory = "tools"
                                         selectedSubCategory = "subcat_morse"
                                     }
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                MidiJukeboxCard(
+                                    repository = repository,
+                                    coroutineScope = coroutineScope,
+                                    onShowMessage = { showFeedback(it) }
                                 )
                             }
 
@@ -2682,6 +2692,197 @@ fun BuzzerControlsCard(
                 }
             }
 
+        }
+    }
+}
+
+@Composable
+fun MidiJukeboxCard(
+    repository: FocusRepository,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onShowMessage: (String) -> Unit
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentSongTitle by remember { mutableStateOf<String?>(null) }
+    var selectedPreset by remember { mutableStateOf("mario") }
+
+    val midiFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                try {
+                    var displayName = "song.mid"
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1 && cursor.moveToFirst()) {
+                            displayName = cursor.getString(nameIndex) ?: displayName
+                        }
+                    }
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes == null || bytes.isEmpty()) {
+                        onShowMessage("Không thể đọc tệp MIDI đã chọn")
+                        return@launch
+                    }
+                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    onShowMessage("Đang gửi và phát '$displayName'...")
+                    val res = repository.playMidiFile(base64 = base64, filename = displayName)
+                    if (res is ApiResult.Success) {
+                        isPlaying = true
+                        currentSongTitle = displayName
+                        onShowMessage("✓ Đang phát: $displayName")
+                    } else if (res is ApiResult.Error) {
+                        onShowMessage("Lỗi phát MIDI: ${res.message}")
+                    }
+                } catch (e: Exception) {
+                    onShowMessage("Lỗi xử lý file: ${e.message}")
+                }
+            }
+        }
+    }
+
+    val presets = listOf(
+        "mario" to "Super Mario",
+        "rickroll" to "Rickroll",
+        "tetris" to "Tetris Theme",
+        "coffin" to "Coffin Dance",
+        "starwars" to "Imperial March",
+        "nokia" to "Nokia Tune"
+    )
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Column {
+                    Text(
+                        text = "Trình phát nhạc MIDI (Buzzer Jukebox)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Phát các giai điệu 8-bit hoặc file .mid qua còi ESP32",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (currentSongTitle != null && isPlaying) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Đang phát: $currentSongTitle",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = "Bài mẫu 8-bit có sẵn:",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(presets) { (id, label) ->
+                    FilterChip(
+                        selected = (selectedPreset == id),
+                        onClick = {
+                            selectedPreset = id
+                            coroutineScope.launch {
+                                onShowMessage("Đang phát $label...")
+                                val res = repository.playMelodyPreset(id)
+                                if (res is ApiResult.Success) {
+                                    isPlaying = true
+                                    currentSongTitle = label
+                                    onShowMessage("✓ Đang phát: $label")
+                                } else if (res is ApiResult.Error) {
+                                    onShowMessage("Lỗi phát bài: ${res.message}")
+                                }
+                            }
+                        },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = if (selectedPreset == id && isPlaying) {
+                            { Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else null
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        midiFilePicker.launch("*/*")
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Chọn file .mid", maxLines = 1)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            val res = repository.stopMelody()
+                            if (res is ApiResult.Success) {
+                                isPlaying = false
+                                currentSongTitle = null
+                                onShowMessage("Đã dừng phát nhạc trên ESP32.")
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(imageVector = Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Dừng")
+                }
+            }
         }
     }
 }

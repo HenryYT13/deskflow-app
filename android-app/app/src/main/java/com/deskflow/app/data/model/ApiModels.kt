@@ -558,3 +558,13 @@ data class MorsePlayRequest(
     @SerialName("unit_ms") val unitMs: Int = 80,
     @SerialName("freq") val freq: Int = 2400
 )
+
+// --- Melody / MIDI Models ---
+@Serializable
+data class MelodyPlayRequest(
+    @SerialName("preset_id") val presetId: String? = null,
+    @SerialName("midi_base64") val midiBase64: String? = null,
+    @SerialName("title") val title: String? = null,
+    @SerialName("filename") val filename: String? = null
+)
+

@@ -1057,6 +1057,7 @@ private struct ToolsMacView: View {
                 Text(client.appLanguage == "vi" ? "Danh ngôn AI & Chế độ tập trung" : "AI Quotes & Focus Mode").tag(0)
                 Text(client.appLanguage == "vi" ? "Giấy nhớ & Đếm ngược" : "Notes & Countdowns").tag(1)
                 Text(client.appLanguage == "vi" ? "Mã Morse Studio" : "Morse Studio").tag(2)
+                Text(client.appLanguage == "vi" ? "Nhạc MIDI Buzzer" : "MIDI Jukebox").tag(3)
             }
             .pickerStyle(.segmented)
 
@@ -1068,8 +1069,153 @@ private struct ToolsMacView: View {
                     Divider()
                     CountdownsMacView(client: client)
                 }
-            } else {
+            } else if toolTab == 2 {
                 MorseMacView(client: client)
+            } else {
+                MidiJukeboxMacView(client: client)
+            }
+        }
+    }
+}
+
+private struct MidiJukeboxMacView: View {
+    @ObservedObject var client: DeskFlowApiClient
+    @State private var selectedPreset: String = "mario"
+    @State private var selectedFileName: String = ""
+    @State private var selectedFileData: Data? = nil
+    @State private var showFilePicker: Bool = false
+    @State private var isPlaying: Bool = false
+    @State private var currentSongTitle: String = ""
+
+    private let presets: [(id: String, name: String, artist: String)] = [
+        ("mario", "Super Mario Bros Theme", "Koji Kondo"),
+        ("rickroll", "Never Gonna Give You Up", "Rick Astley"),
+        ("tetris", "Tetris Theme (Korobeiniki)", "Traditional"),
+        ("coffin", "Astronomia (Coffin Dance)", "Vicetone & Tony Igy"),
+        ("starwars", "Star Wars - Imperial March", "John Williams"),
+        ("nokia", "Nokia Tune (Gran Vals)", "Francisco Tarrega")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // Header
+            VStack(alignment: .leading, spacing: 4) {
+                Text(client.appLanguage == "vi" ? "Trình phát nhạc MIDI qua còi ESP32" : "Buzzer MIDI Chiptune Jukebox")
+                    .font(.title3.bold())
+                Text(client.appLanguage == "vi" ? "Chọn bài mẫu 8-bit có sẵn hoặc tải file .mid từ máy tính để phát nhạc trực tiếp qua loa còi của bàn học thông minh." : "Play classic 8-bit chiptune songs or import your own .mid file to play through the desk station buzzer.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            // Preset Selection Card
+            VStack(alignment: .leading, spacing: 12) {
+                Text(client.appLanguage == "vi" ? "1. Giai điệu 8-bit kinh điển có sẵn" : "1. Built-in 8-bit Chiptune Presets")
+                    .font(.headline)
+
+                Picker(client.appLanguage == "vi" ? "Bài hát" : "Song", selection: $selectedPreset) {
+                    ForEach(presets, id: \.id) { p in
+                        Text("\(p.name) (\(p.artist))").tag(p.id)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                HStack(spacing: 12) {
+                    Button(action: {
+                        let item = presets.first { $0.id == selectedPreset }
+                        currentSongTitle = item?.name ?? selectedPreset
+                        isPlaying = true
+                        Task { await client.playMelodyPreset(presetId: selectedPreset) }
+                    }) {
+                        Label(client.appLanguage == "vi" ? "Phát bài mẫu trên ESP32" : "Play Preset on ESP32", systemImage: "play.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button(action: {
+                        isPlaying = false
+                        currentSongTitle = ""
+                        Task { await client.stopMelody() }
+                    }) {
+                        Label(client.appLanguage == "vi" ? "Dừng phát" : "Stop Playback", systemImage: "stop.circle")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+            .cornerRadius(10)
+
+            // Custom File Upload Card
+            VStack(alignment: .leading, spacing: 12) {
+                Text(client.appLanguage == "vi" ? "2. Tải file .midi từ máy tính của bạn" : "2. Import .midi File From Your Computer")
+                    .font(.headline)
+
+                HStack(spacing: 12) {
+                    Button(action: { showFilePicker = true }) {
+                        Label(client.appLanguage == "vi" ? "Chọn file .mid từ máy..." : "Choose .mid file...", systemImage: "folder")
+                    }
+                    .buttonStyle(.bordered)
+
+                    if !selectedFileName.isEmpty {
+                        Text(selectedFileName)
+                            .font(.subheadline)
+                            .foregroundColor(.accentColor)
+                    } else {
+                        Text(client.appLanguage == "vi" ? "Chưa chọn file" : "No file selected")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if let data = selectedFileData {
+                    Button(action: {
+                        currentSongTitle = selectedFileName
+                        isPlaying = true
+                        Task { await client.playMidiFile(data: data, filename: selectedFileName) }
+                    }) {
+                        Label(client.appLanguage == "vi" ? "Phát file đã chọn trên ESP32" : "Play Selected File on ESP32", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+            .cornerRadius(10)
+
+            // Now Playing Banner
+            if isPlaying {
+                HStack(spacing: 10) {
+                    Image(systemName: "music.note")
+                        .foregroundColor(.green)
+                    Text(client.appLanguage == "vi" ? "Đang phát qua còi ESP32: \(currentSongTitle)" : "Playing on ESP32 Buzzer: \(currentSongTitle)")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    Button(action: {
+                        isPlaying = false
+                        currentSongTitle = ""
+                        Task { await client.stopMelody() }
+                    }) {
+                        Text(client.appLanguage == "vi" ? "Tắt" : "Stop")
+                            .font(.caption.bold())
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding()
+                .background(Color.green.opacity(0.15))
+                .cornerRadius(8)
+            }
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.init(filenameExtension: "mid")!, .init(filenameExtension: "midi")!, .data], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                guard url.startAccessingSecurityScopedResource() else { return }
+                defer { url.stopAccessingSecurityScopedResource() }
+                if let data = try? Data(contentsOf: url) {
+                    selectedFileData = data
+                    selectedFileName = url.lastPathComponent
+                }
+            case .failure(let err):
+                client.errorBannerMessage = "Lỗi chọn file: \(err.localizedDescription)"
             }
         }
     }

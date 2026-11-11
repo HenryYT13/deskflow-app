@@ -788,6 +788,45 @@ class FocusRepository(
         }
     }
 
+    suspend fun playMelodyPreset(presetId: String): ApiResult<ActionSuccessResponse> {
+        return try {
+            val response = apiService.playMelody(MelodyPlayRequest(presetId = presetId))
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
+        }
+    }
+
+    suspend fun playMidiFile(base64: String, filename: String, title: String? = null): ApiResult<ActionSuccessResponse> {
+        return try {
+            val response = apiService.playMelody(MelodyPlayRequest(midiBase64 = base64, filename = filename, title = title))
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
+        }
+    }
+
+    suspend fun stopMelody(): ApiResult<ActionSuccessResponse> {
+        return try {
+            val response = apiService.stopMelody()
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
+        }
+    }
+
     suspend fun reportTelemetry(cpu: Float, ramPct: Float, battery: Int, temp: Float = 0f): ApiResult<ActionSuccessResponse> {
         return try {
             val map = mapOf(

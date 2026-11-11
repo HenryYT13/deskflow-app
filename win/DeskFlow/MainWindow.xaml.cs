@@ -140,6 +140,11 @@ public sealed partial class MainWindow : Window
 
         _isLoaded = true;
 
+        if (SpotifyVolumeSlider != null)
+        {
+            SpotifyVolumeSlider.ValueChanged += SpotifyVolumeSlider_ValueChanged;
+        }
+
         // Default selection to System & Telemetry (macOS parity)
         MainNavView.SelectedItem = NavSystemItem;
     }
@@ -724,6 +729,55 @@ public sealed partial class MainWindow : Window
     private async void PlayMorse_Click(object sender, RoutedEventArgs e)
     {
         var (ok, msg) = await _client.PlayMorseAsync(MorsePatternTextBox.Text);
+        ShowBanner(msg, !ok);
+    }
+
+    private async void PlayMelodyPreset_Click(object sender, RoutedEventArgs e)
+    {
+        string preset = "mario";
+        if (MelodyPresetCombo?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            preset = tag;
+        }
+        var (ok, msg) = await _client.PlayMelodyPresetAsync(preset);
+        ShowBanner(msg, !ok);
+    }
+
+    private async void SelectMidiFile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.List;
+            picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads;
+            picker.FileTypeFilter.Add(".mid");
+            picker.FileTypeFilter.Add(".midi");
+
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            var file = await picker.PickSingleFileAsync();
+            if (file != null)
+            {
+                using var stream = await file.OpenStreamForReadAsync();
+                using var ms = new System.IO.MemoryStream();
+                await stream.CopyToAsync(ms);
+                byte[] bytes = ms.ToArray();
+
+                ShowBanner(Strings.CurrentLanguage == "vi" ? $"Đang gửi và phát file MIDI '{file.Name}'..." : $"Sending and playing MIDI '{file.Name}'...");
+                var (ok, msg) = await _client.PlayMidiFileAsync(bytes, file.Name);
+                ShowBanner(msg, !ok);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowBanner(ex.Message, true);
+        }
+    }
+
+    private async void StopMelody_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, msg) = await _client.StopMelodyAsync();
         ShowBanner(msg, !ok);
     }
 

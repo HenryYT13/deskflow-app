@@ -110,6 +110,14 @@ interface FocusApiService {
     @POST("api/app/control/morse/stop")
     suspend fun stopMorse(): Response<ActionSuccessResponse>
 
+    @POST("api/app/control/melody/play")
+    suspend fun playMelody(
+        @Body request: MelodyPlayRequest
+    ): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/melody/stop")
+    suspend fun stopMelody(): Response<ActionSuccessResponse>
+
     @POST("api/app/control/alarm/schedule")
     suspend fun scheduleAlarm(
         @Body request: AlarmScheduleRequest

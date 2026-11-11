@@ -653,6 +653,47 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
 
+    public func playMelodyPreset(presetId: String) async {
+        do {
+            let req = try buildRequest(
+                path: "/api/app/control/melody/play",
+                method: "POST",
+                body: ["preset_id": presetId]
+            )
+            let (_, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                statusBannerMessage = appLanguage == "vi" ? "Đang phát nhạc trên còi ESP32." : "Playing melody on ESP32 buzzer."
+            }
+        } catch {
+            errorBannerMessage = "Lỗi phát nhạc: \(error.localizedDescription)"
+        }
+    }
+
+    public func playMidiFile(data: Data, filename: String) async {
+        do {
+            let b64 = data.base64EncodedString()
+            let title = filename.replacingOccurrences(of: ".mid", with: "").replacingOccurrences(of: ".midi", with: "")
+            let req = try buildRequest(
+                path: "/api/app/control/melody/play",
+                method: "POST",
+                body: ["midi_base64": b64, "filename": filename, "title": title]
+            )
+            let (_, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                statusBannerMessage = appLanguage == "vi" ? "Đang phát file MIDI: \(filename) trên ESP32." : "Playing MIDI: \(filename) on ESP32."
+            }
+        } catch {
+            errorBannerMessage = "Lỗi gửi file MIDI: \(error.localizedDescription)"
+        }
+    }
+
+    public func stopMelody() async {
+        if let req = try? buildRequest(path: "/api/app/control/melody/stop", method: "POST", body: [:]) {
+            _ = try? await session.data(for: req)
+            statusBannerMessage = appLanguage == "vi" ? "Đã dừng phát nhạc trên ESP32." : "Stopped melody playback."
+        }
+    }
+
     public static let clockStyleIdToCode: [Int: String] = [
         1: "digital_classic",
         2: "digital_minimal",

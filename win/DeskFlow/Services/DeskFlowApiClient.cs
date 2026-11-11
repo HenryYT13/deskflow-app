@@ -563,6 +563,59 @@ public sealed class DeskFlowApiClient
         }
     }
 
+    public async Task<(bool Ok, string Message)> PlayMelodyPresetAsync(string presetId)
+    {
+        try
+        {
+            using var req = CreateRequest(
+                HttpMethod.Post,
+                "/api/app/control/melody/play",
+                new { preset_id = presetId });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? (Settings.Language == "vi" ? "Đang phát nhạc trên ESP32." : "Playing melody on ESP32.") : $"HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, string Message)> PlayMidiFileAsync(byte[] bytes, string filename)
+    {
+        try
+        {
+            string b64 = Convert.ToBase64String(bytes);
+            string title = System.IO.Path.GetFileNameWithoutExtension(filename);
+            using var req = CreateRequest(
+                HttpMethod.Post,
+                "/api/app/control/melody/play",
+                new { midi_base64 = b64, filename, title });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? (Settings.Language == "vi" ? $"Đang phát file MIDI '{filename}' trên ESP32." : $"Playing MIDI '{filename}' on ESP32.") : $"HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, string Message)> StopMelodyAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(
+                HttpMethod.Post,
+                "/api/app/control/melody/stop",
+                new { });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? (Settings.Language == "vi" ? "Đã dừng phát nhạc trên ESP32." : "Stopped melody playback.") : $"HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     public static readonly Dictionary<int, string> ClockStyleIdToCode = new()
     {
         [1] = "digital_classic",

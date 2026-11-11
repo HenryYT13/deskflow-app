@@ -363,7 +363,7 @@
 
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                         <FontIcon Glyph="&#xE767;" FontSize="16" Foreground="#94A3B8" />
-                                        <Slider x:Name="SpotifyVolumeSlider" Width="140" Minimum="0" Maximum="100" Value="50" ValueChanged="SpotifyVolumeSlider_ValueChanged" />
+                                        <Slider x:Name="SpotifyVolumeSlider" Width="140" Minimum="0" Maximum="100" Value="50" />
                                         <TextBlock x:Name="SpotifyVolumeText" Text="50%" FontSize="12" Foreground="#94A3B8" Width="36" FontFamily="Consolas" />
                                     </StackPanel>
                                 </Grid>
@@ -699,6 +699,28 @@
                                     <Button Content="⏹ Dừng phát" Click="StopMorse_Click" />
                                     <Button Content="Sao chép Morse" Click="CopyMorse_Click" />
                                     <Button Content="Sao chép chữ" Click="CopyText_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Group: Trình phát nhạc MIDI qua còi ESP32 (Buzzer MIDI Jukebox) -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Trình phát nhạc MIDI qua còi ESP32 (Buzzer MIDI Jukebox)" FontWeight="Bold" FontSize="15" />
+                                <TextBlock Text="Chọn bài mẫu 8-bit hoặc chọn file .mid từ máy tính để phát qua loa còi ESP32:" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ComboBox x:Name="MelodyPresetCombo" Header="Giai điệu 8-bit có sẵn" Width="280">
+                                        <ComboBoxItem Content="Super Mario Bros Theme (Koji Kondo)" Tag="mario" IsSelected="True" />
+                                        <ComboBoxItem Content="Never Gonna Give You Up (Rick Astley)" Tag="rickroll" />
+                                        <ComboBoxItem Content="Tetris Theme - Korobeiniki" Tag="tetris" />
+                                        <ComboBoxItem Content="Astronomia - Coffin Dance" Tag="coffin" />
+                                        <ComboBoxItem Content="Star Wars - Imperial March" Tag="starwars" />
+                                        <ComboBoxItem Content="Nokia Tune - Gran Vals" Tag="nokia" />
+                                    </ComboBox>
+                                    <Button Content="▶ Phát bài mẫu" Click="PlayMelodyPreset_Click" Style="{StaticResource AccentButtonStyle}" VerticalAlignment="Bottom" />
+                                    <Button Content="📁 Chọn file .midi từ máy..." Click="SelectMidiFile_Click" VerticalAlignment="Bottom" />
+                                    <Button Content="⏹ Dừng phát" Click="StopMelody_Click" VerticalAlignment="Bottom" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
