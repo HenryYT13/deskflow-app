@@ -6,6 +6,7 @@ using DeskFlow.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -348,7 +349,7 @@ public sealed partial class MainWindow : Window
         catch {}
     }
 
-    private void GateDeviceNameBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    private void GateDeviceNameBox_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
