@@ -350,4 +350,10 @@
     <string name="pair_session_failed_msg">Device login failed: %1$s</string>
     <string name="pair_session_cancelled_msg">Device login cancelled</string>
     <string name="pair_session_invalid_qr">Invalid QR code or missing pairing session.</string>
+    <string name="pair_scan_qr_prompt">Point camera at QR code</string>
+    <string name="pair_session_desktop_qr_hint">This is a Desktop pairing QR code. Please link your phone first using Discord (/app pair), then go to Settings to scan this code.</string>
+
+    <!-- ZXing Barcode Scanner Overrides -->
+    <string name="zxing_msg_default_status">Point camera at the QR code to scan</string>
+    <string name="zxing_app_name">QR Code Scanner</string>
 </resources>

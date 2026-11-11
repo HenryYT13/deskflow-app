@@ -33,6 +33,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import android.content.Intent
+import android.widget.Toast
 import com.deskflow.app.DeskFlowApp
 import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.repository.ApiResult
@@ -77,6 +78,16 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_OPEN_CHALLENGE, false)) {
             pendingOpenChallengeState.value = true
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        FocusNotificationService.onAppForegroundChanged(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        FocusNotificationService.onAppForegroundChanged(false)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -150,6 +161,8 @@ class MainActivity : ComponentActivity() {
                                 val res = repository.requestChallenge()
                                 if (res is ApiResult.Success) {
                                     activeChallengeInfo = res.data
+                                } else if (res is ApiResult.Error) {
+                                    Toast.makeText(context, "Không thể tạo thử thách: ${res.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -163,6 +176,7 @@ class MainActivity : ComponentActivity() {
                                     activeChallengeInfo = null
                                     coroutineScope.launch {
                                         repository.refreshAll()
+                                        FocusNotificationService.stopService(this@MainActivity)
                                     }
                                 }
                             )

@@ -35,6 +35,7 @@ class FocusNotificationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannel()
     }
 
@@ -70,6 +71,7 @@ class FocusNotificationService : Service() {
     private var timerTickerJob: Job? = null
 
     private fun showOverlay() {
+        if (isAppInForeground) return
         if (overlayView != null) return
         if (!android.provider.Settings.canDrawOverlays(this)) return
         val wm = getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager ?: return
@@ -220,8 +222,10 @@ class FocusNotificationService : Service() {
             }
             background = bg
             setOnClickListener {
+                hideOverlay()
+                isAppInForeground = true
                 val launchIntent = Intent(this@FocusNotificationService, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 }
                 startActivity(launchIntent)
             }
@@ -246,8 +250,10 @@ class FocusNotificationService : Service() {
             }
             background = bg
             setOnClickListener {
+                hideOverlay()
+                isAppInForeground = true
                 val launchIntent = Intent(this@FocusNotificationService, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     putExtra(EXTRA_OPEN_CHALLENGE, true)
                 }
                 startActivity(launchIntent)
@@ -314,13 +320,10 @@ class FocusNotificationService : Service() {
                 val repository = app?.focusRepository
                 val focusActive = repository?.focusState?.value?.isActive == true
                 if (focusActive) {
-                    withContext(Dispatchers.Main) {
-                        try {
-                            val intent = Intent(this@FocusNotificationService, MainActivity::class.java).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                            }
-                            startActivity(intent)
-                        } catch (_: Exception) {}
+                    if (!isAppInForeground) {
+                        withContext(Dispatchers.Main) {
+                            showOverlay()
+                        }
                     }
                 } else {
                     break
@@ -353,6 +356,7 @@ class FocusNotificationService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance == this) instance = null
         watchdogJob?.cancel()
         timerTickerJob?.cancel()
         hideOverlay()
@@ -462,6 +466,24 @@ class FocusNotificationService : Service() {
         const val EXTRA_OPEN_CHALLENGE = "com.deskflow.app.OPEN_CHALLENGE"
         const val ACTION_START = "com.deskflow.app.START_FOCUS_SERVICE"
         const val ACTION_STOP = "com.deskflow.app.STOP_FOCUS_SERVICE"
+
+        @Volatile
+        var isAppInForeground: Boolean = false
+        private var instance: FocusNotificationService? = null
+
+        fun onAppForegroundChanged(inForeground: Boolean) {
+            isAppInForeground = inForeground
+            instance?.let { service ->
+                if (inForeground) {
+                    service.hideOverlay()
+                } else {
+                    val app = service.applicationContext as? DeskFlowApp
+                    if (app?.focusRepository?.focusState?.value?.isActive == true) {
+                        service.showOverlay()
+                    }
+                }
+            }
+        }
 
         fun startService(context: Context) {
             val intent = Intent(context, FocusNotificationService::class.java).apply {

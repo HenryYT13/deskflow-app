@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -37,10 +38,15 @@ fun PairingScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult
+        if (raw.contains("session=", ignoreCase = true) || raw.contains("session_id=", ignoreCase = true)) {
+            errorMessage = context.getString(R.string.pair_session_desktop_qr_hint)
+            return@rememberLauncherForActivityResult
+        }
         val code = Regex("(?i)code=([A-Za-z0-9]{8})").find(raw)?.groupValues?.get(1)
             ?: Regex("(?<![A-Za-z0-9])[A-Za-z0-9]{8}(?![A-Za-z0-9])").find(raw)?.value
         if (code != null) {
@@ -100,10 +106,13 @@ fun PairingScreen(
             OutlinedButton(
                 onClick = {
                     scanLauncher.launch(
-                        ScanOptions()
-                            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                            .setBeepEnabled(false)
-                            .setOrientationLocked(false)
+                        ScanOptions().apply {
+                            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            setPrompt(context.getString(R.string.pair_scan_qr_prompt))
+                            setBeepEnabled(false)
+                            setOrientationLocked(false)
+                            setBarcodeImageEnabled(false)
+                        }
                     )
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),

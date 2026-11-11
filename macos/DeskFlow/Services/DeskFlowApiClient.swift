@@ -167,9 +167,12 @@ public final class DeskFlowApiClient: ObservableObject {
             throw URLError(.badURL)
         }
         var req = URLRequest(url: url, timeoutInterval: 10.0)
+        req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        req.setValue("no-cache", forHTTPHeaderField: "Pragma")
         req.setValue("DeskFlow-macOS-SwiftUI/1.0.0", forHTTPHeaderField: "User-Agent")
         let hasAuth = authenticated && !(deviceToken ?? "").isEmpty
         if hasAuth, let token = deviceToken {

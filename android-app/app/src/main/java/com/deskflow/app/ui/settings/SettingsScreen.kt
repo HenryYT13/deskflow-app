@@ -953,6 +953,7 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             val options = ScanOptions().apply {
+                                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                                 setPrompt(context.getString(R.string.settings_other_devices_prompt))
                                 setBeepEnabled(false)
                                 setOrientationLocked(false)

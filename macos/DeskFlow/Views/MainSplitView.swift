@@ -438,11 +438,9 @@ public struct MacPairingGateView: View {
         pollingTask?.cancel()
         isLoadingQR = true
         errorMessage = nil
+        qrPayload = ""
+        sessionId = nil
         pollingTask = Task { @MainActor in
-            let fallbackPayload = "deskflow://pair?server=\(client.apiUrl)&name=\(client.deviceName)"
-            if qrPayload.isEmpty {
-                qrPayload = fallbackPayload
-            }
             if let res = await client.createPairingSession(),
                let sid = res.sessionId,
                let payload = res.qrPayload {
@@ -465,6 +463,7 @@ public struct MacPairingGateView: View {
                 }
             } else {
                 isLoadingQR = false
+                errorMessage = client.appLanguage == "vi" ? "Không thể tạo phiên ghép nối. Vui lòng bấm tạo lại mã QR." : "Could not create pairing session. Please regenerate QR."
             }
         }
     }
@@ -506,15 +505,21 @@ public struct MacPairingGateView: View {
                         VStack(spacing: 24) {
                             HStack(alignment: .top, spacing: 32) {
                                 VStack(spacing: 12) {
-                                    let activePayload = !qrPayload.isEmpty ? qrPayload : "deskflow://pair?server=\(client.apiUrl)&name=\(client.deviceName)"
                                     #if canImport(CoreImage)
-                                    if isLoadingQR && qrPayload.isEmpty {
+                                    if isLoadingQR || qrPayload.isEmpty {
                                         RoundedRectangle(cornerRadius: 12)
                                             .fill(Color.white)
                                             .frame(width: 160, height: 160)
-                                            .overlay(ProgressView())
+                                            .overlay(
+                                                VStack(spacing: 8) {
+                                                    ProgressView()
+                                                    Text(client.appLanguage == "vi" ? "Đang tạo mã QR..." : "Generating QR...")
+                                                        .font(.system(size: 10))
+                                                        .foregroundColor(.secondary)
+                                                }
+                                            )
                                             .shadow(color: Color.black.opacity(0.1), radius: 8)
-                                    } else if let qrImg = generateQRCodeImage(from: activePayload) {
+                                    } else if let qrImg = generateQRCodeImage(from: qrPayload) {
                                         Image(nsImage: qrImg)
                                             .interpolation(.none)
                                             .resizable()

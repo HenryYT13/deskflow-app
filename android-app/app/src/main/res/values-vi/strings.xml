@@ -350,4 +350,10 @@
     <string name="pair_session_failed_msg">Đăng nhập thiết bị thất bại: %1$s</string>
     <string name="pair_session_cancelled_msg">Đã hủy đăng nhập thiết bị</string>
     <string name="pair_session_invalid_qr">Mã QR không hợp lệ hoặc thiếu mã phiên liên kết.</string>
+    <string name="pair_scan_qr_prompt">Hướng camera về phía mã QR để quét</string>
+    <string name="pair_session_desktop_qr_hint">Đây là mã QR của Desktop. Bạn hãy ghép nối điện thoại trước bằng mã từ Discord (/app pair), sau đó vào Cài đặt để quét mã này.</string>
+
+    <!-- ZXing Barcode Scanner Overrides -->
+    <string name="zxing_msg_default_status">Hướng camera về phía mã QR để quét</string>
+    <string name="zxing_app_name">Quét mã QR</string>
 </resources>
