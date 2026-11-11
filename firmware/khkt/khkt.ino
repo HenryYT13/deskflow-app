@@ -1633,7 +1633,7 @@ void drawPhysicalScreen() {
 }
 
 void saveNetworkToArray(String ssid, String pass) {
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(8192);
   deserializeJson(doc, wifiListJson);
   JsonArray arr = doc.as<JsonArray>();
 
@@ -1660,7 +1660,7 @@ void saveNetworkToArray(String ssid, String pass) {
 }
 
 void removeNetworkFromArray(String ssid) {
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(8192);
   deserializeJson(doc, wifiListJson);
   JsonArray arr = doc.as<JsonArray>();
 
@@ -1679,7 +1679,7 @@ void removeNetworkFromArray(String ssid) {
 }
 
 void autoConnectMultiWiFi() {
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(8192);
   deserializeJson(doc, wifiListJson);
   JsonArray savedArr = doc.as<JsonArray>();
 
@@ -1727,7 +1727,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     addLog("MQTT_RX", topicStr + " -> " + body);
   }
 
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(8192);
   if (deserializeJson(doc, payload, length)) return;
 
   if (topicStr == "deskflow/telemetry") {
@@ -2607,7 +2607,7 @@ void handleConnectWifi() {
 }
 
 void handleGetSavedWifi() {
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(8192);
   deserializeJson(doc, wifiListJson);
   JsonArray arr = doc.as<JsonArray>();
   String json = "[";
@@ -3127,7 +3127,7 @@ void setup() {
   mqtt.setServer(mqttBroker.c_str(), mqttPort);
   mqtt.setCallback(onMqttMessage);
   mqtt.setSocketTimeout(1);
-  mqtt.setBufferSize(2048);
+  mqtt.setBufferSize(8192);
 
   server.on("/", handleRoot);
   server.on("/api/buzz", handleApiBuzz);
