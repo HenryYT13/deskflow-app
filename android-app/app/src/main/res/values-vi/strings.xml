@@ -193,7 +193,7 @@
     <string name="api_test_http_status">Mã trạng thái HTTP: %1$d</string>
     <string name="api_test_diagnostics">Thông tin chẩn đoán</string>
     <string name="about_title">Giới thiệu DeskFlow</string>
-    <string name="version_label">Phiên bản 1.0.4</string>
+    <string name="version_label">Phiên bản 1.0.5</string>
     <string name="about_desc">DeskFlow là hệ sinh thái năng suất IoT kết nối đa nền tảng gồm Discord, tiện ích web, phần cứng IoT và ứng dụng Android.</string>
 
     <!-- Dedicated Timetable Screen -->

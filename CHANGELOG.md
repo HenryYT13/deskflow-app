@@ -4,6 +4,18 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.0.5] - 2026-11-11
+
+### ✨ Tính năng mới & Trải nghiệm (New Features & UX)
+- **Điều chỉnh độ sáng đèn LED & màn hình theo thời gian thực (Real-time Continuous Slider Tracking):**
+  - Thanh trượt (Slider) trên ứng dụng Android phản hồi ngay lập tức theo từng nấc di chuyển của ngón tay, không cần phải nhấc tay/thả thanh trượt mới gửi lệnh.
+  - Tối ưu hóa điều tiết luồng sự kiện (coroutine throttle/debounce 50ms) giúp trải nghiệm vuốt chỉnh mượt mà, không giật lag và chống nghẽn đường truyền mạng.
+  - Backend tăng giới hạn tần suất yêu cầu lên 1200 req/phút và trì hoãn ghi đĩa cài đặt để phục vụ điều khiển phần cứng liên tục.
+- **Tạo mã QR ghép nối trực tiếp trong Discord Bot:**
+  - Lệnh Discord `/app pair`, `/pair`, `/qr` tự động xuất ảnh mã QR đính kèm trực tiếp trong tin nhắn để người dùng quét ngay bằng điện thoại.
+
+---
+
 ## [v1.0.4] - 2026-11-11
 
 ### ✨ Tính năng mới (New Features)
