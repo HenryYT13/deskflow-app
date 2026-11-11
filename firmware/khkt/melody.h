@@ -3,6 +3,10 @@
 #define DESKFLOW_MELODY_H
 #include <Arduino.h>
 
+#ifndef BUZZER_PIN
+#define BUZZER_PIN 32
+#endif
+
 // Sample: format-0 SMF, 480 tpq, 120 BPM (C-E-G-C arpeggio jingle).
 static const uint8_t SAMPLE_MELODY_MID[] PROGMEM = {
   0x4D, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01,
