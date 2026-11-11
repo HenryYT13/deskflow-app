@@ -188,7 +188,38 @@ struct ServerStats {
 
 void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
   String clean = hex;
+  clean.trim();
   if (clean.startsWith("#")) clean = clean.substring(1);
+  else if (clean.startsWith("0x") || clean.startsWith("0X")) clean = clean.substring(2);
+  clean.toUpperCase();
+
+  // Named color shortcuts
+  if (clean == "RED") { r = 255; g = 0; b = 0; return; }
+  if (clean == "GREEN") { r = 0; g = 255; b = 0; return; }
+  if (clean == "BLUE") { r = 0; g = 0; b = 255; return; }
+  if (clean == "WHITE") { r = 255; g = 255; b = 255; return; }
+  if (clean == "YELLOW") { r = 255; g = 255; b = 0; return; }
+  if (clean == "CYAN") { r = 0; g = 255; b = 255; return; }
+  if (clean == "MAGENTA" || clean == "PINK") { r = 255; g = 0; b = 255; return; }
+  if (clean == "ORANGE") { r = 255; g = 128; b = 0; return; }
+  if (clean == "PURPLE") { r = 139; g = 92; b = 246; return; }
+  if (clean == "WARM") { r = 255; g = 197; b = 143; return; }
+  if (clean == "COOL") { r = 200; g = 220; b = 255; return; }
+
+  // 3-char shorthand: #RGB -> #RRGGBB (e.g. #F00 -> #FF0000)
+  if (clean.length() == 3) {
+    char rC = clean.charAt(0);
+    char gC = clean.charAt(1);
+    char bC = clean.charAt(2);
+    char buf[7] = { rC, rC, gC, gC, bC, bC, '\0' };
+    clean = String(buf);
+  }
+
+  // 8-char hex (ARGB / RGBA): strip alpha prefix
+  if (clean.length() == 8) {
+    clean = clean.substring(2);
+  }
+
   if (clean.length() == 6) {
     long num = strtol(clean.c_str(), nullptr, 16);
     r = (num >> 16) & 0xFF;
