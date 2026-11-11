@@ -60,6 +60,8 @@ import com.deskflow.app.data.model.*
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
 import com.deskflow.app.ui.morse.MorseConverterScreen
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -234,7 +236,14 @@ fun ControlScreen(
     var currentView by remember { mutableStateOf("main") }
     var selectedColorHex by rememberSaveable { mutableStateOf("#5865F2") }
     var ledBrightness by remember { mutableFloatStateOf(80f) }
+    var lastSentLedBright by remember { mutableIntStateOf(80) }
+    var ledDimJob by remember { mutableStateOf<Job?>(null) }
+    var lastLedSentTime by remember { mutableLongStateOf(0L) }
+
     var screenBrightness by remember { mutableFloatStateOf(80f) }
+    var lastSentScreenBright by remember { mutableIntStateOf(80) }
+    var screenDimJob by remember { mutableStateOf<Job?>(null) }
+    var lastScreenSentTime by remember { mutableLongStateOf(0L) }
     var selectedClockStyle by rememberSaveable { mutableStateOf("digital_classic") }
     var clockConfig by remember { mutableStateOf(ClockConfigDto()) }
     var clockConfigLoading by remember { mutableStateOf(false) }
@@ -781,17 +790,57 @@ fun ControlScreen(
                                         }
                                     },
                                     ledBrightness = ledBrightness,
-                                    onLedBrightnessChange = { ledBrightness = it },
+                                    onLedBrightnessChange = { newFloat ->
+                                        ledBrightness = newFloat
+                                        val target = newFloat.roundToInt()
+                                        if (target != lastSentLedBright) {
+                                            ledDimJob?.cancel()
+                                            ledDimJob = coroutineScope.launch {
+                                                val now = System.currentTimeMillis()
+                                                val elapsed = now - lastLedSentTime
+                                                if (elapsed < 50) {
+                                                    delay(50 - elapsed)
+                                                }
+                                                lastLedSentTime = System.currentTimeMillis()
+                                                lastSentLedBright = target
+                                                repository.setLampDim(led = target, screen = null)
+                                            }
+                                        }
+                                    },
                                     onLedBrightnessFinished = {
-                                        coroutineScope.launch {
-                                            repository.setLampDim(led = ledBrightness.roundToInt(), screen = null)
+                                        val finalTarget = ledBrightness.roundToInt()
+                                        ledDimJob?.cancel()
+                                        ledDimJob = coroutineScope.launch {
+                                            lastLedSentTime = System.currentTimeMillis()
+                                            lastSentLedBright = finalTarget
+                                            repository.setLampDim(led = finalTarget, screen = null)
                                         }
                                     },
                                     screenBrightness = screenBrightness,
-                                    onScreenBrightnessChange = { screenBrightness = it },
+                                    onScreenBrightnessChange = { newFloat ->
+                                        screenBrightness = newFloat
+                                        val target = newFloat.roundToInt()
+                                        if (target != lastSentScreenBright) {
+                                            screenDimJob?.cancel()
+                                            screenDimJob = coroutineScope.launch {
+                                                val now = System.currentTimeMillis()
+                                                val elapsed = now - lastScreenSentTime
+                                                if (elapsed < 50) {
+                                                    delay(50 - elapsed)
+                                                }
+                                                lastScreenSentTime = System.currentTimeMillis()
+                                                lastSentScreenBright = target
+                                                repository.setLampDim(led = null, screen = target)
+                                            }
+                                        }
+                                    },
                                     onScreenBrightnessFinished = {
-                                        coroutineScope.launch {
-                                            repository.setLampDim(led = null, screen = screenBrightness.roundToInt())
+                                        val finalTarget = screenBrightness.roundToInt()
+                                        screenDimJob?.cancel()
+                                        screenDimJob = coroutineScope.launch {
+                                            lastScreenSentTime = System.currentTimeMillis()
+                                            lastSentScreenBright = finalTarget
+                                            repository.setLampDim(led = null, screen = finalTarget)
                                         }
                                     },
                                     onTurnOffLamp = {
