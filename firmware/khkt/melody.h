@@ -127,7 +127,32 @@ static bool melodyStart(const uint8_t* d, size_t len) {
 static bool melodyUpdate(bool buzzerOn) {
   if (!melodyPlaying) return false;
   unsigned long now = millis();
-  if (melodyStepStart != 0 && now - melodyStepStart < melodyNotes[melodyIdx - 1].durMs) return true;
+
+  // If currently within a note step, apply gate-time articulation
+  if (melodyStepStart != 0 && melodyIdx > 0) {
+    uint16_t dur = melodyNotes[melodyIdx - 1].durMs;
+    unsigned long elapsed = now - melodyStepStart;
+
+    // Gate time: 85% tone duration, 15% articulation gap (min 15ms, max 35ms)
+    // Ensures distinct attack transients and prevents repeated pitches from slurring into one drone.
+    uint16_t gateMs = dur;
+    if (dur >= 40) {
+      uint16_t gap = (dur * 15) / 100;
+      if (gap < 15) gap = 15;
+      if (gap > 35) gap = 35;
+      gateMs = dur - gap;
+    }
+
+    if (elapsed >= gateMs && melodyToneOn) {
+      noTone(BUZZER_PIN);
+      melodyToneOn = false;
+    }
+
+    if (elapsed < dur) {
+      return true;
+    }
+  }
+
   if (melodyIdx >= melodyCount) { melodyStop(); return false; }
   MelodyNote n = melodyNotes[melodyIdx++];
   melodyStepStart = now ? now : 1;
