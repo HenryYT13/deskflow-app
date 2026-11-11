@@ -12,7 +12,10 @@ public partial class App : Application
     public App()
     {
         this.UnhandledException += (sender, e) =>
+        {
             Program.WriteCrashLog("App.UnhandledException: " + e.Message, e.Exception);
+            Program.ShowErrorDialog("DeskFlow App Error", $"An unhandled exception occurred:\n\n{e.Message}");
+        };
         try
         {
             this.InitializeComponent();
@@ -20,6 +23,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Program.WriteCrashLog("App.InitializeComponent", ex);
+            Program.ShowErrorDialog("DeskFlow Initialization Error", $"Failed to initialize WinUI components:\n\n{ex.Message}\n\nEnsure resources.pri is present.");
             throw;
         }
     }

@@ -58,6 +58,31 @@ jobs:
           & msbuild win\DeskFlow\DeskFlow.csproj -restore -t:Publish -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:PublishDir=$appOut
           if ($LASTEXITCODE -ne 0) { throw "MSBuild publish failed" }
 
+          # CRITICAL WINUI 3 FIX: Copy generated PRI files to publish directory as resources.pri
+          $priFiles = Get-ChildItem -Path "win\DeskFlow" -Recurse -Filter "*DeskFlow.pri"
+          foreach ($pri in $priFiles) {
+              Copy-Item $pri.FullName (Join-Path $appOut "resources.pri") -Force
+              Copy-Item $pri.FullName (Join-Path $appOut "DeskFlow.pri") -Force
+              Write-Host "Injected PRI: $($pri.FullName) -> $appOut\resources.pri"
+          }
+          $allPri = Get-ChildItem -Path "win\DeskFlow" -Recurse -Filter "resources.pri"
+          foreach ($p in $allPri) {
+              if ($p.DirectoryName -notmatch "Microsoft\.UI\.Xaml") {
+                  Copy-Item $p.FullName (Join-Path $appOut "resources.pri") -Force
+                  Write-Host "Injected root resources.pri: $($p.FullName)"
+              }
+          }
+
+          # Bundle native Visual C++ 2015-2022 x64 runtime DLLs for 100% self-contained execution
+          $vcDlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "vccorlib140.dll")
+          foreach ($dll in $vcDlls) {
+              $src = Join-Path "C:\Windows\System32" $dll
+              if (Test-Path $src) {
+                  Copy-Item $src (Join-Path $appOut $dll) -Force
+                  Write-Host "Bundled VC++ runtime DLL: $dll"
+              }
+          }
+
           $tag = $env:GITHUB_REF_NAME
           if (-not $tag) { $tag = "1.0.2" }
           $ver = $tag -replace '^v', ''

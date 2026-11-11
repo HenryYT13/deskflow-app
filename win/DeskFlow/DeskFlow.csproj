@@ -31,4 +31,10 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.240627000" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.3233" />
   </ItemGroup>
+
+  <Target Name="EnsurePriInPublish" AfterTargets="Publish">
+    <Copy SourceFiles="$(TargetDir)DeskFlow.pri" DestinationFiles="$(PublishDir)resources.pri" Condition="Exists('$(TargetDir)DeskFlow.pri')" ContinueOnError="true" />
+    <Copy SourceFiles="$(TargetDir)DeskFlow.pri" DestinationFiles="$(PublishDir)DeskFlow.pri" Condition="Exists('$(TargetDir)DeskFlow.pri')" ContinueOnError="true" />
+    <Copy SourceFiles="$(TargetDir)resources.pri" DestinationFiles="$(PublishDir)resources.pri" Condition="Exists('$(TargetDir)resources.pri')" ContinueOnError="true" />
+  </Target>
 </Project>

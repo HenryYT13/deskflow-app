@@ -11,6 +11,18 @@ namespace DeskFlow;
 
 public static class Program
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
+
+    public static void ShowErrorDialog(string title, string message)
+    {
+        try
+        {
+            MessageBox(IntPtr.Zero, message, title, 0x10);
+        }
+        catch { }
+    }
+
     public static void WriteCrashLog(string source, object? ex)
     {
         try
@@ -34,6 +46,7 @@ public static class Program
         catch (Exception ex)
         {
             WriteCrashLog("Startup", ex);
+            ShowErrorDialog("DeskFlow Fatal Error", $"DeskFlow encountered a fatal startup error:\n\n{ex.Message}\n\nSee details at:\n%LOCALAPPDATA%\\DeskFlow\\crash.log");
             throw;
         }
     }
