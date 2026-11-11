@@ -13,6 +13,7 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
+#include <Adafruit_NeoPixel.h>
 #include "clock_styles.h"
 #include "melody.h"
 
@@ -30,6 +31,9 @@ Adafruit_ST7789* tft = nullptr;
 #define BTN_PREV    26
 #define LED_PIN     2
 #define BUZZER_PIN  32
+#define NUM_LEDS    64
+
+Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // Dynamic Theme Color Palette RGB565 (Initialized to Dark Mode)
 uint16_t themeBg     = 0x0863;  // #0b0f19
@@ -181,6 +185,34 @@ struct ServerStats {
   String countdownId = "";
   String lampColor = "#FFFFFF";
 } srvStats;
+
+void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
+  String clean = hex;
+  if (clean.startsWith("#")) clean = clean.substring(1);
+  if (clean.length() == 6) {
+    long num = strtol(clean.c_str(), nullptr, 16);
+    r = (num >> 16) & 0xFF;
+    g = (num >> 8) & 0xFF;
+    b = num & 0xFF;
+  } else {
+    r = 255; g = 255; b = 255;
+  }
+}
+
+void updateLampLed() {
+  if (!ledState || ledBrightness == 0) {
+    strip.clear();
+    strip.show();
+    return;
+  }
+  uint8_t r = 255, g = 255, b = 255;
+  parseHexColor(srvStats.lampColor, r, g, b);
+  strip.setBrightness((ledBrightness * 255) / 100);
+  for (int i = 0; i < NUM_LEDS; i++) {
+    strip.setPixelColor(i, strip.Color(r, g, b));
+  }
+  strip.show();
+}
 
 String serverLogs = "[SYSTEM] DeskFlow Station Ready.\n";
 bool screenNeedUpdate = true;
@@ -1851,7 +1883,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
         ledBrightness = doc["led_brightness"] | 100;
         prefs.putInt("led_bright", ledBrightness);
         if (ledState) {
-          analogWrite(LED_PIN, (ledBrightness * 255) / 100);
+          updateLampLed();
         }
       }
       if (doc.containsKey("buzzer_enabled")) {
@@ -1976,13 +2008,15 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       if (act == "toggle") {
         ledBlinkMode = false;
         ledState = !ledState;
-        analogWrite(LED_PIN, ledState ? ((ledBrightness * 255) / 100) : 0);
+        prefs.putBool("led_state", ledState);
+        updateLampLed();
         addLog("LED", "Toggle LED: " + String(ledState ? "ON" : "OFF"));
       } else if (act == "blink") {
         ledBlinkMode = !ledBlinkMode;
         if (!ledBlinkMode) {
           ledState = false;
-          analogWrite(LED_PIN, 0);
+          prefs.putBool("led_state", false);
+          updateLampLed();
         }
         addLog("LED", "Blink Mode: " + String(ledBlinkMode ? "ON" : "OFF"));
       }
@@ -1992,14 +2026,16 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       srvStats.lampColor = hexCol;
       prefs.putString("lamp_col", hexCol);
       ledState = true;
-      analogWrite(LED_PIN, ((ledBrightness * 255) / 100));
+      prefs.putBool("led_state", true);
+      updateLampLed();
       screenNeedUpdate = true;
       addLog("LED", "Lamp Color set to: " + hexCol);
     }
     else if (topicStr == "deskflow/display" && action == "led_off") {
       ledState = false;
       ledBlinkMode = false;
-      analogWrite(LED_PIN, 0);
+      prefs.putBool("led_state", false);
+      updateLampLed();
       screenNeedUpdate = true;
       addLog("LED", "Lamp turned off");
     }
@@ -2041,7 +2077,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       stopMorsePlayback();
       melodyStop();
       stopBuzzer();
-      digitalWrite(LED_PIN, LOW);
+      updateLampLed();
       addLog("ALARM", ">>> DA GIAI DUNG! TAT CHUONG.");
       srvStats.activeView = "tkb";
       screenNeedUpdate = true;
@@ -2566,12 +2602,14 @@ void handleApiLed() {
       ledBlinkMode = !ledBlinkMode;
       if (!ledBlinkMode) {
         ledState = false;
-        analogWrite(LED_PIN, 0);
+        prefs.putBool("led_state", false);
+        updateLampLed();
       }
     } else if (act == "toggle") {
       ledBlinkMode = false;
       ledState = !ledState;
-      analogWrite(LED_PIN, ledState ? ((ledBrightness * 255) / 100) : 0);
+      prefs.putBool("led_state", ledState);
+      updateLampLed();
     }
     server.send(200, "text/plain", "LED OK \n");
   } else server.send(400, "text/plain", "Missing act");
@@ -2780,9 +2818,7 @@ void handleMenuPlay() {
   } else if (menuState == MENU_ADJUST_LED) {
     prefs.putInt("led_bright", ledBrightness);
     publishHardwareSettingsUpdate();
-    if (!ledState) {
-      analogWrite(LED_PIN, 0);
-    }
+    updateLampLed();
     menuState = MENU_MAIN;
     screenNeedUpdate = true;
     triggerBuzz(50);
@@ -2828,7 +2864,10 @@ void handleMenuNext() {
     triggerBuzz(20);
   } else if (menuState == MENU_ADJUST_LED) {
     ledBrightness = min(100, ledBrightness + 10);
-    analogWrite(LED_PIN, (ledBrightness * 255) / 100);
+    bool oldState = ledState;
+    ledState = true;
+    updateLampLed();
+    ledState = oldState;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_BUZZER_CONFIG) {
@@ -2845,7 +2884,10 @@ void handleMenuPrev() {
     triggerBuzz(20);
   } else if (menuState == MENU_ADJUST_LED) {
     ledBrightness = max(0, ledBrightness - 10);
-    analogWrite(LED_PIN, (ledBrightness * 255) / 100);
+    bool oldState = ledState;
+    ledState = true;
+    updateLampLed();
+    ledState = oldState;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_BUZZER_CONFIG) {
@@ -3041,8 +3083,9 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(PIN_BATTERY, ADC_11db);
 
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  strip.begin();
+  strip.clear();
+  strip.show();
 
   pinMode(BTN_PLAY, INPUT_PULLUP);
   pinMode(BTN_NEXT, INPUT_PULLUP);
@@ -3094,6 +3137,9 @@ void setup() {
   ledBrightness = prefs.getInt("led_bright", 100);
   buzzerEnabled = prefs.getBool("buzz_en", true);
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
+  srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
+  ledState = prefs.getBool("led_state", true); // Default to ON so NeoPixel turns on on boot!
+  updateLampLed();
 
   srvStats.stickyNote = prefs.getString("stk_note", "");
   srvStats.stickyNoteId = prefs.getString("stk_id", "");
@@ -3160,13 +3206,16 @@ void loop() {
       alarmBeepState = true;
       lastAlarmBeepTime = now;
       tone(BUZZER_PIN, 2600);
-      digitalWrite(LED_PIN, HIGH);
+      strip.setBrightness(255);
+      for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, strip.Color(255, 0, 0));
+      strip.show();
     } else if (alarmBeepState && (now - lastAlarmBeepTime >= 160)) {
       alarmBeepState = false;
       lastAlarmBeepTime = now;
       noTone(BUZZER_PIN);
       digitalWrite(BUZZER_PIN, HIGH);
-      digitalWrite(LED_PIN, LOW);
+      strip.clear();
+      strip.show();
     }
   }
   // 2. Tiếng bíp đơn lẻ theo lệnh /buzz
@@ -3183,7 +3232,7 @@ void loop() {
     if (millis() - lastLedBlinkTime >= LED_BLINK_INTERVAL) {
       lastLedBlinkTime = millis();
       ledState = !ledState;
-      analogWrite(LED_PIN, ledState ? ((ledBrightness * 255) / 100) : 0);
+      updateLampLed();
     }
   }
 
