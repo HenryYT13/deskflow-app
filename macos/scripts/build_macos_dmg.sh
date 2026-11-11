@@ -14,10 +14,12 @@ fi
 
 KEYCHAIN_PATH=""
 cleanup() {
+  local ec=$?
   if [[ -n "$KEYCHAIN_PATH" && -f "$KEYCHAIN_PATH" ]]; then
     echo "[CLEANUP] Removing temporary build keychain..."
     security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
   fi
+  exit "$ec"
 }
 trap cleanup EXIT
 
@@ -140,7 +142,7 @@ else
   echo "=========================================================================="
   echo "[SIGNING] Apple Developer ID identity not detected in environment."
   echo "Applying strict, clean ad-hoc code signature (--sign -)."
-  echo "Note: Without an active Apple Developer Program membership ($99/yr),"
+  echo "Note: Without an active Apple Developer Program membership (\$99/yr),"
   echo "Gatekeeper will assess this distribution as unidentified."
   echo "Users can launch via the official macOS per-app 'Open Anyway' mechanism."
   echo "See docs/MACOS_INSTALL.md for step-by-step instructions."
