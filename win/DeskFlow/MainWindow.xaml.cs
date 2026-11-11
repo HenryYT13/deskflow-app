@@ -18,12 +18,13 @@ public sealed partial class MainWindow : Window
     private readonly List<PairedDeviceItemDto> _devicesCache = new();
     private DispatcherQueueTimer? _pairPollTimer;
     private string? _activePairSessionId;
+    private bool _isLoaded;
 
     public MainWindow()
     {
+        _client = new DeskFlowApiClient();
         this.InitializeComponent();
         this.Title = "Deskflow";
-        _client = new DeskFlowApiClient();
 
         // Seamless title bar into Mica background
         try
@@ -137,6 +138,8 @@ public sealed partial class MainWindow : Window
         // Initial fetch of data
         _ = RefreshAllDataAsync();
 
+        _isLoaded = true;
+
         // Default selection to System & Telemetry (macOS parity)
         MainNavView.SelectedItem = NavSystemItem;
     }
@@ -240,6 +243,7 @@ public sealed partial class MainWindow : Window
 
     private void MainNavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+        if (!_isLoaded) return;
         if (args.SelectedItem is not NavigationViewItem item) return;
         string tag = item.Tag?.ToString() ?? "system";
 
@@ -831,6 +835,7 @@ public sealed partial class MainWindow : Window
 
     private void ThemeModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_isLoaded || _client == null) return;
         if (ThemeModeCombo.SelectedItem is ComboBoxItem item && item.Tag is string theme)
         {
             _client.Settings.AppTheme = theme;
@@ -962,6 +967,7 @@ public sealed partial class MainWindow : Window
 
     private async void DisplayDeviceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_isLoaded || _client == null) return;
         if (DisplayDeviceCombo.SelectedItem is ComboBoxItem item && item.Tag is string devId)
         {
             var (ok, msg) = await _client.SetSelectedDisplayDeviceAsync(devId);
@@ -1107,9 +1113,14 @@ public sealed partial class MainWindow : Window
 
     private void SpotifyVolumeSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        int vol = (int)e.NewValue;
-        if (SpotifyVolumeText != null) SpotifyVolumeText.Text = $"{vol}%";
-        _ = _client.SetSpotifyVolumeAsync(vol);
+        try
+        {
+            int vol = (int)e.NewValue;
+            if (SpotifyVolumeText != null) SpotifyVolumeText.Text = $"{vol}%";
+            if (!_isLoaded || _client == null) return;
+            _ = _client.SetSpotifyVolumeAsync(vol);
+        }
+        catch {}
     }
 
     private void RefreshSpotify_Click(object sender, RoutedEventArgs e)
@@ -1144,7 +1155,8 @@ public sealed partial class MainWindow : Window
         {
             var c = args.NewColor;
             string hex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
-            LampHexBox.Text = hex;
+            if (LampHexBox != null) LampHexBox.Text = hex;
+            if (!_isLoaded || _client == null) return;
             _ = _client.SetLampColorAsync(hex);
         }
         catch {}
@@ -1190,6 +1202,7 @@ public sealed partial class MainWindow : Window
 
     private void LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_isLoaded || _client == null) return;
         if (LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
         {
             _client.Settings.Language = lang;
