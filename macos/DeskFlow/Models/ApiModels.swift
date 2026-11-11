@@ -555,7 +555,7 @@ public struct PairSessionStatusResponse: Codable {
     public let deviceToken: String?
     public let deviceName: String?
     public let scopes: [String]?
-    public let pairedAt: Double?
+    public let pairedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -574,7 +574,7 @@ public struct PairSessionStatusResponse: Codable {
         deviceToken: String? = nil,
         deviceName: String? = nil,
         scopes: [String]? = nil,
-        pairedAt: Double? = nil
+        pairedAt: String? = nil
     ) {
         self.success = success
         self.status = status
@@ -583,6 +583,23 @@ public struct PairSessionStatusResponse: Codable {
         self.deviceName = deviceName
         self.scopes = scopes
         self.pairedAt = pairedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.success = try? container.decodeIfPresent(Bool.self, forKey: .success)
+        self.status = try? container.decodeIfPresent(String.self, forKey: .status)
+        self.deviceId = try? container.decodeIfPresent(String.self, forKey: .deviceId)
+        self.deviceToken = try? container.decodeIfPresent(String.self, forKey: .deviceToken)
+        self.deviceName = try? container.decodeIfPresent(String.self, forKey: .deviceName)
+        self.scopes = try? container.decodeIfPresent([String].self, forKey: .scopes)
+        if let str = try? container.decodeIfPresent(String.self, forKey: .pairedAt) {
+            self.pairedAt = str
+        } else if let dbl = try? container.decodeIfPresent(Double.self, forKey: .pairedAt) {
+            self.pairedAt = String(dbl)
+        } else {
+            self.pairedAt = nil
+        }
     }
 }
 

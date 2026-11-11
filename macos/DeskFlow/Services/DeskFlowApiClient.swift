@@ -345,21 +345,26 @@ public final class DeskFlowApiClient: ObservableObject {
             let (data, response) = try await session.data(for: req)
             guard let http = response as? HTTPURLResponse else { return nil }
             if http.statusCode == 200 {
-                guard let decoded = try? JSONDecoder().decode(PairSessionStatusResponse.self, from: data) else { return nil }
-                if decoded.status == "approved",
-                   let token = decoded.deviceToken, !token.isEmpty,
-                   let did = decoded.deviceId, !did.isEmpty {
-                    self.deviceToken = token
-                    self.deviceId = did
-                    if let dname = decoded.deviceName, !dname.isEmpty {
-                        self.deviceName = dname
+                do {
+                    let decoded = try JSONDecoder().decode(PairSessionStatusResponse.self, from: data)
+                    if decoded.status == "approved",
+                       let token = decoded.deviceToken, !token.isEmpty,
+                       let did = decoded.deviceId, !did.isEmpty {
+                        self.deviceToken = token
+                        self.deviceId = did
+                        if let dname = decoded.deviceName, !dname.isEmpty {
+                            self.deviceName = dname
+                        }
+                        self.statusBannerMessage = appLanguage == "vi" ? "Ghép nối thành công!" : "Paired with DeskFlow backend!"
+                        self.errorBannerMessage = nil
+                        logDiagnostic("[PairingSession] Approved and credentials saved for device_id=\(did)")
+                        Task { await self.refreshAll() }
                     }
-                    self.statusBannerMessage = appLanguage == "vi" ? "Ghép nối thành công!" : "Paired with DeskFlow backend!"
-                    self.errorBannerMessage = nil
-                    logDiagnostic("[PairingSession] Approved and credentials saved for device_id=\(did)")
-                    await refreshAll()
+                    return decoded
+                } catch {
+                    logDiagnostic("[PairingSession] JSON decode error: \(error.localizedDescription)")
+                    return nil
                 }
-                return decoded
             }
             return nil
         } catch {

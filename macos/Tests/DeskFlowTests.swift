@@ -117,11 +117,12 @@ final class DeskFlowTests: XCTestCase {
         XCTAssertEqual(createDecoded.expiresIn, 600)
 
         let statusJson = """
-        {"success": true, "status": "approved", "device_id": "dev_1", "device_token": "tok_1", "device_name": "MacBook"}
+        {"success": true, "status": "approved", "device_id": "dev_1", "device_token": "tok_1", "device_name": "MacBook", "scopes": ["focus", "control"], "paired_at": "2026-11-11T03:51:00.123456+00:00"}
         """.data(using: .utf8)!
         let statusDecoded = try JSONDecoder().decode(PairSessionStatusResponse.self, from: statusJson)
         XCTAssertEqual(statusDecoded.status, "approved")
         XCTAssertEqual(statusDecoded.deviceId, "dev_1")
         XCTAssertEqual(statusDecoded.deviceToken, "tok_1")
+        XCTAssertEqual(statusDecoded.pairedAt, "2026-11-11T03:51:00.123456+00:00")
     }
 }
