@@ -67,6 +67,27 @@ const int MENU_MAIN_ITEM_COUNT = 4;
 int buzzerCurrentItem = 0;
 const int MENU_BUZZER_ITEM_COUNT = 4;
 
+// View Selector Menu State Machine
+bool inViewMenu = false;
+bool viewMenuNeedsRedraw = false;
+int viewMenuIndex = 0;
+const int VIEW_MENU_COUNT = 9;
+struct ViewMenuItem {
+  const char* id;
+  const char* title;
+};
+const ViewMenuItem VIEW_MENU_ITEMS[VIEW_MENU_COUNT] = {
+  { "main",      "1. Tong quan" },
+  { "stats",     "2. Thong so may" },
+  { "tkb",       "3. Thoi khoa bieu" },
+  { "weather",   "4. Thoi tiet" },
+  { "lyrics",    "5. Loi bai hat" },
+  { "notes",     "6. Ghi chu" },
+  { "countdown", "7. Dem nguoc" },
+  { "focus",     "8. Tap trung" },
+  { "clock",     "9. Dong ho" }
+};
+
 // Dedicated Notes Storage
 struct NoteItem {
   String id;
@@ -847,6 +868,59 @@ void drawSettingsMenu() {
   }
 }
 
+void drawViewMenu() {
+  static bool firstDraw = true;
+
+  if (viewMenuNeedsRedraw || firstDraw) {
+    tft->fillScreen(COL_BG);
+
+    // Header Box
+    tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
+    tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
+    printCenteredText("DANH SACH MAN HINH", 16, 1, COL_CYAN, COL_CARD);
+
+    // Footer
+    tft->drawFastHLine(10, 296, 220, COL_BORDER);
+    printCenteredText("[Prev/Next]: Tim   [Play]: Chon", 304, 1, COL_MUTED, COL_BG);
+
+    firstDraw = false;
+    viewMenuNeedsRedraw = false;
+  }
+
+  int startY = 44;
+  int cardH = 24;
+  int gap = 3;
+
+  for (int i = 0; i < VIEW_MENU_COUNT; i++) {
+    int y = startY + i * (cardH + gap);
+    bool selected = (viewMenuIndex == i);
+    bool isCurrent = (srvStats.activeView == VIEW_MENU_ITEMS[i].id);
+
+    uint16_t bg = selected ? COL_CYAN : COL_CARD;
+    uint16_t border = selected ? COL_WHITE : (isCurrent ? COL_GREEN : COL_BORDER);
+    uint16_t textCol = selected ? COL_BG : (isCurrent ? COL_GREEN : COL_WHITE);
+
+    tft->fillRoundRect(12, y, 216, cardH, 4, bg);
+    tft->drawRoundRect(12, y, 216, cardH, 4, border);
+
+    tft->setTextSize(1);
+    tft->setTextColor(textCol, bg);
+    tft->setCursor(18, y + 8);
+
+    if (selected) {
+      tft->printf("> %s", VIEW_MENU_ITEMS[i].title);
+    } else {
+      tft->printf("  %s", VIEW_MENU_ITEMS[i].title);
+    }
+
+    if (isCurrent) {
+      tft->setCursor(168, y + 8);
+      tft->setTextColor(selected ? COL_BG : COL_GREEN, bg);
+      tft->print("[DANG MO]");
+    }
+  }
+}
+
 void drawNotesView() {
   printCenteredText("GHI CHU DANG GHIM", 36, 2, COL_CYAN, COL_BG);
 
@@ -1142,6 +1216,11 @@ void drawPhysicalScreen() {
     return;
   }
 
+  if (inViewMenu) {
+    drawViewMenu();
+    return;
+  }
+
   bool viewChanged = false;
   if (srvStats.activeView != lastRenderedView) {
     tft->fillScreen(COL_BG);
@@ -1343,7 +1422,6 @@ void drawPhysicalScreen() {
     static int lastEspBatPct = -999;
 
     if (viewChanged) {
-      tft->fillScreen(COL_BG);
       printCenteredText("HARDWARE STATS", 38, 2, COL_PURPLE, COL_BG);
       tft->drawFastHLine(16, 150, 208, COL_BORDER);
       lastLpCpu = -999.0;
@@ -2786,7 +2864,10 @@ void handleHardwareButtons() {
   static bool nextPressed = false;
   static bool nextLongTriggered = false;
 
-  static bool prevLastState = HIGH;
+  static unsigned long prevPressTime = 0;
+  static bool prevPressed = false;
+  static bool prevLongTriggered = false;
+
   static unsigned long lastDebounceTime = 0;
 
   if (millis() - lastDebounceTime < 30) return;
@@ -2796,7 +2877,7 @@ void handleHardwareButtons() {
   bool curNext = digitalRead(BTN_NEXT);
   bool curPrev = digitalRead(BTN_PREV);
 
-  // 1. PLAY BUTTON
+  // 1. PLAY BUTTON (Short = Play/Pause / Select, Long >= 700ms = Cycle View)
   if (curPlay == LOW && !playPressed) {
     playPressed = true;
     playPressTime = millis();
@@ -2804,7 +2885,14 @@ void handleHardwareButtons() {
   } else if (curPlay == LOW && playPressed) {
     if (!playLongTriggered && (millis() - playPressTime >= 700)) {
       playLongTriggered = true;
-      if (!inSettingsMenu) {
+      if (inViewMenu) {
+        srvStats.activeView = VIEW_MENU_ITEMS[viewMenuIndex].id;
+        inViewMenu = false;
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        triggerBuzz(60);
+        addLog("VIEW", "Da chon man hinh (hold): " + srvStats.activeView);
+      } else if (!inSettingsMenu) {
         triggerBuzz(80);
         cycleNextView();
         if (srvStats.activeView != "focus") {
@@ -2817,6 +2905,13 @@ void handleHardwareButtons() {
     if (!playLongTriggered) {
       if (inSettingsMenu) {
         handleMenuPlay();
+      } else if (inViewMenu) {
+        srvStats.activeView = VIEW_MENU_ITEMS[viewMenuIndex].id;
+        inViewMenu = false;
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        triggerBuzz(60);
+        addLog("VIEW", "Da chon man hinh: " + srvStats.activeView);
       } else {
         triggerBuzz(30);
         sendButtonAction("press_play");
@@ -2833,6 +2928,9 @@ void handleHardwareButtons() {
     if (!nextLongTriggered && (millis() - nextPressTime >= 800)) {
       nextLongTriggered = true;
       triggerBuzz(80);
+      if (inViewMenu) {
+        inViewMenu = false;
+      }
       if (!inSettingsMenu) {
         inSettingsMenu = true;
         menuState = MENU_MAIN;
@@ -2857,6 +2955,10 @@ void handleHardwareButtons() {
     if (!nextLongTriggered) {
       if (inSettingsMenu) {
         handleMenuNext();
+      } else if (inViewMenu) {
+        viewMenuIndex = (viewMenuIndex + 1) % VIEW_MENU_COUNT;
+        triggerBuzz(20);
+        screenNeedUpdate = true;
       } else {
         if (srvStats.activeView == "notes") {
           cycleNextNote();
@@ -2870,22 +2972,57 @@ void handleHardwareButtons() {
     }
   }
 
-  // 3. PREV BUTTON
-  if (curPrev == LOW && prevLastState == HIGH) {
-    if (inSettingsMenu) {
-      handleMenuPrev();
-    } else {
-      if (srvStats.activeView == "notes") {
-        cyclePrevNote();
-      } else if (srvStats.activeView == "countdown") {
-        cyclePrevCountdown();
+  // 3. PREV BUTTON (Short = Prev track/item, Long >= 700ms = View Selector Menu)
+  if (curPrev == LOW && !prevPressed) {
+    prevPressed = true;
+    prevPressTime = millis();
+    prevLongTriggered = false;
+  } else if (curPrev == LOW && prevPressed) {
+    if (!prevLongTriggered && (millis() - prevPressTime >= 700)) {
+      prevLongTriggered = true;
+      triggerBuzz(80);
+      if (!inSettingsMenu) {
+        if (!inViewMenu) {
+          inViewMenu = true;
+          viewMenuNeedsRedraw = true;
+          for (int i = 0; i < VIEW_MENU_COUNT; i++) {
+            if (srvStats.activeView == VIEW_MENU_ITEMS[i].id) {
+              viewMenuIndex = i;
+              break;
+            }
+          }
+          lastRenderedView = "";
+          screenNeedUpdate = true;
+          addLog("MENU", "Mo menu danh sach man hinh.");
+        } else {
+          inViewMenu = false;
+          lastRenderedView = "";
+          screenNeedUpdate = true;
+          addLog("MENU", "Thoat menu danh sach man hinh.");
+        }
+      }
+    }
+  } else if (curPrev == HIGH && prevPressed) {
+    prevPressed = false;
+    if (!prevLongTriggered) {
+      if (inSettingsMenu) {
+        handleMenuPrev();
+      } else if (inViewMenu) {
+        viewMenuIndex = (viewMenuIndex - 1 + VIEW_MENU_COUNT) % VIEW_MENU_COUNT;
+        triggerBuzz(20);
+        screenNeedUpdate = true;
       } else {
-        triggerBuzz(30);
-        sendButtonAction("press_prev");
+        if (srvStats.activeView == "notes") {
+          cyclePrevNote();
+        } else if (srvStats.activeView == "countdown") {
+          cyclePrevCountdown();
+        } else {
+          triggerBuzz(30);
+          sendButtonAction("press_prev");
+        }
       }
     }
   }
-  prevLastState = curPrev;
 }
 
 unsigned long lastStatusPub = 0;
