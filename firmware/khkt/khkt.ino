@@ -28,7 +28,7 @@ Adafruit_ST7789* tft = nullptr;
 #define BTN_PLAY    14
 #define BTN_NEXT    27
 #define BTN_PREV    26
-#define LED_PIN     12
+#define LED_PIN     2
 #define BUZZER_PIN  32
 
 // Dynamic Theme Color Palette RGB565 (Initialized to Dark Mode)
@@ -772,7 +772,7 @@ void drawSettingsMenu() {
         tft->printf("%s DO SANG LED: %d%%", selected ? ">" : " ", ledBrightness);
         tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("Chinh den LED GPIO 12 (PWM)");
+        tft->print("Chinh den LED GPIO 2 (PWM)");
       } else if (i == 1) {
         tft->printf("%s COI CHIP: %s", selected ? ">" : " ", buzzerEnabled ? "BAT" : "TAT (MUTE)");
         tft->setCursor(24, y + 28);
