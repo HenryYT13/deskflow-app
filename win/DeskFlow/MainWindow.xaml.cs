@@ -317,7 +317,16 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var (ok, data, _) = await _client.CreatePairSessionAsync(_client.Settings.DeviceName ?? "DeskFlow Windows", "windows");
+            string chosenName = GateDeviceNameBox != null && !string.IsNullOrWhiteSpace(GateDeviceNameBox.Text)
+                ? GateDeviceNameBox.Text.Trim()
+                : (_client.Settings.DeviceName ?? "DeskFlow Windows");
+
+            if (GateDeviceNameBox != null && string.IsNullOrWhiteSpace(GateDeviceNameBox.Text))
+            {
+                GateDeviceNameBox.Text = chosenName;
+            }
+
+            var (ok, data, _) = await _client.CreatePairSessionAsync(chosenName, "windows");
             if (ok && data != null && !string.IsNullOrWhiteSpace(data.QrPayload))
             {
                 _activePairSessionId = data.SessionId;
@@ -337,6 +346,14 @@ public sealed partial class MainWindow : Window
             }
         }
         catch {}
+    }
+
+    private void GateDeviceNameBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            _ = StartQrPairingSessionAsync();
+        }
     }
 
     private void StopQrPairingSession()

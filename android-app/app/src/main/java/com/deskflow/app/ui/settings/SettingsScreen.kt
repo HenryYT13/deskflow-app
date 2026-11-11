@@ -300,13 +300,15 @@ fun SettingsScreen(
                     onClick = {
                         val targetId = dev.deviceId
                         deviceToUnpair = null
+                        devicesList = devicesList.filter { it.deviceId != targetId }
                         coroutineScope.launch {
                             val res = repository.unpairOtherDevice(targetId)
                             if (res is ApiResult.Success) {
-                                Toast.makeText(context, "Đã hủy liên kết thiết bị", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Đã xoá và hủy liên kết thiết bị", Toast.LENGTH_SHORT).show()
                                 refreshDevices()
                             } else {
                                 Toast.makeText(context, "Lỗi hủy liên kết: ${(res as ApiResult.Error).message}", Toast.LENGTH_LONG).show()
+                                refreshDevices()
                             }
                         }
                     }
@@ -1137,16 +1139,20 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
-                                if (!dev.isCurrent) {
-                                    IconButton(
-                                        onClick = { deviceToUnpair = dev }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DeleteOutline,
-                                            contentDescription = stringResource(R.string.btn_unlink_device),
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
+                                IconButton(
+                                    onClick = {
+                                        if (dev.isCurrent) {
+                                            showUnpairConfirm = true
+                                        } else {
+                                            deviceToUnpair = dev
+                                        }
                                     }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = stringResource(R.string.btn_unlink_device),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
                         }

@@ -193,7 +193,7 @@
     <string name="api_test_http_status">HTTP Status: %1$d</string>
     <string name="api_test_diagnostics">Diagnostic Information</string>
     <string name="about_title">About DeskFlow</string>
-    <string name="version_label">Version 1.0.3</string>
+    <string name="version_label">Version 1.0.4</string>
     <string name="about_desc">DeskFlow is an IoT and multi-client productivity ecosystem connecting Discord, browser extensions, IoT hardware, and Android.</string>
 
     <!-- Dedicated Timetable Screen -->

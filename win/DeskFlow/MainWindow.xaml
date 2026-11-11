@@ -37,6 +37,12 @@
                         <StackPanel Spacing="12" HorizontalAlignment="Center">
                             <TextBlock Text="Quét mã QR bằng ứng dụng Android DeskFlow" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
                             <TextBlock Text="Mở app Android -> Cài đặt -> Quét mã QR liên kết thiết bị khác" FontSize="12" Foreground="#94A3B8" HorizontalAlignment="Center" />
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                                <TextBox x:Name="GateDeviceNameBox" Header="Tên thiết bị hiển thị" PlaceholderText="VD: PC Windows" Width="220" KeyDown="GateDeviceNameBox_KeyDown" />
+                                <Button x:Name="GateUpdateNameBtn" Content="Cập nhật QR" VerticalAlignment="Bottom" Margin="0,0,0,2" Click="GateRegenerateQr_Click" />
+                            </StackPanel>
+
                             <Border Background="White" Padding="12" CornerRadius="12" HorizontalAlignment="Center">
                                 <Image x:Name="GateQrImage" Width="180" Height="180" Stretch="Uniform" />
                             </Border>

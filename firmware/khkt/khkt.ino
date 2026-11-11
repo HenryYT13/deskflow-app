@@ -1790,8 +1790,11 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     addLog("MQTT_RX", topicStr + " -> " + body);
   }
 
-  DynamicJsonDocument doc(8192);
-  if (deserializeJson(doc, payload, length)) return;
+  DynamicJsonDocument doc(32768);
+  if (deserializeJson(doc, payload, length)) {
+    addLog("MQTT_ERR", "deserializeJson failed (length=" + String(length) + ")");
+    return;
+  }
 
   if (topicStr == "deskflow/telemetry") {
     if (doc.containsKey("server")) {
@@ -2069,6 +2072,26 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       updateLampLed();
       screenNeedUpdate = true;
       addLog("LED", "Lamp turned off");
+    }
+    else if (topicStr == "deskflow/display" && action == "dim") {
+      int b = -1;
+      if (doc.containsKey("led_bright")) b = doc["led_bright"].as<int>();
+      else if (doc.containsKey("led_brightness")) b = doc["led_brightness"].as<int>();
+      else if (doc.containsKey("led")) b = doc["led"].as<int>();
+      if (b >= 0) {
+        ledBrightness = constrain(b, 0, 100);
+        prefs.putInt("led_bright", ledBrightness);
+        if (ledBrightness > 0) {
+          ledState = true;
+          prefs.putBool("led_state", true);
+        } else {
+          ledState = false;
+          prefs.putBool("led_state", false);
+        }
+        updateLampLed();
+        screenNeedUpdate = true;
+        addLog("LED", "Set brightness: " + String(ledBrightness) + "%");
+      }
     }
 
     if (action == "spotify_update") {
