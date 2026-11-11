@@ -158,6 +158,12 @@
     <string name="unpair_confirm_desc">Bạn sẽ cần tạo mã mới từ Discord để kết nối lại thiết bị.</string>
     <string name="btn_confirm_unpair">Đồng ý hủy</string>
     <string name="btn_cancel">Hủy</string>
+    <string name="linked_devices_title">Thiết bị đã kết nối</string>
+    <string name="linked_devices_desc">Quản lý và hủy liên kết các thiết bị đang dùng chung tài khoản.</string>
+    <string name="btn_unlink_device">Hủy liên kết</string>
+    <string name="unlink_device_confirm_title">Hủy liên kết thiết bị?</string>
+    <string name="unlink_device_confirm_desc">Bạn có chắc chắn muốn ngắt kết nối \"%1$s\"?</string>
+    <string name="this_device_badge">Thiết bị này</string>
     <string name="settings_preferences_group">Tùy chọn</string>
     <string name="language_label">Ngôn ngữ</string>
     <string name="theme_label">Giao diện</string>

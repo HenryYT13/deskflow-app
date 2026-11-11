@@ -28,6 +28,7 @@ import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.repository.ApiHealthTestResult
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
+import com.deskflow.app.domain.model.DeviceInfo
 import com.deskflow.app.ui.theme.ScheduledDarkModeEvaluator
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -72,14 +73,36 @@ fun SettingsScreen(
     var pendingPairSessionId by remember { mutableStateOf<String?>(null) }
     var pendingPairServerUrl by remember { mutableStateOf<String?>(null) }
     var pendingPairDeviceName by remember { mutableStateOf("DeskFlow Desktop") }
+    var pendingPairPlatform by remember { mutableStateOf("desktop") }
     var showPairConfirmDialog by remember { mutableStateOf(false) }
     var isApprovingPair by remember { mutableStateOf(false) }
+
+    // Paired Devices List state
+    var devicesList by remember { mutableStateOf<List<DeviceInfo>>(emptyList()) }
+    var isLoadingDevices by remember { mutableStateOf(false) }
+    var deviceToUnpair by remember { mutableStateOf<DeviceInfo?>(null) }
+
+    fun refreshDevices() {
+        coroutineScope.launch {
+            isLoadingDevices = true
+            val res = repository.getDevices()
+            if (res is ApiResult.Success) {
+                devicesList = res.data
+            }
+            isLoadingDevices = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshDevices()
+    }
 
     val scanOtherDeviceLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult
         var parsedSession: String? = null
         var parsedServer: String? = null
         var parsedName: String? = null
+        var parsedPlatform: String? = null
 
         try {
             val uri = Uri.parse(raw)
@@ -87,6 +110,7 @@ fun SettingsScreen(
                 parsedSession = uri.getQueryParameter("session") ?: uri.getQueryParameter("session_id")
                 parsedServer = uri.getQueryParameter("server") ?: uri.getQueryParameter("server_url")
                 parsedName = uri.getQueryParameter("name") ?: uri.getQueryParameter("device_name")
+                parsedPlatform = uri.getQueryParameter("platform")
             }
         } catch (_: Exception) {}
 
@@ -108,11 +132,18 @@ fun SettingsScreen(
                 parsedName = try { java.net.URLDecoder.decode(nameRegex.groupValues[1], "UTF-8") } catch (_: Exception) { nameRegex.groupValues[1] }
             }
         }
+        if (parsedPlatform == null) {
+            val platformRegex = Regex("(?i)(?:platform)=([^&\\s]+)").find(raw)
+            if (platformRegex != null) {
+                parsedPlatform = platformRegex.groupValues[1]
+            }
+        }
 
         if (!parsedSession.isNullOrBlank()) {
             pendingPairSessionId = parsedSession
             pendingPairServerUrl = parsedServer?.takeIf { it.isNotBlank() } ?: securePreferences.apiUrl
             pendingPairDeviceName = parsedName?.takeIf { it.isNotBlank() } ?: "DeskFlow Desktop"
+            pendingPairPlatform = parsedPlatform?.takeIf { it.isNotBlank() } ?: "desktop"
             showPairConfirmDialog = true
         } else {
             Toast.makeText(context, context.getString(R.string.pair_session_invalid_qr), Toast.LENGTH_SHORT).show()
@@ -168,7 +199,7 @@ fun SettingsScreen(
                     onClick = {
                         coroutineScope.launch {
                             isApprovingPair = true
-                            val res = repository.approvePairSession(serverUrl, sessionId, pendingPairDeviceName)
+                            val res = repository.approvePairSession(serverUrl, sessionId, pendingPairDeviceName, pendingPairPlatform)
                             isApprovingPair = false
                             showPairConfirmDialog = false
                             when (res) {
@@ -179,6 +210,7 @@ fun SettingsScreen(
                                         context.getString(R.string.pair_session_success_msg, finalName),
                                         Toast.LENGTH_LONG
                                     ).show()
+                                    refreshDevices()
                                 }
                                 is ApiResult.Error -> {
                                     Toast.makeText(
@@ -244,6 +276,49 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showUnpairConfirm = false }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        )
+    }
+
+    if (deviceToUnpair != null) {
+        val dev = deviceToUnpair!!
+        AlertDialog(
+            onDismissRequest = { deviceToUnpair = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.LinkOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(stringResource(R.string.unlink_device_confirm_title)) },
+            text = { Text(stringResource(R.string.unlink_device_confirm_desc, dev.deviceName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targetId = dev.deviceId
+                        deviceToUnpair = null
+                        coroutineScope.launch {
+                            val res = repository.unpairOtherDevice(targetId)
+                            if (res is ApiResult.Success) {
+                                Toast.makeText(context, "Đã hủy liên kết thiết bị", Toast.LENGTH_SHORT).show()
+                                refreshDevices()
+                            } else {
+                                Toast.makeText(context, "Lỗi hủy liên kết: ${(res as ApiResult.Error).message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text(
+                        stringResource(R.string.btn_unlink_device),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deviceToUnpair = null }) {
                     Text(stringResource(R.string.btn_cancel))
                 }
             }
@@ -969,6 +1044,115 @@ fun SettingsScreen(
                         Text(stringResource(R.string.btn_scan_qr_other_device))
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ================= 5b. LINKED DEVICES =================
+            if (devicesList.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${stringResource(R.string.linked_devices_title)} (${devicesList.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            IconButton(onClick = { refreshDevices() }) {
+                                if (isLoadingDevices) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.linked_devices_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        devicesList.forEachIndexed { idx, dev ->
+                            if (idx > 0) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val icon = when (dev.platform.lowercase()) {
+                                        "android" -> Icons.Default.PhoneAndroid
+                                        "browser_extension", "extension", "chrome", "firefox" -> Icons.Default.Extension
+                                        else -> Icons.Default.Laptop
+                                    }
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (dev.isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = dev.deviceName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (dev.isCurrent) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = stringResource(R.string.this_device_badge),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = "Nền tảng: ${dev.platform}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                if (!dev.isCurrent) {
+                                    IconButton(
+                                        onClick = { deviceToUnpair = dev }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = stringResource(R.string.btn_unlink_device),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
             // ================= 6. ABOUT =================

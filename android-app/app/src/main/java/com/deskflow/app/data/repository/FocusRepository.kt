@@ -357,15 +357,29 @@ class FocusRepository(
         }
     }
 
+    suspend fun unpairOtherDevice(deviceId: String): ApiResult<Boolean> {
+        return try {
+            val response = apiService.unpair(mapOf("device_id" to deviceId))
+            if (response.isSuccessful && response.body()?.success == true) {
+                ApiResult.Success(true)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
+        }
+    }
+
     suspend fun approvePairSession(
         serverUrl: String? = null,
         sessionId: String,
-        deviceName: String
+        deviceName: String,
+        platform: String = "desktop"
     ): ApiResult<PairSessionApproveResponse> {
         val req = PairSessionApproveRequest(
-            deviceName = deviceName.ifBlank { "DeskFlow Desktop" },
+            deviceName = deviceName.ifBlank { "DeskFlow Client" },
             scopes = listOf("focus", "control", "spotify"),
-            platform = "desktop"
+            platform = platform
         )
         return try {
             val response = if (!serverUrl.isNullOrBlank()) {
