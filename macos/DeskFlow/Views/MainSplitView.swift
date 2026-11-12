@@ -1235,13 +1235,13 @@ private struct FocusMacView: View {
         let formatter = NumberFormatter()
         formatter.numberStyle = .none
         formatter.minimum = 1
-        formatter.maximum = 180
+        formatter.maximum = 300
         formatter.allowsFloats = false
         return formatter
     }()
 
     private func startFocus(minutes: Int) {
-        let safeMinutes = min(max(minutes, 1), 180)
+        let safeMinutes = min(max(minutes, 1), 300)
         duration = safeMinutes
         Task { await client.startFocus(durationMinutes: safeMinutes, reason: reason) }
     }
@@ -1298,7 +1298,7 @@ private struct FocusMacView: View {
                         TextField("", value: $duration, formatter: Self.minutesFormatter)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 64)
-                        Stepper("", value: $duration, in: 1...180)
+                        Stepper("", value: $duration, in: 1...300)
                             .labelsHidden()
                         Text(client.appLanguage == "vi" ? "phút" : "min")
                             .foregroundColor(.secondary)

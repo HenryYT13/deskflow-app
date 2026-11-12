@@ -56,7 +56,7 @@ fun FocusScreen(
     var customDurationText by remember { mutableStateOf("") }
     val customDurationValue = customDurationText.toIntOrNull()
     val customDurationValid =
-        customDurationText.isEmpty() || (customDurationValue != null && customDurationValue in 1..180)
+        customDurationText.isEmpty() || (customDurationValue != null && customDurationValue in 1..300)
     var reasonText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
@@ -522,17 +522,17 @@ fun FocusScreen(
                                             }
                                         }
 
-                                        // Custom duration: any value from 1 to 180 minutes
+                                        // Custom duration: any value from 1 to 300 minutes
                                         OutlinedTextField(
                                             value = customDurationText,
                                             onValueChange = { raw ->
                                                 val digits = raw.filter { it.isDigit() }.take(3)
                                                 customDurationText = digits
                                                 digits.toIntOrNull()
-                                                    ?.takeIf { it in 1..180 }
+                                                    ?.takeIf { it in 1..300 }
                                                     ?.let { selectedDuration = it }
                                             },
-                                            label = { Text("Tùy chỉnh số phút (1–180)") },
+                                            label = { Text("Tùy chỉnh số phút (1–300)") },
                                             placeholder = { Text("VD: 2") },
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                             singleLine = true,
@@ -542,7 +542,7 @@ fun FocusScreen(
                                         )
                                         if (!customDurationValid) {
                                             Text(
-                                                text = "Số phút phải từ 1 đến 180",
+                                                text = "Số phút phải từ 1 đến 300",
                                                 color = MaterialTheme.colorScheme.error,
                                                 style = MaterialTheme.typography.bodySmall
                                             )

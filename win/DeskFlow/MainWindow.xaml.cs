@@ -522,13 +522,13 @@ public sealed partial class MainWindow : Window
         {
             ShowBanner(
                 Strings.CurrentLanguage == "vi"
-                    ? "Nhập số phút trước (1–180)."
-                    : "Enter minutes first (1–180).",
+                    ? "Nhập số phút trước (1–300)."
+                    : "Enter minutes first (1–300).",
                 true);
             return;
         }
 
-        int minutes = Math.Clamp((int)Math.Round(raw), 1, 180);
+        int minutes = Math.Clamp((int)Math.Round(raw), 1, 300);
         FocusDurationBox.Value = minutes;
 
         var (ok, msg) = await _client.SetFocusModeAsync(true, minutes);
