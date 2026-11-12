@@ -297,7 +297,7 @@ public class DeskFlowTests
 
         var (ok, msg) = await client.SwitchDisplayViewAsync("clock");
         Assert.True(ok, msg);
-        Assert.Equal("/api/app/control/display/view", capturedPath);
+        Assert.Equal("/api/app/control/display/switch-view", capturedPath);
         Assert.Contains("\"view\":\"clock\"", capturedBody);
         Assert.False(hasAuthHeader);
     }
@@ -422,5 +422,44 @@ public class DeskFlowTests
     {
         Assert.True(FocusLockPolicy.ShouldBlockClose(true));
         Assert.False(FocusLockPolicy.ShouldBlockClose(false));
+    }
+
+    [Fact]
+    public void FocusLockPolicy_IgnoresStaleActivePollAfterUnlock()
+    {
+        var now = new DateTime(2026, 11, 12, 12, 0, 0, DateTimeKind.Utc);
+        var suppressUntil = now.AddSeconds(20);
+
+        // A poll that lands right after solving the challenge must NOT re-lock.
+        Assert.False(FocusLockPolicy.ShouldApplyPolledState(true, now, suppressUntil));
+        Assert.False(FocusLockPolicy.ShouldApplyPolledState(true, now.AddSeconds(19), suppressUntil));
+
+        // Once the window elapses, a genuinely new session locks again.
+        Assert.True(FocusLockPolicy.ShouldApplyPolledState(true, now.AddSeconds(20), suppressUntil));
+
+        // An "inactive" answer is always applied so the window can never stay trapped.
+        Assert.True(FocusLockPolicy.ShouldApplyPolledState(false, now, suppressUntil));
+        Assert.True(FocusLockPolicy.ShouldApplyPolledState(false, DateTime.MinValue, DateTime.MaxValue));
+    }
+
+    [Fact]
+    public async Task SetFocusModeAsync_RefusesToSendStopRequest()
+    {
+        bool called = false;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            called = true;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        });
+
+        var client = new DeskFlowApiClient(
+            new WindowsAppSettings { ApiUrl = "https://mock.deskflow.local" },
+            new HttpClient(handler));
+
+        var (ok, msg) = await client.SetFocusModeAsync(false);
+
+        Assert.False(ok);
+        Assert.False(called); // no request may be sent for "stop"
+        Assert.Contains("challenge", msg, StringComparison.OrdinalIgnoreCase);
     }
 }

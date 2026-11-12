@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 
 namespace DeskFlow.Models;
@@ -34,6 +35,24 @@ public static class FocusLockPolicy
 
     /// <summary>While locked the window must refuse every close request.</summary>
     public static bool ShouldBlockClose(bool focusLocked) => focusLocked;
+
+    /// <summary>
+    /// Decides whether a polled backend state should be applied.
+    ///
+    /// A status request fired just before the unlock can land afterwards and
+    /// still report an active session. Applying it would re-lock the window the
+    /// user just unlocked, which is the "solved the maths but cannot leave"
+    /// bug. While a suppression window is open we ignore "active" responses;
+    /// de-activating responses are always honoured so the window can never get
+    /// stuck locked.
+    /// </summary>
+    public static bool ShouldApplyPolledState(bool backendActive, DateTime nowUtc, DateTime suppressRelockUntilUtc)
+    {
+        if (!backendActive)
+            return true;
+
+        return nowUtc >= suppressRelockUntilUtc;
+    }
 
     private static bool ReadTrue(JsonElement root, string property)
     {

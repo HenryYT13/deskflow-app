@@ -4,6 +4,20 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.0.8] - 2026-11-12
+
+### 🐛 Sửa lỗi (Fixes)
+- **Windows: giải đúng bài toán nhưng cửa sổ vẫn khoá, không thoát được.**
+  - Nguyên nhân: nút "Dừng phiên tập trung" và đoạn xử lý sau khi giải đúng đều gọi `POST /api/focus/enable` với `{"enabled": false}`. Backend chỉ đọc `duration_minutes` / `reason`, **bỏ qua `enabled`**, nên mỗi lần "dừng" lại tạo một phiên 25 phút mới → 10 giây sau app poll thấy active và khoá lại cửa sổ.
+  - Fix backend: `/api/focus/enable` giờ trả **409 `challenge_required`** khi nhận `enabled: false`, không tạo phiên mới.
+  - Fix app Windows: không bao giờ gửi lệnh "stop" giả nữa. Giải đúng bài toán là backend tự tắt phiên, app chỉ cần mở khoá cục bộ.
+  - Thêm cửa sổ 20 giây chống khoá lại (`FocusLockPolicy.ShouldApplyPolledState`) để một lần poll gửi trước lúc mở khoá không khoá lại cửa sổ.
+  - Nếu phiên đã hết hạn / bị tắt từ thiết bị khác mà vẫn bấm giải, app tự mở khoá thay vì báo lỗi.
+  - Bài toán mở khoá được tải sẵn ngay khi khoá và tự cuộn vào tầm nhìn; nhấn **Enter** trong ô đáp án cũng kiểm tra được.
+  - Thêm mục "Focus Mode" trong thanh điều hướng để mở thẳng khu vực này.
+
+---
+
 ## [v1.0.7] - 2026-11-12
 
 ### ✨ Tính năng mới (New Features)

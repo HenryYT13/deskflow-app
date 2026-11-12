@@ -741,16 +741,32 @@ public sealed class DeskFlowApiClient
         }
     }
 
+    /// <summary>
+    /// Starts Focus Mode. <c>/api/focus/enable</c> only ever STARTS a session:
+    /// stopping is backend-authoritative and must go through the math challenge
+    /// (or the session timer). Sending <c>enabled: false</c> used to be ignored
+    /// by the backend and created a brand new session instead, which re-locked
+    /// the window right after a correct challenge answer.
+    /// </summary>
     public async Task<(bool Ok, string Message)> SetFocusModeAsync(bool enabled, int durationMinutes = 25)
     {
+        if (!enabled)
+        {
+            return (false, "Focus Mode can only be ended by solving the unlock challenge or waiting for the timer.");
+        }
+
         try
         {
             using var req = CreateRequest(
                 HttpMethod.Post,
                 "/api/focus/enable",
-                new { enabled, duration_minutes = durationMinutes, source = "windows_app" });
+                new { duration_minutes = Math.Clamp(durationMinutes, 1, 300), source = "windows_app" });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? (enabled ? "Focus Mode started." : "Focus Mode stopped.") : $"HTTP {(int)resp.StatusCode}");
+            if (resp.IsSuccessStatusCode)
+                return (true, "Focus Mode started.");
+
+            string msg = await FailMessageAsync(resp).ConfigureAwait(false);
+            return (false, msg);
         }
         catch (Exception ex)
         {
@@ -777,14 +793,15 @@ public sealed class DeskFlowApiClient
     }
 
     /// <summary>Asks the backend for a math challenge to unlock Focus Mode early.</summary>
-    public async Task<(bool Ok, string ChallengeId, string Question, string Message)> RequestFocusChallengeAsync()
+    public async Task<(bool Ok, string ChallengeId, string Question, string Message)> RequestFocusChallengeAsync(
+        bool forceNew = true)
     {
         try
         {
             using var req = CreateRequest(
                 HttpMethod.Post,
                 "/api/focus/challenge",
-                new { language = "vi", force_new = true });
+                new { language = "vi", force_new = forceNew });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
             string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)

@@ -91,6 +91,7 @@
                 <NavigationViewItem x:Name="NavSpotifyItem" Icon="Audio" Content="Spotify &amp; Âm nhạc" Tag="spotify" />
                 <NavigationViewItem x:Name="NavAlarmsItem" Icon="Important" Content="Báo thức &amp; Còi báo" Tag="alarms" />
                 <NavigationViewItem x:Name="NavToolsItem" Icon="Edit" Content="Công cụ &amp; Groq AI" Tag="tools" />
+                <NavigationViewItem x:Name="NavFocusItem" Icon="Clock" Content="Focus Mode" Tag="focus" />
                 <NavigationViewItem x:Name="NavSettingsItem" Icon="Setting" Content="Cài đặt &amp; Giao diện" Tag="settings" />
             </NavigationView.MenuItems>
 
@@ -754,7 +755,8 @@
                         </Border>
 
                         <!-- Group 4: Chế độ tập trung (Focus Mode) -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                        <Border x:Name="FocusModeCard"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="Chế độ tập trung &amp; Pomodoro (Focus Mode)" FontWeight="Bold" FontSize="15" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -799,7 +801,8 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <TextBox x:Name="FocusChallengeAnswerBox"
                                                  Width="140"
-                                                 PlaceholderText="Đáp án (số nguyên)" />
+                                                 PlaceholderText="Đáp án (số nguyên)"
+                                                 KeyDown="FocusChallengeAnswerBox_KeyDown" />
                                         <Button Content="Kiểm tra &amp; Mở khoá"
                                                 Click="VerifyFocusChallenge_Click"
                                                 Style="{StaticResource AccentButtonStyle}" />
