@@ -638,7 +638,8 @@ public sealed partial class MainWindow : Window
         {
             if (this.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
             {
-                presenter.IsClosable = !locked;
+                // NOTE: IsClosable only exists in Windows App SDK 1.6+; this project
+                // pins 1.5, so closing is blocked by the AppWindow.Closing handler below.
                 presenter.IsMinimizable = !locked;
                 presenter.IsMaximizable = !locked;
             }
