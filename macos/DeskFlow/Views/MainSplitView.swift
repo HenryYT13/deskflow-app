@@ -3135,24 +3135,52 @@ public struct SpotifyMacView: View {
                     HStack(spacing: 24) {
                         // Album Art box
                         ZStack {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color(hex: "#1db954").opacity(0.35), Color(hex: "#10b981").opacity(0.15)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
+                            if let cover = client.spotifyState.coverUrl, let url = URL(string: cover) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 140, height: 140)
+                                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                    default:
+                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [Color(hex: "#1db954").opacity(0.35), Color(hex: "#10b981").opacity(0.15)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .frame(width: 140, height: 140)
+                                            .overlay(
+                                                Image(systemName: "music.note.list")
+                                                    .font(.system(size: 48, weight: .bold))
+                                                    .foregroundColor(Color(hex: "#1db954"))
+                                            )
+                                    }
+                                }
+                            } else {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(hex: "#1db954").opacity(0.35), Color(hex: "#10b981").opacity(0.15)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
                                     )
-                                )
-                                .frame(width: 140, height: 140)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                        .stroke(Color(hex: "#1db954").opacity(0.4), lineWidth: 1.5)
-                                )
-
-                            Image(systemName: "music.note.list")
-                                .font(.system(size: 48, weight: .bold))
-                                .foregroundColor(Color(hex: "#1db954"))
+                                    .frame(width: 140, height: 140)
+                                    .overlay(
+                                        Image(systemName: "music.note.list")
+                                            .font(.system(size: 48, weight: .bold))
+                                            .foregroundColor(Color(hex: "#1db954"))
+                                    )
+                            }
                         }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(Color(hex: "#1db954").opacity(0.4), lineWidth: 1.5)
+                        )
                         .shadow(color: Color(hex: "#1db954").opacity(0.25), radius: 16, x: 0, y: 8)
 
                         VStack(alignment: .leading, spacing: 8) {

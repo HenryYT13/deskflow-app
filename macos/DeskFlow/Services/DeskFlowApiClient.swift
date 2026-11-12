@@ -795,7 +795,7 @@ public final class DeskFlowApiClient: ObservableObject {
     }
 
     public func fetchSpotifyStatus() async {
-        guard let req = try? buildRequest(path: "/api/app/spotify/status", method: "GET", authenticated: false) else { return }
+        guard let req = try? buildRequest(path: "/api/app/spotify/status", method: "GET", authenticated: !(deviceToken ?? "").isEmpty) else { return }
         do {
             let (data, response) = try await session.data(for: req)
             if let http = response as? HTTPURLResponse, http.statusCode == 200 {
@@ -812,7 +812,7 @@ public final class DeskFlowApiClient: ObservableObject {
             path: "/api/app/spotify/playback",
             method: "POST",
             body: ["command": command],
-            authenticated: false
+            authenticated: true
         ) else { return }
         _ = try? await session.data(for: req)
         await fetchSpotifyStatus()
@@ -823,7 +823,7 @@ public final class DeskFlowApiClient: ObservableObject {
             path: "/api/app/spotify/volume",
             method: "POST",
             body: ["volume": max(0, min(100, volume))],
-            authenticated: false
+            authenticated: true
         ) else { return }
         _ = try? await session.data(for: req)
         await fetchSpotifyStatus()

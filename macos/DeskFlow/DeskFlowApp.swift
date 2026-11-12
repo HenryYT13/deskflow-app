@@ -85,6 +85,7 @@ struct DeskFlowApp: App {
                     Task {
                         await apiClient.reportTelemetry()
                         await apiClient.fetchSystemStatus()
+                        await apiClient.fetchSpotifyStatus()
                     }
                 }
                 .task {
