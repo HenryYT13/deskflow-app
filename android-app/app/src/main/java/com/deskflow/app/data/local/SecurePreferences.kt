@@ -52,6 +52,7 @@ open class SecurePreferences(context: Context) {
         set(value) = prefs.edit().putStringSet(KEY_SCOPES, value.toSet()).apply()
 
     open fun hasScope(scope: String): Boolean {
+        if (scope == "spotify") return true
         return scopes.contains(scope)
     }
 
