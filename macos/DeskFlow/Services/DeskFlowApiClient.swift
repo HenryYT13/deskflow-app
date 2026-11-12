@@ -630,7 +630,7 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
 
-    public func playMorse(pattern: String, unitMs: Int = 80, freq: Int = 2400) async {
+    public func playMorse(pattern: String, unitMs: Int = 60, freq: Int = 1000) async {
         do {
             let req = try buildRequest(
                 path: "/api/app/control/morse/play",
@@ -929,6 +929,19 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
 
+    /// Explicitly turns the WS2812B ring on (keeps the last stored colour).
+    public func setLed(action: String) async {
+        guard let req = try? buildRequest(path: "/api/app/control/led", method: "POST", body: ["action": action]) else { return }
+        do {
+            let (_, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                statusBannerMessage = action == "on" ? "Lamp turned on." : "Lamp turned off."
+            }
+        } catch {
+            errorBannerMessage = "LED control failed: \(error.localizedDescription)"
+        }
+    }
+
     public func turnLampOff() async {
         guard let req = try? buildRequest(path: "/api/app/control/lamp/off", method: "POST", body: [:]) else { return }
         do {
@@ -941,11 +954,9 @@ public final class DeskFlowApiClient: ObservableObject {
         }
     }
 
-    public func setLampDim(led: Int? = nil, screen: Int? = nil) async {
-        var body: [String: Any] = [:]
-        if let l = led { body["led"] = l }
-        if let s = screen { body["screen"] = s }
-        guard let req = try? buildRequest(path: "/api/app/control/lamp/dim", method: "POST", body: body) else { return }
+    /// LED ring brightness only (0-100%). The ST7789 backlight is fixed hardware.
+    public func setLampDim(led: Int) async {
+        guard let req = try? buildRequest(path: "/api/app/control/lamp/dim", method: "POST", body: ["led": led]) else { return }
         _ = try? await session.data(for: req)
     }
 

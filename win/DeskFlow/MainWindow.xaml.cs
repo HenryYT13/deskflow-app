@@ -1205,6 +1205,23 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void TurnLampOnButton_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, msg) = await _client.SetLedAsync("on");
+        ShowBanner(msg, !ok);
+    }
+
+    private int _lastLedBrightness = 100;
+
+    private void LedBrightnessSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        int value = (int)Math.Round(e.NewValue);
+        if (LedBrightnessText != null) LedBrightnessText.Text = $"{value}%";
+        if (value == _lastLedBrightness) return;
+        _lastLedBrightness = value;
+        _ = _client.SetBrightnessAsync(value);
+    }
+
     private async void TurnLampOffButton_Click(object sender, RoutedEventArgs e)
     {
         var (ok, msg) = await _client.TurnLampOffAsync();

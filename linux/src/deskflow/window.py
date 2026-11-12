@@ -2055,14 +2055,14 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         page.add(hw_group)
 
-        self.morse_unit_spin = Adw.SpinRow.new_with_range(30, 300, 10)
+        self.morse_unit_spin = Adw.SpinRow.new_with_range(20, 300, 10)
         self.morse_unit_spin.set_title("Dot Unit Duration (ms)")
-        self.morse_unit_spin.set_value(80)
+        self.morse_unit_spin.set_value(60)
         hw_group.add(self.morse_unit_spin)
 
-        self.morse_freq_spin = Adw.SpinRow.new_with_range(500, 4500, 100)
+        self.morse_freq_spin = Adw.SpinRow.new_with_range(400, 4000, 50)
         self.morse_freq_spin.set_title("Tone Frequency (Hz)")
-        self.morse_freq_spin.set_value(2400)
+        self.morse_freq_spin.set_value(1000)
         hw_group.add(self.morse_freq_spin)
 
         action_row = Adw.ActionRow(
@@ -2348,12 +2348,13 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         self.lamp_hex_entry = Adw.EntryRow(title="Lamp Hex Color (#RRGGBB)")
         self.lamp_hex_entry.set_text("#8B5CF6")
+        self._lamp_on = True
 
         presets_row = Adw.ActionRow(
             title="Color Presets",
             subtitle="One-click hardware ambiance.",
         )
-        for name, hx in [("Purple", "#8B5CF6"), ("Emerald", "#10B981"), ("Cyan", "#06B6D4"), ("Amber", "#F59E0B"), ("Red", "#EF4444"), ("White", "#FFFFFF")]:
+        for name, hx in [("Warm White", "#FFC7AC"), ("White", "#FFFFFF"), ("Purple", "#8B5CF6"), ("Emerald", "#10B981"), ("Cyan", "#06B6D4"), ("Amber", "#F59E0B"), ("Red", "#EF4444")]:
             btn = Gtk.Button(label=name, valign=Gtk.Align.CENTER)
             btn.connect("clicked", lambda _b, color=hx: self._apply_lamp_color(color))
             presets_row.add_suffix(btn)
@@ -2378,9 +2379,26 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         except Exception:
             pass
 
-        off_btn = Gtk.Button(label="Lamp Off", valign=Gtk.Align.CENTER)
-        off_btn.connect("clicked", lambda *_: self._run_bg(self.api_client.turn_lamp_off, lambda r: self.show_toast("Lamp turned off." if r.ok else r.error_message)))
-        self.lamp_hex_entry.add_suffix(off_btn)
+        power_row = Adw.ActionRow(
+            title="Lamp Power",
+            subtitle="Turn the WS2812B ring on or off without losing the saved colour.",
+        )
+        on_btn = Gtk.Button(label="Turn On", valign=Gtk.Align.CENTER)
+        on_btn.add_css_class("suggested-action")
+        on_btn.connect("clicked", lambda *_: self._set_lamp_power(True))
+        power_row.add_suffix(on_btn)
+        off_btn = Gtk.Button(label="Turn Off", valign=Gtk.Align.CENTER)
+        off_btn.connect("clicked", lambda *_: self._set_lamp_power(False))
+        power_row.add_suffix(off_btn)
+        lamp_group.add(power_row)
+
+        # LED ring brightness: 0-100% (the ST7789 backlight is fixed hardware)
+        self.lamp_bright_spin = Adw.SpinRow.new_with_range(0, 100, 5)
+        self.lamp_bright_spin.set_title("LED Ring Brightness (%)")
+        self.lamp_bright_spin.set_value(100)
+        self.lamp_bright_spin.connect("notify::value", self._on_lamp_brightness_changed)
+        lamp_group.add(self.lamp_bright_spin)
+
         lamp_group.add(self.lamp_hex_entry)
 
         # Custom Beep & Hardware Buzzer (Phase 4)
@@ -2869,6 +2887,23 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
     # -------------------------------------------------------------------------
     # Station & Hardware Helpers
     # -------------------------------------------------------------------------
+    def _set_lamp_power(self, on: bool) -> None:
+        self._lamp_on = on
+        action = "on" if on else "off"
+        self._run_bg(
+            lambda: self.api_client.set_led(action),
+            lambda r: self.show_toast(
+                ("Lamp turned on." if on else "Lamp turned off.") if r.ok else r.error_message
+            ),
+        )
+
+    def _on_lamp_brightness_changed(self, spin, _pspec) -> None:
+        value = int(spin.get_value())
+        self._run_bg(
+            lambda: self.api_client.set_lamp_dim(value),
+            lambda r: None if r.ok else self.show_toast(r.error_message),
+        )
+
     def _apply_lamp_color(self, hex_color: str) -> None:
         self.lamp_hex_entry.set_text(hex_color)
         self._run_bg(

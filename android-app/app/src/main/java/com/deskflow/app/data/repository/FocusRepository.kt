@@ -666,9 +666,10 @@ class FocusRepository(
         }
     }
 
-    suspend fun setLampDim(led: Int?, screen: Int?): ApiResult<ActionSuccessResponse> {
+    /** LED ring brightness (0-100%). The OLED backlight is fixed hardware. */
+    suspend fun setLampDim(led: Int? = null): ApiResult<ActionSuccessResponse> {
         return try {
-            val response = apiService.setLampDim(LampDimRequest(led = led, screen = screen))
+            val response = apiService.setLampDim(LampDimRequest(led = led))
             if (response.isSuccessful && response.body() != null) {
                 ApiResult.Success(response.body()!!)
             } else {
@@ -762,7 +763,7 @@ class FocusRepository(
         }
     }
 
-    suspend fun playMorse(pattern: String, unitMs: Int = 80, freq: Int = 2400): ApiResult<ActionSuccessResponse> {
+    suspend fun playMorse(pattern: String, unitMs: Int = 60, freq: Int = 1000): ApiResult<ActionSuccessResponse> {
         return try {
             val response = apiService.playMorse(MorsePlayRequest(pattern = pattern, unitMs = unitMs, freq = freq))
             if (response.isSuccessful && response.body() != null) {

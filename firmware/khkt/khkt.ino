@@ -16,6 +16,8 @@
 #include <Adafruit_NeoPixel.h>
 #include "clock_styles.h"
 #include "melody.h"
+#include "i18n.h"
+#include "alarm_tune.h"
 
 #define TFT_CS   21
 #define TFT_DC   19
@@ -57,17 +59,23 @@ int appliedHardwareConfigVersion = 0;
 int ledBrightness = 100; // 0 - 100%
 bool buzzerEnabled = true;
 unsigned int buzzerDurationSetting = 40; // ms
+#define MORSE_TEST_FREQ 1000 // Hz used by the "test buzzer" menu row
+
+// Spotify volume mirrored from backend (deskflow/display -> spotify_update)
+int spotifyVolume = 50; // 0 - 100%
+bool spotifyVolumeKnown = false;
 
 // Hardware Settings Menu State Machine
 bool inSettingsMenu = false;
 enum MenuState {
   MENU_MAIN = 0,
   MENU_ADJUST_LED = 1,
-  MENU_BUZZER_CONFIG = 2
+  MENU_BUZZER_CONFIG = 2,
+  MENU_VOLUME = 3
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 4;
+const int MENU_MAIN_ITEM_COUNT = 6;
 int buzzerCurrentItem = 0;
 const int MENU_BUZZER_ITEM_COUNT = 4;
 
@@ -91,6 +99,24 @@ const ViewMenuItem VIEW_MENU_ITEMS[VIEW_MENU_COUNT] = {
   { "focus",     "8. Tap trung" },
   { "clock",     "9. Dong ho" }
 };
+
+// English mirror used when the station language is EN.
+const char* const VIEW_MENU_TITLES_EN[VIEW_MENU_COUNT] = {
+  "1. Dashboard",
+  "2. System stats",
+  "3. Timetable",
+  "4. Weather",
+  "5. Lyrics",
+  "6. Notes",
+  "7. Countdown",
+  "8. Focus",
+  "9. Clock"
+};
+
+const char* viewMenuTitle(int index) {
+  if (index < 0 || index >= VIEW_MENU_COUNT) return "";
+  return stationEnglish ? VIEW_MENU_TITLES_EN[index] : VIEW_MENU_ITEMS[index].title;
+}
 
 // Dedicated Notes Storage
 struct NoteItem {
@@ -136,6 +162,8 @@ unsigned long buzzDuration = 250;
 bool isAlarmActive = false;
 unsigned long lastAlarmBeepTime = 0;
 bool alarmBeepState = false;
+unsigned long lastAlarmStrobeTime = 0;
+bool alarmStrobeOn = false;
 String currentMathQuestion = "";
 
 bool ledState = false;
@@ -203,7 +231,10 @@ void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
   if (clean == "MAGENTA" || clean == "PINK") { r = 255; g = 0; b = 255; return; }
   if (clean == "ORANGE") { r = 255; g = 128; b = 0; return; }
   if (clean == "PURPLE") { r = 139; g = 92; b = 246; return; }
-  if (clean == "WARM") { r = 255; g = 197; b = 143; return; }
+  if (clean == "WARM" || clean == "WARMW" || clean == "WARMWITHE" || clean == "FFC7AC") {
+    // Yellowish white ("trang am") - also the default preset in every app.
+    r = 255; g = 199; b = 172; return;
+  }
   if (clean == "COOL") { r = 200; g = 220; b = 255; return; }
 
   // 3-char shorthand: #RGB -> #RRGGBB (e.g. #F00 -> #FF0000)
@@ -472,6 +503,16 @@ void triggerBuzz(unsigned long durationMs = 250, bool force = false) {
   addLog("BUZZER", ">>> BUZZER TRIGGERED: " + String(durationMs) + "ms");
 }
 
+// Plays a short tone at an explicit frequency (used by the buzzer test row).
+void triggerBuzzTone(unsigned long durationMs, unsigned int freqHz) {
+  if (!buzzerEnabled) return;
+  isBuzzing = true;
+  buzzStartTime = millis();
+  buzzDuration = durationMs;
+  tone(BUZZER_PIN, freqHz);
+  addLog("BUZZER", ">>> TEST TONE " + String(freqHz) + "Hz " + String(durationMs) + "ms");
+}
+
 void stopBuzzer() {
   noTone(BUZZER_PIN);
   digitalWrite(BUZZER_PIN, HIGH);
@@ -484,8 +525,8 @@ bool isMorsePlaying = false;
 bool morseToneActive = false;
 unsigned long morseStepStartTime = 0;
 unsigned long morseStepDuration = 0;
-unsigned int morseUnitMs = 80;
-unsigned int morseFrequency = 2400;
+unsigned int morseUnitMs = 60;
+unsigned int morseFrequency = 1000;
 
 void stopMorsePlayback() {
   if (isMorsePlaying || morseToneActive) {
@@ -499,7 +540,7 @@ void stopMorsePlayback() {
   }
 }
 
-void startMorsePlayback(const String& pattern, unsigned int unitMs = 80, unsigned int freq = 2400) {
+void startMorsePlayback(const String& pattern, unsigned int unitMs = 60, unsigned int freq = 1000) {
   stopMorsePlayback();
   if (pattern.length() == 0) return;
 
@@ -813,12 +854,12 @@ void drawSettingsMenu() {
   // Header Box
   tft->fillRoundRect(10, 8, 220, 32, 6, COL_CARD);
   tft->drawRoundRect(10, 8, 220, 32, 6, COL_CYAN);
-  printCenteredText("CAI DAT PHAN CUNG", 18, 1, COL_CYAN, COL_CARD);
+  printCenteredText(tr("CAI DAT PHAN CUNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
 
   if (menuState == MENU_MAIN) {
-    int startY = 48;
-    int cardH = 54;
-    int gap = 8;
+    int startY = 44;
+    int cardH = 36;
+    int gap = 3;
 
     for (int i = 0; i < MENU_MAIN_ITEM_COUNT; i++) {
       int y = startY + i * (cardH + gap);
@@ -833,39 +874,59 @@ void drawSettingsMenu() {
 
       tft->setTextSize(1);
       tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
-      tft->setCursor(20, y + 10);
+      tft->setCursor(20, y + 6);
 
       if (i == 0) {
-        tft->printf("%s DO SANG LED: %d%%", selected ? ">" : " ", ledBrightness);
-        tft->setCursor(24, y + 28);
+        tft->printf("%s %s: %s", selected ? ">" : " ",
+                    tr("DEN LED", "LED RING"), ledState ? tr("BAT", "ON") : tr("TAT", "OFF"));
+        tft->setCursor(24, y + 22);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("Chinh den LED GPIO 2 (PWM)");
+        tft->printf("%d%%  %s", ledBrightness, tr("PLAY: Bat/Tat", "PLAY: On/Off"));
       } else if (i == 1) {
-        tft->printf("%s COI CHIP: %s", selected ? ">" : " ", buzzerEnabled ? "BAT" : "TAT (MUTE)");
-        tft->setCursor(24, y + 28);
+        tft->printf("%s %s: %d%%", selected ? ">" : " ", tr("DO SANG LED", "LED BRIGHTNESS"), ledBrightness);
+        tft->setCursor(24, y + 22);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->printf("Do dai beep: %d ms", buzzerDurationSetting);
+        tft->print(tr("Chinh do sang vong LED", "Adjust ring brightness (0-100%)"));
       } else if (i == 2) {
-        String modeStr = "TAT (LIGHT)";
-        if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = "LUON BAT (DARK)";
-        else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = "THEO LICH (AUTO)";
-        tft->printf("%s CHE DO TOI: %s", selected ? ">" : " ", modeStr.c_str());
-        tft->setCursor(24, y + 28);
+        tft->printf("%s %s: %s", selected ? ">" : " ", tr("COI CHIP", "BUZZER"),
+                    buzzerEnabled ? tr("BAT", "ON") : tr("TAT (MUTE)", "OFF (MUTE)"));
+        tft->setCursor(24, y + 22);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->printf("Lich: %s - %s", darkModeStart.c_str(), darkModeEnd.c_str());
+        tft->printf(tr("Do dai beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
       } else if (i == 3) {
-        tft->printf("%s THOAT CAI DAT", selected ? ">" : " ");
-        tft->setCursor(24, y + 28);
+        if (spotifyVolumeKnown) {
+          tft->printf("%s %s: %d%%", selected ? ">" : " ",
+                      tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"), spotifyVolume);
+        } else {
+          tft->printf("%s %s: --", selected ? ">" : " ",
+                      tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"));
+        }
+        tft->setCursor(24, y + 22);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("Quay lai man hinh chinh");
+        tft->print(tr("PLAY: Vao | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"));
+      } else if (i == 4) {
+        String modeStr = tr("TAT (LIGHT)", "OFF (LIGHT)");
+        if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUON BAT (DARK)", "ALWAYS (DARK)");
+        else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LICH (AUTO)", "SCHEDULED");
+        tft->printf("%s %s: %s", selected ? ">" : " ", tr("CHE DO TOI", "DARK MODE"), modeStr.c_str());
+        tft->setCursor(24, y + 22);
+        tft->setTextColor(COL_MUTED, COL_CARD);
+        tft->printf(tr("Lich: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
+      } else if (i == 5) {
+        tft->printf("%s %s: %s", selected ? ">" : " ", tr("NGON NGU", "LANGUAGE"),
+                    stationEnglish ? "ENGLISH" : "TIENG VIET");
+        tft->setCursor(24, y + 22);
+        tft->setTextColor(COL_MUTED, COL_CARD);
+        tft->print(tr("PLAY: Doi VI <-> EN", "PLAY: Switch VI <-> EN"));
       }
     }
 
-    tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText("PREV/NEXT: Chon | PLAY: Vao", 304, 1, COL_MUTED, COL_BG);
+    tft->drawFastHLine(10, 288, 220, COL_BORDER);
+    printCenteredText(tr("PREV/NEXT: Chon | PLAY: Vao", "PREV/NEXT: Select | PLAY: Open"), 298, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("Giu NEXT de thoat", "Hold NEXT to exit"), 310, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_ADJUST_LED) {
-    printCenteredText("CHINH DO SANG LED (PWM)", 52, 1, COL_CYAN, COL_BG);
+    printCenteredText(tr("CHINH DO SANG LED (%)", "LED BRIGHTNESS (%)"), 52, 1, COL_CYAN, COL_BG);
 
     tft->fillRoundRect(16, 75, 208, 195, 8, COL_CARD);
     tft->drawRoundRect(16, 75, 208, 195, 8, COL_BORDER);
@@ -879,14 +940,38 @@ void drawSettingsMenu() {
 
     drawProgressBarSmooth(28, 175, 184, 16, ledBrightness, COL_AMBER);
 
-    printCenteredText("PREV: -10% | NEXT: +10%", 210, 1, COL_WHITE, COL_CARD);
-    printCenteredText("Nhan PLAY de Luu & Thoat", 235, 1, COL_CYAN, COL_CARD);
+    printCenteredText(tr("PREV: -10% | NEXT: +10%", "PREV: -10% | NEXT: +10%"), 210, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Nhan PLAY de Luu & Thoat", "Press PLAY to save & exit"), 235, 1, COL_CYAN, COL_CARD);
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText("Giu NEXT: Quay lai menu", 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("Giu NEXT: Quay lai menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
+
+  } else if (menuState == MENU_VOLUME) {
+    printCenteredText(tr("AM LUONG SPOTIFY (%)", "SPOTIFY VOLUME (%)"), 52, 1, COL_CYAN, COL_BG);
+
+    tft->fillRoundRect(16, 75, 208, 195, 8, COL_CARD);
+    tft->drawRoundRect(16, 75, 208, 195, 8, COL_BORDER);
+
+    tft->setTextSize(4);
+    tft->setTextColor(COL_GREEN, COL_CARD);
+    String volStr = spotifyVolumeKnown ? (String(spotifyVolume) + "%") : "--%";
+    int vw = (int)volStr.length() * 24;
+    tft->setCursor((240 - vw) / 2, 110);
+    tft->print(volStr);
+
+    drawProgressBarSmooth(28, 175, 184, 16, spotifyVolume, COL_GREEN);
+
+    printCenteredText(tr("PREV: -5% | NEXT: +5%", "PREV: -5% | NEXT: +5%"), 210, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Nhan PLAY de Thoat", "Press PLAY to exit"), 235, 1, COL_CYAN, COL_CARD);
+    if (!spotifyVolumeKnown) {
+      printCenteredText(tr("Chua co du lieu Spotify", "No Spotify data yet"), 258, 1, COL_MUTED, COL_CARD);
+    }
+
+    tft->drawFastHLine(10, 296, 220, COL_BORDER);
+    printCenteredText(tr("Giu NEXT: Quay lai menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_BUZZER_CONFIG) {
-    printCenteredText("CAU HINH COI CHIP", 48, 1, COL_CYAN, COL_BG);
+    printCenteredText(tr("CAU HINH COI CHIP", "BUZZER CONFIG"), 48, 1, COL_CYAN, COL_BG);
 
     int startY = 68;
     int cardH = 48;
@@ -908,30 +993,31 @@ void drawSettingsMenu() {
       tft->setCursor(22, y + 10);
 
       if (i == 0) {
-        tft->printf("%s COI BIP: %s", selected ? ">" : " ", buzzerEnabled ? "[BAT]" : "[TAT / MUTE]");
+        tft->printf("%s %s: %s", selected ? ">" : " ", tr("COI BIP", "BUZZER"),
+                    buzzerEnabled ? tr("[BAT]", "[ON]") : tr("[TAT / MUTE]", "[OFF / MUTE]"));
         tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("PLAY: Bat / tat am thanh");
+        tft->print(tr("PLAY: Bat / tat am thanh", "PLAY: On / off sound"));
       } else if (i == 1) {
-        tft->printf("%s DO DAI BEEP: %d ms", selected ? ">" : " ", buzzerDurationSetting);
+        tft->printf("%s %s: %d ms", selected ? ">" : " ", tr("DO DAI BEEP", "BEEP LENGTH"), buzzerDurationSetting);
         tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("PLAY: Thay doi do dai bip");
+        tft->print(tr("PLAY: Thay doi do dai bip", "PLAY: Cycle beep length"));
       } else if (i == 2) {
-        tft->printf("%s THU TIENG COI (TEST)", selected ? ">" : " ");
+        tft->printf("%s %s", selected ? ">" : " ", tr("THU TIENG COI (TEST)", "TEST BUZZER"));
         tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("PLAY: Phat am thu 2400Hz");
+        tft->printf(tr("PLAY: Phat am thu %dHz", "PLAY: Test tone %dHz"), MORSE_TEST_FREQ);
       } else if (i == 3) {
-        tft->printf("%s QUAY LAI MENU CHINH", selected ? ">" : " ");
+        tft->printf("%s %s", selected ? ">" : " ", tr("QUAY LAI MENU CHINH", "BACK TO MAIN MENU"));
         tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print("Tro ve danh sach cai dat");
+        tft->print(tr("Tro ve danh sach cai dat", "Return to the settings list"));
       }
     }
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText("PREV/NEXT: Chon | PLAY: Chon", 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("PREV/NEXT: Chon | PLAY: Chon", "PREV/NEXT: Select | PLAY: Activate"), 304, 1, COL_MUTED, COL_BG);
   }
 }
 
@@ -944,11 +1030,11 @@ void drawViewMenu() {
     // Header Box
     tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
     tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
-    printCenteredText("DANH SACH MAN HINH", 16, 1, COL_CYAN, COL_CARD);
+    printCenteredText(tr("DANH SACH MAN HINH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
 
     // Footer
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText("[Prev/Next]: Tim   [Play]: Chon", 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("[Prev/Next]: Tim   [Play]: Chon", "[Prev/Next]: Browse   [Play]: Select"), 304, 1, COL_MUTED, COL_BG);
 
     firstDraw = false;
     viewMenuNeedsRedraw = false;
@@ -975,28 +1061,28 @@ void drawViewMenu() {
     tft->setCursor(18, y + 8);
 
     if (selected) {
-      tft->printf("> %s", VIEW_MENU_ITEMS[i].title);
+      tft->printf("> %s", viewMenuTitle(i));
     } else {
-      tft->printf("  %s", VIEW_MENU_ITEMS[i].title);
+      tft->printf("  %s", viewMenuTitle(i));
     }
 
     if (isCurrent) {
       tft->setCursor(168, y + 8);
       tft->setTextColor(selected ? COL_BG : COL_GREEN, bg);
-      tft->print("[DANG MO]");
+      tft->print(tr("[DANG MO]", "[ACTIVE]"));
     }
   }
 }
 
 void drawNotesView() {
-  printCenteredText("GHI CHU DANG GHIM", 36, 2, COL_CYAN, COL_BG);
+  printCenteredText(tr("GHI CHU DANG GHIM", "PINNED NOTES"), 36, 2, COL_CYAN, COL_BG);
 
   if (stationNotesCount == 0) {
     tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
     tft->drawRoundRect(14, 75, 212, 195, 8, COL_BORDER);
-    printCenteredText("Chua co ghi chu nao", 120, 1, COL_MUTED, COL_CARD);
-    printCenteredText("Them ghi chu tu app DeskFlow", 150, 1, COL_WHITE, COL_CARD);
-    printCenteredText("Ghi chu se tu dong dong bo!", 175, 1, COL_AMBER, COL_CARD);
+    printCenteredText(tr("Chua co ghi chu nao", "No notes yet"), 120, 1, COL_MUTED, COL_CARD);
+    printCenteredText(tr("Them ghi chu tu app DeskFlow", "Add notes in the DeskFlow app"), 150, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Ghi chu se tu dong dong bo!", "Notes sync automatically!"), 175, 1, COL_AMBER, COL_CARD);
   } else {
     if (activeNoteIndex >= stationNotesCount) activeNoteIndex = 0;
     auto& note = stationNotes[activeNoteIndex];
@@ -1034,14 +1120,14 @@ void drawNotesView() {
 }
 
 void drawCountdownView() {
-  printCenteredText("SU KIEN DEM NGUOC", 36, 2, COL_AMBER, COL_BG);
+  printCenteredText(tr("SU KIEN DEM NGUOC", "EVENT COUNTDOWN"), 36, 2, COL_AMBER, COL_BG);
 
   if (stationCountdownsCount == 0) {
     tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
     tft->drawRoundRect(14, 75, 212, 195, 8, COL_BORDER);
-    printCenteredText("Chua co su kien dem nguoc", 120, 1, COL_MUTED, COL_CARD);
-    printCenteredText("Tao su kien tu app DeskFlow", 150, 1, COL_WHITE, COL_CARD);
-    printCenteredText("Ho tro dem nguoc ngay thi", 175, 1, COL_CYAN, COL_CARD);
+    printCenteredText(tr("Chua co su kien dem nguoc", "No countdown events yet"), 120, 1, COL_MUTED, COL_CARD);
+    printCenteredText(tr("Tao su kien tu app DeskFlow", "Create one in the DeskFlow app"), 150, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Ho tro dem nguoc ngay thi", "Day-accurate countdown"), 175, 1, COL_CYAN, COL_CARD);
   } else {
     if (activeCountdownIndex >= stationCountdownsCount) activeCountdownIndex = 0;
     auto& cd = stationCountdowns[activeCountdownIndex];
@@ -1147,7 +1233,7 @@ void drawFocusView() {
   uint16_t cardBorderCol = COL_BORDER;
   uint16_t badgeBg = COL_BORDER;
   uint16_t badgeFg = COL_WHITE;
-  String badgeText = "CHUA KICH HOAT";
+  String badgeText = tr("CHUA KICH HOAT", "NOT ACTIVE");
   uint16_t timeCol = COL_MUTED;
   uint16_t barCol = COL_MUTED;
 
@@ -1155,28 +1241,28 @@ void drawFocusView() {
     cardBorderCol = 0xF800; // Red
     badgeBg = 0xF800;
     badgeFg = 0xFFFF;
-    badgeText = "HET GIO - DA KHOA";
+    badgeText = tr("HET GIO - DA KHOA", "TIME UP - LOCKED");
     timeCol = 0xF800;
     barCol = 0xF800;
   } else if (focusPhase == "BREAK") {
     cardBorderCol = COL_CYAN;
     badgeBg = COL_CYAN;
     badgeFg = COL_BG;
-    badgeText = "GIO GIAI LAO";
+    badgeText = tr("GIO GIAI LAO", "BREAK TIME");
     timeCol = COL_CYAN;
     barCol = COL_CYAN;
   } else if (focusEnabled && (focusPhase == "WORK" || focusPhase == "FOCUS")) {
     cardBorderCol = COL_AMBER;
     badgeBg = COL_AMBER;
     badgeFg = COL_BG;
-    badgeText = (focusSessionType == "pomodoro") ? "POMODORO WORK" : "DANG TAP TRUNG";
+    badgeText = (focusSessionType == "pomodoro") ? "POMODORO WORK" : tr("DANG TAP TRUNG", "FOCUSING");
     timeCol = COL_WHITE;
     barCol = COL_GREEN;
   }
 
   // Draw static elements on first entry or state change
   if (firstEntry) {
-    printCenteredText("CHEDO TAP TRUNG", 34, 2, COL_AMBER, COL_BG);
+    printCenteredText(tr("CHEDO TAP TRUNG", "FOCUS MODE"), 34, 2, COL_AMBER, COL_BG);
 
     tft->fillRoundRect(14, 56, 212, 222, 8, COL_CARD);
     tft->drawRoundRect(14, 56, 212, 222, 8, cardBorderCol);
@@ -1220,27 +1306,27 @@ void drawFocusView() {
 
     String s1 = "";
     if (focusSessionType == "pomodoro") {
-      s1 = "Chu ky: " + String(focusCycleCount) + " (Pomodoro)";
+      s1 = String(tr("Chu ky: ", "Cycle: ")) + String(focusCycleCount) + " (Pomodoro)";
     } else if (focusEnabled) {
-      s1 = "Phien tap trung co dinh";
+      s1 = tr("Phien tap trung co dinh", "Fixed focus session");
     } else {
-      s1 = "Chua co phien tap trung";
+      s1 = tr("Chua co phien tap trung", "No focus session");
     }
     printCenteredText(s1, 168, 1, COL_WHITE, COL_CARD);
 
     String s2 = "";
     uint16_t s2Col = COL_MUTED;
     if (focusPhase == "EXPIRED_LOCKED") {
-      s2 = "Dang khoa thiet bi & web!";
+      s2 = tr("Dang khoa thiet bi & web!", "Devices & web locked!");
       s2Col = 0xF800; // Red
     } else if (focusActive) {
-      s2 = "Dang chan cac web giai tri";
+      s2 = tr("Dang chan cac web giai tri", "Blocking distracting sites");
       s2Col = COL_GREEN;
     } else if (focusEnabled && !focusActive) {
-      s2 = "Tam dung chan web (Nghi)";
+      s2 = tr("Tam dung chan web (Nghi)", "Blocking paused (break)");
       s2Col = COL_CYAN;
     } else {
-      s2 = "Web giai tri duoc phep";
+      s2 = tr("Web giai tri duoc phep", "Distracting sites allowed");
       s2Col = COL_MUTED;
     }
     printCenteredText(s2, 186, 1, s2Col, COL_CARD);
@@ -1248,13 +1334,13 @@ void drawFocusView() {
     String s3 = "";
     uint16_t s3Col = COL_MUTED;
     if (focusPhase == "EXPIRED_LOCKED") {
-      s3 = "Giai toan tren PC/App de mo";
+      s3 = tr("Giai toan tren PC/App de mo", "Solve on PC/app to unlock");
       s3Col = COL_AMBER;
     } else if (focusEnabled) {
-      s3 = "Dong bo tu Python Backend";
+      s3 = tr("Dong bo tu Python Backend", "Synced from Python backend");
       s3Col = COL_MUTED;
     } else {
-      s3 = "Bat tap trung tu PC hoac App";
+      s3 = tr("Bat tap trung tu PC hoac App", "Start focus from PC or app");
       s3Col = COL_MUTED;
     }
     printCenteredText(s3, 204, 1, s3Col, COL_CARD);
@@ -1264,9 +1350,9 @@ void drawFocusView() {
   if (firstEntry || isStale != lastFocusStale) {
     tft->fillRect(20, 240, 200, 18, COL_CARD);
     if (isStale) {
-      printCenteredText("! Mat dong bo Backend !", 244, 1, 0xF800, COL_CARD);
+      printCenteredText(tr("! Mat dong bo Backend !", "! Backend sync lost !"), 244, 1, 0xF800, COL_CARD);
     } else {
-      printCenteredText("* Dong bo Backend: Tot *", 244, 1, COL_MUTED, COL_CARD);
+      printCenteredText(tr("* Dong bo Backend: Tot *", "* Backend sync: OK *"), 244, 1, COL_MUTED, COL_CARD);
     }
     lastFocusStale = isStale;
   }
@@ -1454,22 +1540,22 @@ void drawPhysicalScreen() {
       tft->fillRect(10, 196, 220, 92, COL_BG);
 
       if (srvStats.hasCountdown && srvStats.countdownName.length() > 0) {
-        String cdTxt = removeAccents(srvStats.countdownName) + ": " + String(srvStats.countdownDays) + " ngay";
+        String cdTxt = removeAccents(srvStats.countdownName) + ": " + String(srvStats.countdownDays) + tr(" ngay", " days");
         printCenteredText(cdTxt, 198, 1, COL_AMBER, COL_BG);
 
         if (srvStats.stickyNote.length() > 0) {
-          printCenteredText("~ GHI CHU GHIM ~", 212, 1, COL_CYAN, COL_BG);
+          printCenteredText(tr("~ GHI CHU GHIM ~", "~ PINNED NOTE ~"), 212, 1, COL_CYAN, COL_BG);
           printBigWrappedTopCenteredText(srvStats.stickyNote, 226, 1, COL_WHITE, 28, 13, COL_BG);
         } else {
-          printCenteredText("~ DAILY MOTIVATION ~", 212, 1, COL_MUTED, COL_BG);
+          printCenteredText(tr("~ DAILY MOTIVATION ~", "~ DAILY MOTIVATION ~"), 212, 1, COL_MUTED, COL_BG);
           printBigWrappedTopCenteredText(srvStats.quoteText, 226, 1, COL_WHITE, 28, 13, COL_BG);
         }
       } else {
         if (srvStats.stickyNote.length() > 0) {
-          printCenteredText("~ GHI CHU GHIM ~", 202, 1, COL_CYAN, COL_BG);
+          printCenteredText(tr("~ GHI CHU GHIM ~", "~ PINNED NOTE ~"), 202, 1, COL_CYAN, COL_BG);
           printBigWrappedTopCenteredText(srvStats.stickyNote, 218, 1, COL_WHITE, 28, 13, COL_BG);
         } else {
-          printCenteredText("~ DAILY MOTIVATION ~", 202, 1, COL_AMBER, COL_BG);
+          printCenteredText(tr("~ DAILY MOTIVATION ~", "~ DAILY MOTIVATION ~"), 202, 1, COL_AMBER, COL_BG);
           printBigWrappedTopCenteredText(srvStats.quoteText, 218, 1, COL_WHITE, 28, 13, COL_BG);
         }
       }
@@ -1489,7 +1575,7 @@ void drawPhysicalScreen() {
     static int lastEspBatPct = -999;
 
     if (viewChanged) {
-      printCenteredText("HARDWARE STATS", 38, 2, COL_PURPLE, COL_BG);
+      printCenteredText(tr("THONG SO MAY", "HARDWARE STATS"), 38, 2, COL_PURPLE, COL_BG);
       tft->drawFastHLine(16, 150, 208, COL_BORDER);
       lastLpCpu = -999.0;
       lastLpRam = -999.0;
@@ -1506,7 +1592,7 @@ void drawPhysicalScreen() {
       tft->setTextSize(1);
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(16, 70);
-      tft->print("Laptop: ");
+      tft->print(tr("Laptop: ", "Laptop: "));
       tft->setTextColor(COL_CYAN, COL_BG);
       tft->printf("%d%% | %.1f%% | %.1f%%", srvStats.lp_bat, srvStats.lp_ram, srvStats.lp_cpu);
       drawProgressBarSmooth(16, 84, 208, 8, constrain((int)srvStats.lp_cpu, 0, 100), COL_CYAN);
@@ -1521,7 +1607,7 @@ void drawPhysicalScreen() {
       tft->setTextSize(1);
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(16, 110);
-      tft->print("Server: ");
+      tft->print(tr("Server: ", "Server: "));
       tft->setTextColor(COL_GREEN, COL_BG);
       tft->printf("%s | %.1f%% | %.1f%%", srvStats.uptime.c_str(), srvStats.ram_pct, srvStats.cpu);
       drawProgressBarSmooth(16, 124, 208, 8, constrain((int)srvStats.cpu, 0, 100), COL_GREEN);
@@ -1538,7 +1624,7 @@ void drawPhysicalScreen() {
       tft->setTextSize(1);
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(16, 168);
-      tft->print("ESP32 Pin: ");
+      tft->print(tr("ESP32 Pin: ", "ESP32 batt: "));
       tft->setTextColor(COL_AMBER, COL_BG);
       tft->printf("%.2fV (%d%%)", vEsp, pctEsp);
       drawProgressBarSmooth(16, 184, 208, 8, constrain(pctEsp, 0, 100), COL_AMBER);
@@ -1548,7 +1634,7 @@ void drawPhysicalScreen() {
   // 4. VIEW TKB
   else if (srvStats.activeView == "tkb") {
     if (viewChanged) {
-      printCenteredText("THOI KHOA BIEU", 36, 2, COL_AMBER, COL_BG);
+      printCenteredText(tr("THOI KHOA BIEU", "TIMETABLE"), 36, 2, COL_AMBER, COL_BG);
 
       int curY = 62;
       tft->setTextSize(1);
@@ -1559,7 +1645,7 @@ void drawPhysicalScreen() {
 
       tft->setTextColor(COL_AMBER, COL_BG);
       tft->setCursor(16, curY);
-      tft->print("* Sang: ");
+      tft->print(tr("* Sang: ", "* AM: "));
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(62, curY);
       tft->print(removeAccents(srvStats.tkbMorning).substring(0, 28));
@@ -1568,7 +1654,7 @@ void drawPhysicalScreen() {
       if (srvStats.tkbHasAfternoon && srvStats.tkbAfternoon.length() > 0) {
         tft->setTextColor(COL_AMBER, COL_BG);
         tft->setCursor(16, curY);
-        tft->print("* Chieu: ");
+        tft->print(tr("* Chieu: ", "* PM: "));
         tft->setTextColor(COL_WHITE, COL_BG);
         tft->setCursor(62, curY);
         tft->print(removeAccents(srvStats.tkbAfternoon).substring(0, 28));
@@ -1577,7 +1663,7 @@ void drawPhysicalScreen() {
 
       tft->setTextColor(COL_GREEN, COL_BG);
       tft->setCursor(16, curY);
-      tft->print("* D.phuc: ");
+      tft->print(tr("* D.phuc: ", "* Uniform: "));
       tft->setTextColor(COL_CYAN, COL_BG);
       tft->setCursor(72, curY);
       tft->print(removeAccents(srvStats.tkbUniform).substring(0, 26));
@@ -1593,7 +1679,7 @@ void drawPhysicalScreen() {
 
       tft->setTextColor(COL_AMBER, COL_BG);
       tft->setCursor(16, curY);
-      tft->print("* Sang: ");
+      tft->print(tr("* Sang: ", "* AM: "));
       tft->setTextColor(COL_WHITE, COL_BG);
       tft->setCursor(62, curY);
       tft->print(removeAccents(srvStats.tkbTomMorning).substring(0, 28));
@@ -1602,7 +1688,7 @@ void drawPhysicalScreen() {
       if (srvStats.tkbTomHasAfternoon && srvStats.tkbTomAfternoon.length() > 0) {
         tft->setTextColor(COL_AMBER, COL_BG);
         tft->setCursor(16, curY);
-        tft->print("* Chieu: ");
+        tft->print(tr("* Chieu: ", "* PM: "));
         tft->setTextColor(COL_WHITE, COL_BG);
         tft->setCursor(62, curY);
         tft->print(removeAccents(srvStats.tkbTomAfternoon).substring(0, 28));
@@ -1611,7 +1697,7 @@ void drawPhysicalScreen() {
 
       tft->setTextColor(COL_GREEN, COL_BG);
       tft->setCursor(16, curY);
-      tft->print("* D.phuc: ");
+      tft->print(tr("* D.phuc: ", "* Uniform: "));
       tft->setTextColor(COL_CYAN, COL_BG);
       tft->setCursor(72, curY);
       tft->print(removeAccents(srvStats.tkbTomUniform).substring(0, 26));
@@ -1676,9 +1762,9 @@ void drawPhysicalScreen() {
   else if (srvStats.activeView == "math_alarm") {
     if (viewChanged) {
       printCenteredText("! MATH ALARM !", 40, 2, 0xF800, COL_BG);
-      printCenteredText("Giai toan de tat chuong:", 80, 1, COL_WHITE, COL_BG);
+      printCenteredText(tr("Giai toan de tat chuong:", "Solve the math to silence:"), 80, 1, COL_WHITE, COL_BG);
       printCenteredText(currentMathQuestion, 125, 3, COL_AMBER, COL_BG);
-      printCenteredText("Dung lenh /solve tren Discord", 185, 1, COL_CYAN, COL_BG);
+      printCenteredText(tr("Dung lenh /solve tren Discord", "Use /solve on Discord"), 185, 1, COL_CYAN, COL_BG);
     }
   }
   // 8. VIEW CLOCK FULLSCREEN
@@ -2043,7 +2129,19 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     }
     else if (topicStr == "deskflow/display" && action == "led") {
       String act = doc["act"] | "";
-      if (act == "toggle") {
+      if (act == "on") {
+        ledBlinkMode = false;
+        ledState = true;
+        prefs.putBool("led_state", true);
+        updateLampLed();
+        addLog("LED", "LED ON");
+      } else if (act == "off") {
+        ledBlinkMode = false;
+        ledState = false;
+        prefs.putBool("led_state", false);
+        updateLampLed();
+        addLog("LED", "LED OFF");
+      } else if (act == "toggle") {
         ledBlinkMode = false;
         ledState = !ledState;
         prefs.putBool("led_state", ledState);
@@ -2098,7 +2196,22 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       }
     }
 
+    if (action == "spotify_volume") {
+      // Authoritative volume from the backend (set from any app or the station menu).
+      if (doc.containsKey("volume")) {
+        spotifyVolume = constrain((int)doc["volume"], 0, 100);
+        spotifyVolumeKnown = true;
+        if (inSettingsMenu && menuState == MENU_VOLUME) screenNeedUpdate = true;
+        addLog("SPOTIFY", "Volume -> " + String(spotifyVolume) + "%");
+      }
+      return;
+    }
+
     if (action == "spotify_update") {
+      if (doc.containsKey("volume") && !doc["volume"].isNull()) {
+        spotifyVolume = constrain((int)doc["volume"], 0, 100);
+        spotifyVolumeKnown = true;
+      }
       srvStats.currentTrack = doc["track"] | "Unknown Track";
       srvStats.currentArtist = doc["artist"] | "N/A";
       srvStats.progressPct = doc["progress_pct"] | 0;
@@ -2134,6 +2247,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       isBuzzing = false;
       stopMorsePlayback();
       melodyStop();
+      alarmTuneStop();
       stopBuzzer();
       updateLampLed();
       addLog("ALARM", ">>> DA GIAI DUNG! TAT CHUONG.");
@@ -2141,8 +2255,11 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       screenNeedUpdate = true;
     } else if (action == "math_alarm_trigger") {
       stopMorsePlayback();
+      alarmTuneStop();
       isAlarmActive = true;
       lastAlarmBeepTime = millis();
+      lastAlarmStrobeTime = 0;
+      alarmStrobeOn = false;
       if (doc.containsKey("math_q")) {
         currentMathQuestion = doc["math_q"].as<String>();
       }
@@ -2151,8 +2268,8 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       addLog("ALARM", ">>> MATH ALARM START: KEU LIEN TUC CHO TOI KHI GIAI!");
     } else if (action == "morse_play") {
       String pattern = doc["pattern"] | "";
-      unsigned int unitMs = doc["unit_ms"] | 80;
-      unsigned int freq = doc["freq"] | 2400;
+      unsigned int unitMs = doc["unit_ms"] | 60;
+      unsigned int freq = doc["freq"] | 1000;
       startMorsePlayback(pattern, unitMs, freq);
     } else if (action == "morse_stop") {
       stopMorsePlayback();
@@ -2345,7 +2462,10 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
           <span style="font-size:12px; color:var(--muted);">🌐 LOCAL IP:</span>
           <span class="badge-ip" id="hudLocalIp">192.168.4.1</span>
         </div>
-        <div class="badge" id="hudConn">CONNECTED</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="term-btn" onclick="toggleLanguage()" id="btnLang">VI / EN</button>
+          <div class="badge" id="hudConn">CONNECTED</div>
+        </div>
       </div>
     </div>
 
@@ -2380,9 +2500,30 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
       </div>
 
       <div style="margin-top:8px;" class="btn-row">
-        <button class="btn btn-blue" id="btnLedToggle" onclick="controlLed('toggle')">💡 Bật/Tắt LED</button>
+        <button class="btn btn-green" onclick="controlLed('on')">💡 Bật đèn</button>
+        <button class="btn btn-blue" onclick="controlLed('off')">🌙 Tắt đèn</button>
         <button class="btn btn-amber" id="btnLedBlink" onclick="controlLed('blink')">✨ Nháy LED</button>
-        <button class="btn" style="background:#f59e0b; color:#000;" onclick="triggerBuzz()">🔔 Bíp Còi</button>
+      </div>
+
+      <div style="margin-top:10px;">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
+          <span data-lang-vi>Độ sáng vòng LED</span><span data-lang-en>LED ring brightness</span>:
+          <b id="hudLedBright">100%</b>
+        </div>
+        <input type="range" id="ledBrightRange" min="0" max="100" step="5" value="100"
+               style="width:100%;" oninput="setLedBrightness(this.value)">
+      </div>
+
+      <div style="margin-top:10px;">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
+          <span data-lang-vi>Âm lượng Spotify</span><span data-lang-en>Spotify volume</span>:
+          <b id="hudSpotifyVol">--%</b>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-blue" onclick="sendAct('volume_down')">🔉 -5%</button>
+          <button class="btn btn-green" onclick="sendAct('volume_up')">🔊 +5%</button>
+          <button class="btn" style="background:#f59e0b; color:#000;" onclick="triggerBuzz()">🔔 Bíp Còi</button>
+        </div>
       </div>
     </div>
 
@@ -2448,6 +2589,11 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 
   <script>
     function controlLed(a) { fetch('/api/led?act=' + a); }
+    function setLedBrightness(v) {
+      document.getElementById('hudLedBright').innerText = v + '%';
+      fetch('/api/led_bright?value=' + v);
+    }
+    function toggleLanguage() { fetch('/api/lang?toggle=1').then(() => location.reload()); }
     function triggerBuzz() { 
       fetch('/api/buzz?t=' + Date.now())
         .then(r => r.text())
@@ -2513,6 +2659,13 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 
     scanWifi();
     loadSavedWifi();
+
+    // Hide the English duplicates until the station reports EN.
+    fetch('/api/status').then(r => r.json()).then(d => {
+      const en = (d.language === 'en');
+      document.querySelectorAll('[data-lang-vi]').forEach(e => e.style.display = en ? 'none' : '');
+      document.querySelectorAll('[data-lang-en]').forEach(e => e.style.display = en ? '' : 'none');
+    }).catch(() => {});
 
     function renderVirtualScreen(d) {
       const view = d.view || "main";
@@ -2610,10 +2763,14 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
           document.getElementById('hudLocalIp').innerText = d.ip;
         }
 
-        const btnToggle = document.getElementById('btnLedToggle');
-        if (d.ledBlink) { btnToggle.innerText = '💡 LED: NHÁY ✨'; btnToggle.style.background = '#f59e0b'; }
-        else if (d.ledState) { btnToggle.innerText = '💡 LED: BẬT'; btnToggle.style.background = '#10b981'; }
-        else { btnToggle.innerText = '💡 LED: TẮT'; btnToggle.style.background = '#0284c7'; }
+        if (typeof d.ledBrightness === 'number') {
+          document.getElementById('hudLedBright').innerText = d.ledBrightness + '%';
+          const range = document.getElementById('ledBrightRange');
+          if (document.activeElement !== range) range.value = d.ledBrightness;
+        }
+        if (typeof d.spotifyVolume === 'number') {
+          document.getElementById('hudSpotifyVol').innerText = d.spotifyVolume + '%';
+        }
       }).catch(e => console.log(e));
 
       fetch('/api/logs').then(r => r.text()).then(t => {
@@ -2644,13 +2801,41 @@ void handleApiMorse() {
   }
   if (server.hasArg("pattern")) {
     String pattern = server.arg("pattern");
-    unsigned int unit = 80;
+    unsigned int unit = 60;
     if (server.hasArg("unit")) unit = server.arg("unit").toInt();
-    startMorsePlayback(pattern, unit, 2400);
+    unsigned int freq = 1000;
+    if (server.hasArg("freq")) freq = server.arg("freq").toInt();
+    startMorsePlayback(pattern, unit, freq);
     server.send(200, "text/plain", "Morse playing\n");
     return;
   }
   server.send(400, "text/plain", "Missing pattern or act=stop\n");
+}
+
+void handleApiLedBright() {
+  if (server.hasArg("value")) {
+    int v = constrain(server.arg("value").toInt(), 0, 100);
+    ledBrightness = v;
+    ledState = v > 0;
+    prefs.putInt("led_bright", ledBrightness);
+    prefs.putBool("led_state", ledState);
+    updateLampLed();
+    screenNeedUpdate = true;
+    addLog("LED", "Portal brightness: " + String(v) + "%");
+    server.send(200, "text/plain", "OK");
+  } else {
+    server.send(400, "text/plain", "Missing value");
+  }
+}
+
+void handleApiLang() {
+  if (server.hasArg("toggle")) {
+    setStationLanguage(!stationEnglish);
+  } else if (server.hasArg("en")) {
+    setStationLanguage(server.arg("en") == "1" || server.arg("en") == "true");
+  }
+  screenNeedUpdate = true;
+  server.send(200, "application/json", String("{\"english\":") + (stationEnglish ? "true" : "false") + "}");
 }
 
 void handleApiLed() {
@@ -2663,6 +2848,16 @@ void handleApiLed() {
         prefs.putBool("led_state", false);
         updateLampLed();
       }
+    } else if (act == "on") {
+      ledBlinkMode = false;
+      ledState = true;
+      prefs.putBool("led_state", true);
+      updateLampLed();
+    } else if (act == "off") {
+      ledBlinkMode = false;
+      ledState = false;
+      prefs.putBool("led_state", false);
+      updateLampLed();
     } else if (act == "toggle") {
       ledBlinkMode = false;
       ledState = !ledState;
@@ -2752,6 +2947,11 @@ void handleApiStatus() {
   doc["mqtt"] = mqtt.connected();
   doc["ledState"] = ledState;
   doc["ledBlink"] = ledBlinkMode;
+  doc["ledBrightness"] = ledBrightness;
+  doc["spotifyVolume"] = spotifyVolume;
+  doc["language"] = stationEnglish ? "en" : "vi";
+  doc["morseUnitMs"] = morseUnitMs;
+  doc["morseFrequency"] = morseFrequency;
   doc["view"] = srvStats.activeView;
   doc["focus_enabled"] = focusEnabled;
   doc["focus_active"] = focusActive;
@@ -2844,15 +3044,28 @@ void handleClearLogs() { serverLogs = "[SYSTEM] Log cleared.\n"; server.send(200
 void handleMenuPlay() {
   if (menuState == MENU_MAIN) {
     if (menuCurrentItem == 0) {
+      // LED ring on/off
+      ledBlinkMode = false;
+      ledState = !ledState;
+      prefs.putBool("led_state", ledState);
+      updateLampLed();
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+      addLog("LED", String("Menu toggle LED: ") + (ledState ? "ON" : "OFF"));
+    } else if (menuCurrentItem == 1) {
       menuState = MENU_ADJUST_LED;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 1) {
+    } else if (menuCurrentItem == 2) {
       menuState = MENU_BUZZER_CONFIG;
       buzzerCurrentItem = 0;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 2) {
+    } else if (menuCurrentItem == 3) {
+      menuState = MENU_VOLUME;
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+    } else if (menuCurrentItem == 4) {
       // Cycle Dark Mode: off -> always_on -> scheduled -> off
       if (darkModeSetting == "off") {
         darkModeSetting = "always_on";
@@ -2866,17 +3079,24 @@ void handleMenuPlay() {
       publishHardwareSettingsUpdate();
       screenNeedUpdate = true;
       triggerBuzz(45);
-    } else if (menuCurrentItem == 3) {
-      inSettingsMenu = false;
-      lastRenderedView = "";
+    } else if (menuCurrentItem == 5) {
+      // Switch station language VI <-> EN
+      setStationLanguage(!stationEnglish);
       screenNeedUpdate = true;
-      triggerBuzz(35);
-      addLog("MENU", "Thoat menu cai dat.");
+      triggerBuzz(50);
+      addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
     }
   } else if (menuState == MENU_ADJUST_LED) {
     prefs.putInt("led_bright", ledBrightness);
+    ledState = ledBrightness > 0;
+    prefs.putBool("led_state", ledState);
     publishHardwareSettingsUpdate();
     updateLampLed();
+    menuState = MENU_MAIN;
+    screenNeedUpdate = true;
+    triggerBuzz(50);
+  } else if (menuState == MENU_VOLUME) {
+    // Give focus back to the main list; the volume is already persisted by the backend.
     menuState = MENU_MAIN;
     screenNeedUpdate = true;
     triggerBuzz(50);
@@ -2906,7 +3126,7 @@ void handleMenuPlay() {
       screenNeedUpdate = true;
       triggerBuzz(buzzerDurationSetting);
     } else if (buzzerCurrentItem == 2) {
-      triggerBuzz(buzzerDurationSetting);
+      triggerBuzzTone(buzzerDurationSetting, MORSE_TEST_FREQ);
     } else if (buzzerCurrentItem == 3) {
       menuState = MENU_MAIN;
       screenNeedUpdate = true;
@@ -2926,6 +3146,13 @@ void handleMenuNext() {
     ledState = true;
     updateLampLed();
     ledState = oldState;
+    prefs.putInt("led_bright", ledBrightness);
+    screenNeedUpdate = true;
+    triggerBuzz(20);
+  } else if (menuState == MENU_VOLUME) {
+    spotifyVolumeKnown = true;
+    spotifyVolume = min(100, spotifyVolume + 5);
+    sendButtonAction("volume_up");
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_BUZZER_CONFIG) {
@@ -2946,6 +3173,13 @@ void handleMenuPrev() {
     ledState = true;
     updateLampLed();
     ledState = oldState;
+    prefs.putInt("led_bright", ledBrightness);
+    screenNeedUpdate = true;
+    triggerBuzz(20);
+  } else if (menuState == MENU_VOLUME) {
+    spotifyVolumeKnown = true;
+    spotifyVolume = max(0, spotifyVolume - 5);
+    sendButtonAction("volume_down");
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_BUZZER_CONFIG) {
@@ -3180,6 +3414,7 @@ void setup() {
 
   prefs.begin("deskflow", false);
   wifiListJson = prefs.getString("wifi_array", "[]");
+  loadStationLanguage();
   loadClockConfigNVS();
 
   darkModeSetting = prefs.getString("dk_mode", "off");
@@ -3237,6 +3472,8 @@ void setup() {
   server.on("/api/buzz", handleApiBuzz);
   server.on("/api/morse", handleApiMorse);
   server.on("/api/led", handleApiLed);
+  server.on("/api/led_bright", handleApiLedBright);
+  server.on("/api/lang", handleApiLang);
   server.on("/api/scan_wifi", handleScanWifi);
   server.on("/api/connect_wifi", handleConnectWifi);
   server.on("/api/get_saved_wifi", handleGetSavedWifi);
@@ -3257,22 +3494,21 @@ void loop() {
   server.handleClient();
   handleHardwareButtons();
 
-  // 1. Math Alarm reo liên tục dồn dập (Bíp 160ms, Nghỉ 100ms) cho tới khi giải
+  // 1. Math Alarm: dedicated "DeskFlow Alert" tune + red LED strobe until solved
   if (isAlarmActive) {
+    if (!alarmTuneIsPlaying()) {
+      alarmTuneStart();
+    }
+    alarmTuneUpdate(buzzerEnabled);
+
     unsigned long now = millis();
-    if (!alarmBeepState && (now - lastAlarmBeepTime >= 100)) {
-      alarmBeepState = true;
-      lastAlarmBeepTime = now;
-      tone(BUZZER_PIN, 2600);
+    if (now - lastAlarmStrobeTime >= 420) {
+      lastAlarmStrobeTime = now;
+      alarmStrobeOn = !alarmStrobeOn;
       strip.setBrightness(255);
-      for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, strip.Color(255, 0, 0));
-      strip.show();
-    } else if (alarmBeepState && (now - lastAlarmBeepTime >= 160)) {
-      alarmBeepState = false;
-      lastAlarmBeepTime = now;
-      noTone(BUZZER_PIN);
-      digitalWrite(BUZZER_PIN, HIGH);
-      strip.clear();
+      for (int i = 0; i < NUM_LEDS; i++) {
+        strip.setPixelColor(i, alarmStrobeOn ? strip.Color(255, 0, 0) : strip.Color(0, 0, 0));
+      }
       strip.show();
     }
   }
@@ -3282,9 +3518,13 @@ void loop() {
     stopBuzzer();
   }
 
-  // 3. Non-blocking Morse playback
+  // 3. Non-blocking Morse playback (the alarm uses its own dedicated tune)
   updateMorsePlayback();
-  melodyUpdate(buzzerEnabled);
+  if (!isAlarmActive) {
+    melodyUpdate(buzzerEnabled);
+  } else {
+    melodyStop();
+  }
 
   if (ledBlinkMode) {
     if (millis() - lastLedBlinkTime >= LED_BLINK_INTERVAL) {

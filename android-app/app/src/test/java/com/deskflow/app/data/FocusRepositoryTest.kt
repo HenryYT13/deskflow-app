@@ -582,8 +582,8 @@ class FocusRepositoryTest {
         assertTrue(colorRes is ApiResult.Success)
 
         // setLampDim
-        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("""{"success": true, "led_bright": 60, "screen_bright": 90}"""))
-        val dimRes = repository.setLampDim(60, 90)
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("""{"success": true, "led_bright": 60}"""))
+        val dimRes = repository.setLampDim(60)
         assertTrue(dimRes is ApiResult.Success)
 
         // triggerBuzz

@@ -377,8 +377,7 @@ data class LampColorRequest(
 
 @Serializable
 data class LampDimRequest(
-    @SerialName("led") val led: Int? = null,
-    @SerialName("screen") val screen: Int? = null
+    @SerialName("led") val led: Int? = null
 )
 
 @Serializable

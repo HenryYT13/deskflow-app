@@ -687,7 +687,7 @@ class DeskFlowApiClient:
     # -------------------------------------------------------------------------
     # Morse Code & Buzzer
     # -------------------------------------------------------------------------
-    def play_morse(self, pattern: str, unit_ms: int = 80, freq: int = 2400) -> ApiResult:
+    def play_morse(self, pattern: str, unit_ms: int = 60, freq: int = 1000) -> ApiResult:
         return self.request(
             "POST",
             "/api/app/control/morse/play",
@@ -766,15 +766,17 @@ class DeskFlowApiClient:
     def set_lamp_color(self, hex_color: str) -> ApiResult:
         return self.request("POST", "/api/app/control/lamp/color", payload={"hex": hex_color})
 
-    def set_lamp_dim(self, led_bright: int, screen_bright: int = 80) -> ApiResult:
+    def set_lamp_dim(self, led_bright: int) -> ApiResult:
+        """LED ring brightness only (0-100%). The OLED backlight is fixed."""
         return self.request(
             "POST",
             "/api/app/control/lamp/dim",
-            payload={
-                "led": max(0, min(100, int(led_bright))),
-                "screen": max(0, min(100, int(screen_bright))),
-            },
+            payload={"led": max(0, min(100, int(led_bright)))},
         )
+
+    def set_led(self, action: str) -> ApiResult:
+        """Explicit LED ring on/off ("on", "off", "toggle", "blink")."""
+        return self.request("POST", "/api/app/control/led", payload={"action": action})
 
     def turn_lamp_off(self) -> ApiResult:
         return self.request("POST", "/api/app/control/lamp/off", payload={})

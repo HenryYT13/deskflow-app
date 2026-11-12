@@ -241,8 +241,8 @@
 
     <string name="lamp_color_label">LED Ring Color</string>
     <string name="lamp_dim_label">Brightness Control</string>
-    <string name="led_bright_label">LED Ring: %1$d%%</string>
-    <string name="screen_bright_label">Screen: %1$d%%</string>
+    <string name="led_bright_label">LED Ring Brightness: %1$d%%</string>
+    <string name="lamp_on_btn">Turn On LED Ring</string>
     <string name="lamp_off_btn">Turn Off LED Ring</string>
     <string name="led_toggle_btn">Toggle Onboard LED</string>
     <string name="led_blink_btn">Blink Onboard LED</string>

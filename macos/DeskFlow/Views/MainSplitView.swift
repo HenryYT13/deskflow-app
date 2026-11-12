@@ -1572,8 +1572,8 @@ private struct MorseMacView: View {
     @ObservedObject var client: DeskFlowApiClient
     @State private var plainText: String = "SOS DESKFLOW"
     @State private var morsePattern: String = "... --- ... / -.. . ... -.- ..-. .-.. --- .--"
-    @State private var unitMs: Double = 80
-    @State private var freqHz: Double = 2400
+    @State private var unitMs: Double = 60
+    @State private var freqHz: Double = 1000
     @State private var isSyncing: Bool = false
 
     var body: some View {
@@ -1682,10 +1682,10 @@ private struct MorseMacView: View {
 
             LiquidGlassCard("Hardware Buzzer Playback", icon: "speaker.wave.2.fill", iconColor: .yellow) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Slider(value: $unitMs, in: 30...300, step: 10) {
+                    Slider(value: $unitMs, in: 20...300, step: 10) {
                         Text(L10n.lang == "vi" ? "Đơn vị chấm: \(Int(unitMs)) ms" : "Dot Unit: \(Int(unitMs)) ms")
                     }
-                    Slider(value: $freqHz, in: 500...4500, step: 100) {
+                    Slider(value: $freqHz, in: 400...4000, step: 50) {
                         Text(L10n.lang == "vi" ? "Tần số: \(Int(freqHz)) Hz" : "Frequency: \(Int(freqHz)) Hz")
                     }
                     HStack {
@@ -1831,8 +1831,8 @@ private struct StationMacView: View {
     @ObservedObject var client: DeskFlowApiClient
     @State private var hexColor: String = "#8B5CF6"
     @State private var selectedPaletteColor: Color = Color(hex: "#8B5CF6")
-    @State private var ledBrightness: Double = 255.0
-    @State private var screenBrightness: Double = 255.0
+    @State private var ledBrightness: Double = 100.0
+    @State private var ledIsOn: Bool = true
     @State private var previewView: String = "clock"
     @State private var selectedClockStyle: Int = 1
     @State private var isApplying: Bool = false
@@ -2147,7 +2147,20 @@ private struct StationMacView: View {
 
                             Spacer()
 
-                            Button(tr("Tắt đèn (Lamp Off)")) {
+                            Text(ledIsOn
+                                 ? (client.appLanguage == "vi" ? "● Đang bật" : "● On")
+                                 : (client.appLanguage == "vi" ? "○ Đang tắt" : "○ Off"))
+                                .font(.caption.bold())
+                                .foregroundColor(ledIsOn ? .green : .secondary)
+
+                            Button(client.appLanguage == "vi" ? "Bật đèn" : "Turn Lamp On") {
+                                ledIsOn = true
+                                Task { await client.setLed(action: "on") }
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button(client.appLanguage == "vi" ? "Tắt đèn" : "Turn Lamp Off") {
+                                ledIsOn = false
                                 Task { await client.turnLampOff() }
                             }
                             .buttonStyle(.bordered)
@@ -2173,16 +2186,19 @@ private struct StationMacView: View {
                                 .foregroundColor(.secondary)
                             HStack(spacing: 8) {
                                 ForEach([
+                                    ("#FFC7AC", client.appLanguage == "vi" ? "Trắng ấm" : "Warm white"),
+                                    ("#FFFFFF", client.appLanguage == "vi" ? "Trắng" : "White"),
                                     ("#5865F2", "Discord"),
-                                    ("#FF5500", "Cam"),
-                                    ("#10B981", "Xanh lục"),
-                                    ("#38BDF8", "Xanh lam"),
-                                    ("#EC4899", "Hồng"),
-                                    ("#F59E0B", "Vàng")
+                                    ("#FF5500", client.appLanguage == "vi" ? "Cam" : "Orange"),
+                                    ("#10B981", client.appLanguage == "vi" ? "Xanh lục" : "Green"),
+                                    ("#38BDF8", client.appLanguage == "vi" ? "Xanh lam" : "Blue"),
+                                    ("#EC4899", client.appLanguage == "vi" ? "Hồng" : "Pink"),
+                                    ("#F59E0B", client.appLanguage == "vi" ? "Vàng" : "Amber")
                                 ], id: \.0) { hex, label in
                                     Button(action: {
                                         hexColor = hex
                                         selectedPaletteColor = Color(hex: hex)
+                                        ledIsOn = true
                                         Task { await client.setLampColor(hex: hex) }
                                     }) {
                                         HStack(spacing: 4) {
@@ -2201,19 +2217,16 @@ private struct StationMacView: View {
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Độ sáng đèn LED: \(Int(ledBrightness)) / 255")
+                            Text(client.appLanguage == "vi"
+                                 ? "Độ sáng đèn LED: \(Int(ledBrightness))%"
+                                 : "LED brightness: \(Int(ledBrightness))%")
                                 .font(.caption.bold())
-                            Slider(value: $ledBrightness, in: 0...255, step: 1) { _ in
-                                Task { await client.setLampDim(led: Int(ledBrightness), screen: nil) }
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Độ sáng màn hình OLED: \(Int(screenBrightness)) / 255")
-                                .font(.caption.bold())
-                            Slider(value: $screenBrightness, in: 0...255, step: 1) { _ in
-                                Task { await client.setLampDim(led: nil, screen: Int(screenBrightness)) }
-                            }
+                            Slider(value: $ledBrightness, in: 0...100, step: 1, onEditingChanged: { editing in
+                                if !editing {
+                                    ledIsOn = ledBrightness > 0
+                                    Task { await client.setLampDim(led: Int(ledBrightness)) }
+                                }
+                            })
                         }
                     }
                 }

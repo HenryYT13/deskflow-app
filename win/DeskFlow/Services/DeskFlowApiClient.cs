@@ -529,7 +529,7 @@ public sealed class DeskFlowApiClient
         }
     }
 
-    public async Task<(bool Ok, string Message)> PlayMorseAsync(string pattern, int unitMs = 80, int freq = 2400)
+    public async Task<(bool Ok, string Message)> PlayMorseAsync(string pattern, int unitMs = 60, int freq = 1000)
     {
         try
         {
@@ -724,16 +724,16 @@ public sealed class DeskFlowApiClient
         }
     }
 
-    public async Task<(bool Ok, string Message)> SetBrightnessAsync(int led, int screen)
+    public async Task<(bool Ok, string Message)> SetBrightnessAsync(int led)
     {
         try
         {
             using var req = CreateRequest(
                 HttpMethod.Post,
                 "/api/app/control/lamp/dim",
-                new { led = Math.Clamp(led, 0, 100), screen = Math.Clamp(screen, 0, 100) });
+                new { led = Math.Clamp(led, 0, 100) });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? "Updated station brightness." : $"HTTP {(int)resp.StatusCode}");
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? "Updated LED brightness." : $"HTTP {(int)resp.StatusCode}");
         }
         catch (Exception ex)
         {
@@ -880,6 +880,20 @@ public sealed class DeskFlowApiClient
             using var req = CreateRequest(HttpMethod.Post, "/api/app/control/lamp/color", new { hex = hex.Trim() });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
             return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"Lamp color set to {hex}." : $"HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, string Message)> SetLedAsync(string action)
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/led", new { action });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode ? $"LED {action}." : $"HTTP {(int)resp.StatusCode}");
         }
         catch (Exception ex)
         {

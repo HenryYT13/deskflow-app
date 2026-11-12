@@ -3,7 +3,7 @@
 
 #define MyAppName "Deskflow"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #endif
 #define MyAppPublisher "Deskflow Engineering"
 #define MyAppURL "https://api.10th012013.duckdns.org"

@@ -72,12 +72,13 @@ fun MorseConverterScreen(
         }
     }
 
-    // WPM Speed (Words Per Minute): 5 to 30 WPM. Standard is 15 WPM (80 ms/unit)
-    var wpmSpeed by rememberSaveable { mutableIntStateOf(15) }
+    // Dot unit duration: 60 ms is the DeskFlow station default (20 WPM).
+    // 1200 / WPM formula kept for backwards compatibility of the slider.
+    var wpmSpeed by rememberSaveable { mutableIntStateOf(20) }
     val unitMs = remember(wpmSpeed) { 1200 / wpmSpeed }
 
-    // Buzzer Beep Frequency: 400 Hz to 4000 Hz. Hardware default is 2400 Hz
-    var freqHz by rememberSaveable { mutableIntStateOf(2400) }
+    // Buzzer beep frequency: station default is 1000 Hz.
+    var freqHz by rememberSaveable { mutableIntStateOf(1000) }
 
     var isPlaying by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
@@ -685,7 +686,7 @@ fun MorseConverterScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = if (freqHz == 2400) "Mặc định (2400 Hz)" else "${freqHz} Hz",
+                                text = if (freqHz == 1000) "Mặc định (1000 Hz)" else "${freqHz} Hz",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )

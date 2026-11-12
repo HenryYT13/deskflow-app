@@ -4,6 +4,33 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.0.7] - 2026-11-12
+
+### ✨ Tính năng mới (New Features)
+- **Đồng bộ phần cứng ESP32 thật sự trên cả 4 ứng dụng (Android · Windows · macOS · Linux):**
+  - **Bỏ hoàn toàn thanh "Độ sáng màn hình OLED/ST7789".** Đèn nền ST7789 nối cứng 3.3V nên phần mềm không điều khiển được; backend cũng đã bỏ nhận `screen` để không còn gửi lệnh vô nghĩa xuống trạm.
+  - **Độ sáng LED giờ là % (0–100%).** macOS từng hiển thị `/255` và gửi giá trị 0–255 xuống backend (bị kẹp về 100%), giờ đã đúng thang %.
+  - **Bật / Tắt đèn rõ ràng.** Trước đây chỉ tắt được. Thêm nút **Bật đèn** gửi `{"action":"led","act":"on"}` và firmware xử lý `on` / `off` / `toggle` / `blink`.
+  - **Thêm preset màu `#FFC7AC` (trắng ấm / yellowish white)** vào bảng màu nhanh của cả 4 app.
+- **Âm báo thức riêng trên ESP32:** file mới `alarm_tune.cpp/.h` với giai điệu "DeskFlow Alert" (2 hợp âm tăng dần + nốt giữ), chạy non-blocking và lặp tới khi giải đúng bài toán. Không còn dùng tiếng bíp 2600Hz cũ; đèn LED nháy đỏ 420ms đồng bộ theo nhịp.
+- **Mã Morse mặc định: 1000 Hz và chấm 60 ms** trên firmware, backend và cả 4 app (trước là 2400 Hz / 80 ms).
+- **Song ngữ Việt – Anh cho trạm ESP32:** thêm `i18n.cpp/.h`, mọi menu và màn hình đều có bản tiếng Anh, bao gồm cả menu `>>` (Hardware Settings).
+- **Menu `>>` trên ESP32 có thêm âm lượng Spotify:** dòng "SPOTIFY VOLUME" chỉnh ±5%, đẩy qua MQTT `deskflow/button_action` (`volume_up` / `volume_down`); backend gọi Spotify API và phát lại giá trị thật xuống OLED + mọi app để luôn khớp.
+- **Portal web của trạm:** thêm nút Bật/Tắt đèn, slider độ sáng LED %, nút ±5% âm lượng Spotify và nút chuyển VI/EN.
+
+### 🔧 Sửa lỗi (Fixes)
+- macOS gửi độ sáng LED sai thang (0–255) khiến đèn luôn ở 100%.
+- Android mất state khi đổi tab do `screenBrightness` còn sót lại sau khi bỏ UI độ sáng màn hình.
+- Backend không còn nhận `screen_bright` trong `/api/app/control/lamp/dim` (tham số vẫn được bỏ qua an toàn cho app bản cũ).
+
+### ✅ Kiểm thử (Tests)
+- Firmware biên dịch thành công bằng `arduino-cli` với `esp32:esp32@3.3.12` (90% flash, 16% RAM).
+- macOS: `swiftc` compile toàn bộ source, không lỗi.
+- Linux: 21 unit test pass; `py_compile` toàn bộ module.
+- Android: cập nhật test `setLampDim(60)` theo chữ ký mới.
+
+---
+
 ## [v1.0.6] - 2026-11-12
 
 ### ✨ Tính năng mới (New Features)

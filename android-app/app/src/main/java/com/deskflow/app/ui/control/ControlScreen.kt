@@ -240,10 +240,6 @@ fun ControlScreen(
     var ledDimJob by remember { mutableStateOf<Job?>(null) }
     var lastLedSentTime by remember { mutableLongStateOf(0L) }
 
-    var screenBrightness by remember { mutableFloatStateOf(80f) }
-    var lastSentScreenBright by remember { mutableIntStateOf(80) }
-    var screenDimJob by remember { mutableStateOf<Job?>(null) }
-    var lastScreenSentTime by remember { mutableLongStateOf(0L) }
     var selectedClockStyle by rememberSaveable { mutableStateOf("digital_classic") }
     var clockConfig by remember { mutableStateOf(ClockConfigDto()) }
     var clockConfigLoading by remember { mutableStateOf(false) }
@@ -803,7 +799,7 @@ fun ControlScreen(
                                                 }
                                                 lastLedSentTime = System.currentTimeMillis()
                                                 lastSentLedBright = target
-                                                repository.setLampDim(led = target, screen = null)
+                                                repository.setLampDim(led = target)
                                             }
                                         }
                                     },
@@ -813,46 +809,19 @@ fun ControlScreen(
                                         ledDimJob = coroutineScope.launch {
                                             lastLedSentTime = System.currentTimeMillis()
                                             lastSentLedBright = finalTarget
-                                            repository.setLampDim(led = finalTarget, screen = null)
+                                            repository.setLampDim(led = finalTarget)
                                         }
                                     },
-                                    screenBrightness = screenBrightness,
-                                    onScreenBrightnessChange = { newFloat ->
-                                        screenBrightness = newFloat
-                                        val target = newFloat.roundToInt()
-                                        if (target != lastSentScreenBright) {
-                                            screenDimJob?.cancel()
-                                            screenDimJob = coroutineScope.launch {
-                                                val now = System.currentTimeMillis()
-                                                val elapsed = now - lastScreenSentTime
-                                                if (elapsed < 50) {
-                                                    delay(50 - elapsed)
-                                                }
-                                                lastScreenSentTime = System.currentTimeMillis()
-                                                lastSentScreenBright = target
-                                                repository.setLampDim(led = null, screen = target)
-                                            }
-                                        }
-                                    },
-                                    onScreenBrightnessFinished = {
-                                        val finalTarget = screenBrightness.roundToInt()
-                                        screenDimJob?.cancel()
-                                        screenDimJob = coroutineScope.launch {
-                                            lastScreenSentTime = System.currentTimeMillis()
-                                            lastSentScreenBright = finalTarget
-                                            repository.setLampDim(led = null, screen = finalTarget)
+                                    onTurnOnLamp = {
+                                        coroutineScope.launch {
+                                            repository.controlLed("on")
+                                            showFeedback("Đã bật đèn LED!")
                                         }
                                     },
                                     onTurnOffLamp = {
                                         coroutineScope.launch {
                                             repository.turnLampOff()
-                                            showFeedback("Đã tắt vòng LED!")
-                                        }
-                                    },
-                                    onToggleLed = {
-                                        coroutineScope.launch {
-                                            repository.controlLed("toggle")
-                                            showFeedback("Đã toggle LED trạm!")
+                                            showFeedback("Đã tắt đèn LED!")
                                         }
                                     }
                                 )
@@ -1567,11 +1536,8 @@ fun LedControlsCard(
     ledBrightness: Float,
     onLedBrightnessChange: (Float) -> Unit,
     onLedBrightnessFinished: () -> Unit,
-    screenBrightness: Float,
-    onScreenBrightnessChange: (Float) -> Unit,
-    onScreenBrightnessFinished: () -> Unit,
-    onTurnOffLamp: () -> Unit,
-    onToggleLed: () -> Unit
+    onTurnOnLamp: () -> Unit,
+    onTurnOffLamp: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -1605,6 +1571,7 @@ fun LedControlsCard(
             )
 
             val presetColors = listOf(
+                "#FFC7AC" to Color(0xFFFFC7AC),
                 "#5865F2" to Color(0xFF5865F2),
                 "#FF5500" to Color(0xFFFF5500),
                 "#10B981" to Color(0xFF10B981),
@@ -1709,80 +1676,25 @@ fun LedControlsCard(
                 valueRange = 0f..100f
             )
 
-            // ST7789 Display Hardware Reality Disclosure
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BrightnessMedium,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "Độ sáng màn hình ST7789",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Text(
-                                text = "Cố định 100%",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        text = "Chân đèn nền (BLK) của màn hình ST7789 hiện đang nối vật lý trực tiếp vào nguồn 3.3V. Phần mềm không thể điều chỉnh độ sáng qua xung PWM do giới hạn phần cứng (yêu cầu bổ sung mạch đệm MOSFET).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-
-            // Quick lamp actions
+            // Quick lamp power: explicit ON / OFF
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Button(
+                    onClick = onTurnOnLamp,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.lamp_on_btn))
+                }
+
                 FilledTonalButton(
                     onClick = onTurnOffLamp,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(stringResource(R.string.lamp_off_btn))
-                }
-
-                FilledTonalButton(
-                    onClick = onToggleLed,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(stringResource(R.string.led_toggle_btn))
                 }
             }
 
