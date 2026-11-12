@@ -740,6 +740,31 @@
                                     <Button Content="Bắt đầu 50 phút" Click="StartFocus50_Click" />
                                     <Button Content="Dừng phiên tập trung" Click="StopFocus_Click" />
                                 </StackPanel>
+
+                                <TextBlock x:Name="FocusLockHintText"
+                                           Text="Focus Mode đang bật: cửa sổ luôn nổi và không thể đóng. Giải bài toán để mở khoá."
+                                           Foreground="#C084FC"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed" />
+
+                                <StackPanel x:Name="FocusChallengePanel" Spacing="8" Visibility="Collapsed">
+                                    <TextBlock Text="Giải bài toán để mở khoá sớm:" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="FocusChallengeQuestionText"
+                                               Text=""
+                                               FontSize="18"
+                                               FontWeight="Bold"
+                                               Foreground="#38BDF8"
+                                               TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBox x:Name="FocusChallengeAnswerBox"
+                                                 Width="140"
+                                                 PlaceholderText="Đáp án (số nguyên)" />
+                                        <Button Content="Kiểm tra &amp; Mở khoá"
+                                                Click="VerifyFocusChallenge_Click"
+                                                Style="{StaticResource AccentButtonStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>

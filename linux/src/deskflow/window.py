@@ -19,6 +19,7 @@ from .models import (
     ConfigStore,
     CountdownItem,
     DualDayTimetable,
+    FocusLockState,
     MorseCodeConverter,
     NoteItem,
     PairedDeviceItem,
@@ -155,6 +156,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.config_store = config_store or ConfigStore()
         self.api_client = api_client or DeskFlowApiClient(self.config_store)
         self._active_challenge_id: Optional[str] = None
+        self.focus_lock = FocusLockState()
         self._deleting_note_ids: set[str] = set()
         self._deleting_countdown_ids: set[str] = set()
         self.preview_oled_view: str = "clock"
@@ -170,8 +172,14 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.apply_theme_preference()
         self._apply_clock_accent_color(self.clock_accent_color, notify_backend=False)
 
+        # Focus Mode hard lock: closing the window is refused while a session is active.
+        self.connect("close-request", self._on_close_request)
+        GLib.timeout_add_seconds(2, self._initial_focus_lock_check)
+
         # Periodic timer (every 15s) to evaluate Scheduled Dark Mode boundaries
         GLib.timeout_add_seconds(15, self._on_theme_timer_tick)
+        # Keep the Focus lock in sync when a session ends or is unlocked elsewhere.
+        GLib.timeout_add_seconds(15, self._on_focus_poll_tick)
 
     def _load_css(self) -> None:
         provider = Gtk.CssProvider()
@@ -645,6 +653,25 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self.apply_theme_preference()
         return True
 
+    def _on_focus_poll_tick(self) -> bool:
+        """Auto-unlocks when the session expires or is ended on another device."""
+        if not self.config_store.config.device_token:
+            return True
+
+        def _done(res: ApiResult) -> None:
+            if not res.ok or not isinstance(res.data, dict):
+                return
+            active = bool(res.data.get("focus_active") or res.data.get("enabled"))
+            if active == self.focus_lock.locked:
+                return
+            self._set_focus_lock(active)
+            if not active:
+                self.focus_state_row.set_subtitle("Inactive — Session ended.")
+                self.focus_dash_row.set_subtitle("Inactive — Session ended.")
+
+        self._run_bg(self.api_client.get_focus_status, _done)
+        return True
+
     def apply_theme_preference(self) -> bool:
         """Applies System, Light, Dark, or Scheduled Dark Mode via Adw.StyleManager."""
         cfg = self.config_store.config
@@ -1074,6 +1101,12 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         session_group.add(self.focus_state_row)
 
+        self.focus_lock_row = Adw.ActionRow(
+            title="Focus Lock (Always on top · no close · no quit)",
+            subtitle="Inactive — window can be moved, closed and quit normally.",
+        )
+        session_group.add(self.focus_lock_row)
+
         self.focus_duration_spin = Adw.SpinRow.new_with_range(5, 180, 5)
         self.focus_duration_spin.set_title("Session Duration (Minutes)")
         self.focus_duration_spin.set_value(25)
@@ -1128,6 +1161,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             if res.ok:
                 self.focus_state_row.set_subtitle(f"ACTIVE • {mins} min ({reason})")
                 self.focus_dash_row.set_subtitle(f"ACTIVE • {mins} min ({reason})")
+                self._set_focus_lock(True)
                 self.show_toast(f"Focus Mode enabled for {mins} minutes!")
             else:
                 self.show_toast(f"Could not start Focus Mode: {res.error_message}")
@@ -1167,6 +1201,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                     self.challenge_answer_entry.set_text("")
                     self.challenge_question_row.set_subtitle("Solved! Focus Mode unlocked.")
                     self.focus_state_row.set_subtitle("Inactive — Unlocked via Math Challenge.")
+                    self._set_focus_lock(False)
                     self.show_toast("Correct! Focus Mode unlocked.")
                 else:
                     new_ch = res.data.get("new_challenge") or {}
@@ -1180,6 +1215,149 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 self.show_toast(f"Verification failed: {res.error_message}")
 
         self._run_bg(lambda: self.api_client.verify_challenge(cid, ans), _done)
+
+    # =========================================================================
+    # Focus Mode hard lock (always on top · no close · no quit)
+    # =========================================================================
+    def is_focus_locked(self) -> bool:
+        return self.focus_lock.locked
+
+    def _initial_focus_lock_check(self) -> bool:
+        """If a session was started from another device, lock on launch too."""
+
+        def _done(res: ApiResult) -> None:
+            if res.ok and isinstance(res.data, dict):
+                active = bool(res.data.get("focus_active") or res.data.get("enabled"))
+                self._set_focus_lock(active)
+
+        self._run_bg(self.api_client.get_focus_status, _done)
+        return False
+
+    def _on_close_request(self, *_args: Any) -> bool:
+        if not self.focus_lock.should_block_close():
+            return False
+        self.show_toast(
+            "Focus Mode đang bật — giải bài toán để mở khoá trước khi đóng ứng dụng."
+        )
+        self.present()
+        return True
+
+    def _set_focus_lock(self, locked: bool) -> None:
+        if self.focus_lock.locked == locked:
+            # Still re-assert always-on-top: some window managers drop it
+            # when the window is re-presented.
+            self._apply_always_on_top(locked)
+            return
+
+        self.focus_lock.set_locked(locked)
+        self._apply_always_on_top(locked)
+
+        if getattr(self, "focus_lock_row", None) is not None:
+            if locked:
+                self.focus_lock_row.set_subtitle(
+                    "ACTIVE — always on top, close and quit are blocked. "
+                    "Solve the math challenge to unlock."
+                )
+            else:
+                self.focus_lock_row.set_subtitle(
+                    "Inactive — window can be moved, closed and quit normally."
+                )
+
+    def _apply_always_on_top(self, enabled: bool) -> None:
+        # GTK3 exposed Window.set_keep_above(); GTK4 removed it.
+        legacy = getattr(self, "set_keep_above", None)
+        if callable(legacy):
+            try:
+                legacy(enabled)
+                return
+            except Exception:
+                pass
+
+        try:
+            self._set_x11_above(enabled)
+        except Exception as exc:  # pragma: no cover - depends on the desktop session
+            logger.debug("Always-on-top unavailable: %s", exc)
+
+    def _set_x11_above(self, enabled: bool) -> None:
+        """Best-effort _NET_WM_STATE_ABOVE for X11 sessions.
+
+        Wayland compositors deliberately forbid apps from forcing themselves
+        on top, so on Wayland the close/quit lock still works but the window
+        may not float above every other app.
+        """
+        display = Gdk.Display.get_default()
+        if display is None or "X11" not in type(display).__name__:
+            return
+
+        surface = self.get_surface()
+        if surface is None:
+            return
+
+        try:
+            gi.require_version("GdkX11", "4.0")
+            from gi.repository import GdkX11  # type: ignore
+        except (ValueError, ImportError):
+            return
+
+        if not isinstance(surface, GdkX11.X11Surface):
+            return
+        xid = int(surface.get_xid())
+        if xid <= 0:
+            return
+
+        import ctypes
+        import ctypes.util
+
+        lib_name = ctypes.util.find_library("X11") or "libX11.so.6"
+        x11 = ctypes.CDLL(lib_name)
+
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x11.XInternAtom.restype = ctypes.c_ulong
+        x11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x11.XDefaultRootWindow.restype = ctypes.c_ulong
+        x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        x11.XSendEvent.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.c_void_p
+        ]
+        x11.XFlush.argtypes = [ctypes.c_void_p]
+        x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+        dpy = x11.XOpenDisplay(None)
+        if not dpy:
+            return
+
+        class _XClientMessageEvent(ctypes.Structure):
+            _fields_ = [
+                ("type", ctypes.c_int),
+                ("serial", ctypes.c_ulong),
+                ("send_event", ctypes.c_int),
+                ("display", ctypes.c_void_p),
+                ("window", ctypes.c_ulong),
+                ("message_type", ctypes.c_ulong),
+                ("format", ctypes.c_int),
+                ("data", ctypes.c_long * 5),
+            ]
+
+        try:
+            wm_state = x11.XInternAtom(dpy, b"_NET_WM_STATE", False)
+            above = x11.XInternAtom(dpy, b"_NET_WM_STATE_ABOVE", False)
+            root = x11.XDefaultRootWindow(dpy)
+
+            event = _XClientMessageEvent()
+            event.type = 33  # ClientMessage
+            event.window = xid
+            event.message_type = wm_state
+            event.format = 32
+            event.data[0] = 1 if enabled else 0  # _NET_WM_STATE_ADD / REMOVE
+            event.data[1] = above
+            event.data[3] = 1  # source indication: normal application
+
+            mask = (1 << 20) | (1 << 19)  # SubstructureRedirect | SubstructureNotify
+            x11.XSendEvent(dpy, root, 0, mask, ctypes.byref(event))
+            x11.XFlush(dpy)
+        finally:
+            x11.XCloseDisplay(dpy)
 
     # =========================================================================
     # Page: Alarms (Backend-Authoritative)
@@ -2647,6 +2825,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 txt = "ACTIVE — Distraction Blocking Enabled" if active else "Idle — Ready"
                 self.focus_state_row.set_subtitle(txt)
                 self.focus_dash_row.set_subtitle(txt)
+                self._set_focus_lock(active)
 
             sys_res = results["system"]
             if sys_res.ok and isinstance(sys_res.data, dict):

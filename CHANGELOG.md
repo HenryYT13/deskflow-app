@@ -4,6 +4,22 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.0.6] - 2026-11-12
+
+### ✨ Tính năng mới (New Features)
+- **Focus Mode khoá cứng trên cả 3 bản desktop (Windows WinUI 3 · macOS SwiftUI · Linux GTK4):**
+  - Khi phiên tập trung đang chạy, cửa sổ DeskFlow luôn nổi trên các ứng dụng khác.
+  - Chặn đóng cửa sổ và chặn thoát ứng dụng (`Alt+F4`, `Cmd+Q`, `Ctrl+Q`, nút X, menu Quit).
+  - Cách thoát duy nhất là giải đúng bài toán mở khoá (`/api/focus/challenge` → `/api/focus/verify`) hoặc để phiên tự hết giờ. Trạng thái khoá được đồng bộ lại từ backend khi mở app hoặc khi phiên kết thúc từ thiết bị khác.
+  - **Windows:** dùng `SetWindowPos(HWND_TOPMOST)`, `OverlappedPresenter.IsClosable/IsMinimizable`, sự kiện `AppWindow.Closing` và bộ đếm kiểm tra `/api/focus/status` mỗi 10 giây.
+  - **macOS:** đặt `NSWindow.level = .floating`, vô hiệu hoá nút đóng/thu nhỏ, chặn `⌘Q ⌘W ⌘M ⌘H` bằng event monitor và trả `.terminateCancel` từ `applicationShouldTerminate`.
+  - **Linux:** chặn `close-request`, chặn action `app.quit` (`Ctrl+Q`), và gắn `_NET_WM_STATE_ABOVE` trên X11. Trên Wayland, compositor không cho ứng dụng tự ép luôn nổi nên chỉ phần khoá đóng/thoát là chắc chắn hoạt động.
+
+### ✅ Kiểm thử (Tests)
+- Thêm unit test cho `FocusLockPolicy` (Windows), `FocusWindowLock` (macOS) và `FocusLockState` (Linux).
+
+---
+
 ## [v1.0.5] - 2026-11-11
 
 ### ✨ Tính năng mới & Trải nghiệm (New Features & UX)

@@ -3,6 +3,20 @@ import XCTest
 
 final class DeskFlowTests: XCTestCase {
 
+    @MainActor
+    func testFocusWindowLockBlocksTerminationWhileLocked() {
+        let lock = FocusWindowLock.shared
+        lock.setLocked(false)
+        XCTAssertTrue(lock.allowTermination())
+
+        lock.setLocked(true)
+        XCTAssertFalse(lock.allowTermination())
+
+        // The math challenge / session expiry flips focusActive back to false.
+        lock.setLocked(false)
+        XCTAssertTrue(lock.allowTermination())
+    }
+
     func testScheduledDarkModeOvernightAndSameDay() {
         // Overnight 20:00 -> 06:00
         XCTAssertFalse(ScheduledDarkModeEvaluator.isScheduledDarkActive(nowMinutes: 19 * 60 + 59, startStr: "20:00", endStr: "06:00"))

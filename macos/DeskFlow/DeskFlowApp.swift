@@ -4,6 +4,7 @@ import Combine
 
 @main
 struct DeskFlowApp: App {
+    @NSApplicationDelegateAdaptor(FocusAppDelegate.self) private var appDelegate
     @StateObject private var apiClient = DeskFlowApiClient()
     @State private var currentMinutes: Int = {
         let comps = Calendar.current.dateComponents([.hour, .minute], from: Date())
@@ -77,9 +78,13 @@ struct DeskFlowApp: App {
             MainSplitView(client: apiClient)
                 .frame(minWidth: 960, minHeight: 640)
                 .preferredColorScheme(effectiveColorScheme)
+                .background(FocusWindowAccessor().frame(width: 0, height: 0))
                 .onReceive(timer) { now in
                     let comps = Calendar.current.dateComponents([.hour, .minute], from: now)
                     currentMinutes = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+                    // Keep the Focus Mode lock in sync if the session ends
+                    // (timeout or unlocked from another device).
+                    Task { await apiClient.fetchFocusStatus() }
                 }
                 .onReceive(telemetryTimer) { _ in
                     Task {
@@ -89,6 +94,8 @@ struct DeskFlowApp: App {
                     }
                 }
                 .task {
+                    FocusWindowLock.shared.bind(client: apiClient)
+
                     let args = CommandLine.arguments
                     if args.contains("--run-tests") {
                         let code = await MacSelfTestRunner.runAllTests()

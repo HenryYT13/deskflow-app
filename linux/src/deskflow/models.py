@@ -15,6 +15,25 @@ from typing import Any, Dict, List, Optional
 DEFAULT_API_URL = "https://api.10th012013.duckdns.org"
 
 
+@dataclass
+class FocusLockState:
+    """Tracks whether the window is hard-locked by an active Focus session.
+
+    Kept as a plain dataclass so it can be unit-tested without GTK.
+    """
+
+    locked: bool = False
+
+    def set_locked(self, locked: bool) -> None:
+        self.locked = bool(locked)
+
+    def should_block_close(self) -> bool:
+        return self.locked
+
+    def should_block_quit(self) -> bool:
+        return self.locked
+
+
 class ScheduledDarkModeEvaluator:
     """Evaluates Scheduled Dark Mode across same-day, overnight, and equal-time windows."""
 

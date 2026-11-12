@@ -758,6 +758,93 @@ public sealed class DeskFlowApiClient
         }
     }
 
+    /// <summary>Reads the authoritative focus state from the backend.</summary>
+    public async Task<(bool Ok, bool Active)> GetFocusStatusAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Get, "/api/focus/status");
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return (false, false);
+            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return (true, FocusLockPolicy.IsFocusActive(body));
+        }
+        catch (Exception ex)
+        {
+            return (false, false);
+        }
+    }
+
+    /// <summary>Asks the backend for a math challenge to unlock Focus Mode early.</summary>
+    public async Task<(bool Ok, string ChallengeId, string Question, string Message)> RequestFocusChallengeAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(
+                HttpMethod.Post,
+                "/api/focus/challenge",
+                new { language = "vi", force_new = true });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return (false, string.Empty, string.Empty, $"HTTP {(int)resp.StatusCode}");
+
+            using var doc = JsonDocument.Parse(body);
+            string id = ReadString(doc.RootElement, "challenge_id");
+            string question = ReadString(doc.RootElement, "question");
+            return (true, id, question, "Math challenge ready.");
+        }
+        catch (Exception ex)
+        {
+            return (false, string.Empty, string.Empty, ex.Message);
+        }
+    }
+
+    /// <summary>Verifies the answer; a correct answer unlocks the session server-side.</summary>
+    public async Task<(bool Ok, bool Correct, string NewId, string NewQuestion, string Message)> VerifyFocusChallengeAsync(
+        string challengeId, int answer)
+    {
+        try
+        {
+            using var req = CreateRequest(
+                HttpMethod.Post,
+                "/api/focus/verify",
+                new { challenge_id = challengeId, answer, language = "vi" });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return (false, false, string.Empty, string.Empty, $"HTTP {(int)resp.StatusCode}");
+
+            using var doc = JsonDocument.Parse(body);
+            bool correct = doc.RootElement.TryGetProperty("correct", out var c)
+                && c.ValueKind == JsonValueKind.True;
+
+            string newId = string.Empty;
+            string newQuestion = string.Empty;
+            if (doc.RootElement.TryGetProperty("new_challenge", out var next)
+                && next.ValueKind == JsonValueKind.Object)
+            {
+                newId = ReadString(next, "challenge_id");
+                newQuestion = ReadString(next, "question");
+            }
+
+            return (true, correct, newId, newQuestion,
+                correct ? "Correct! Focus Mode unlocked." : "Incorrect answer.");
+        }
+        catch (Exception ex)
+        {
+            return (false, false, string.Empty, string.Empty, ex.Message);
+        }
+    }
+
+    private static string ReadString(JsonElement root, string property)
+    {
+        if (root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
+            return value.GetString() ?? string.Empty;
+        return string.Empty;
+    }
+
     public async Task<(bool Ok, string Message)> TriggerBuzzAsync(int durationMs = 40)
     {
         try

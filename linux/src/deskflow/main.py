@@ -43,7 +43,7 @@ class DeskFlowApplication(Adw.Application):
         Gtk.Window.set_default_icon_name("com.deskflow.Station")
 
         quit_action = Gio.SimpleAction.new("quit", None)
-        quit_action.connect("activate", lambda *_: self.quit())
+        quit_action.connect("activate", self._on_quit_action)
         self.add_action(quit_action)
         self.set_accels_for_action("app.quit", ["<Primary>q"])
 
@@ -62,6 +62,16 @@ class DeskFlowApplication(Adw.Application):
 
         if self.self_test:
             GLib.timeout_add(350, self._run_self_test_sequence)
+
+    def _on_quit_action(self, *_args) -> None:
+        """Ctrl+Q / app menu Quit is refused while Focus Mode is locked."""
+        if self.main_window is not None and self.main_window.is_focus_locked():
+            self.main_window.present()
+            self.main_window.show_toast(
+                "Focus Mode đang bật — giải bài toán để mở khoá trước khi thoát."
+            )
+            return
+        self.quit()
 
     def _run_self_test_sequence(self) -> bool:
         assert self.main_window is not None

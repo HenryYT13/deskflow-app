@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using DeskFlow.Models;
 using DeskFlow.Services;
@@ -20,6 +21,21 @@ public sealed partial class MainWindow : Window
     private DispatcherQueueTimer? _pairPollTimer;
     private string? _activePairSessionId;
     private bool _isLoaded;
+
+    // ---- Focus Mode hard lock ----
+    private const int HwndTopMost = -1;
+    private const int HwndNoTopMost = -2;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    private volatile bool _focusLocked;
+    private DispatcherQueueTimer? _focusPollTimer;
+    private string? _focusChallengeId;
 
     public MainWindow()
     {
@@ -69,6 +85,14 @@ public sealed partial class MainWindow : Window
         _themeTimer.Interval = TimeSpan.FromSeconds(15);
         _themeTimer.Tick += (_, _) => ApplyEffectiveTheme();
         _themeTimer.Start();
+
+        // Focus Mode lock: watch the window close request and re-check the
+        // authoritative backend state while the app is running.
+        this.AppWindow.Closing += OnAppWindowClosing;
+        _focusPollTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _focusPollTimer.Interval = TimeSpan.FromSeconds(10);
+        _focusPollTimer.Tick += async (_, _) => await PollFocusStatusAsync();
+        _focusPollTimer.Start();
 
         // 1-second periodic telemetry and stats refresh
         var telTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
@@ -140,6 +164,10 @@ public sealed partial class MainWindow : Window
         _ = RefreshAllDataAsync();
 
         _isLoaded = true;
+
+        // If a focus session is already running (started from phone/another
+        // device), lock this window as soon as the app finishes loading.
+        _ = PollFocusStatusAsync();
 
         if (SpotifyVolumeSlider != null)
         {
@@ -473,6 +501,7 @@ public sealed partial class MainWindow : Window
     {
         var (ok, msg) = await _client.SetFocusModeAsync(true, 25);
         EcosystemFocusText.Text = ok ? "25m Focus" : "Nghỉ";
+        if (ok) ApplyFocusLock(true);
         ShowBanner(msg, !ok);
     }
 
@@ -480,14 +509,173 @@ public sealed partial class MainWindow : Window
     {
         var (ok, msg) = await _client.SetFocusModeAsync(true, 50);
         EcosystemFocusText.Text = ok ? "50m Focus" : "Nghỉ";
+        if (ok) ApplyFocusLock(true);
         ShowBanner(msg, !ok);
     }
 
     private async void StopFocus_Click(object sender, RoutedEventArgs e)
     {
+        // While locked, the only way out is the math challenge.
+        if (_focusLocked)
+        {
+            await RequestFocusChallengeAsync();
+            return;
+        }
+
         var (ok, msg) = await _client.SetFocusModeAsync(false);
         EcosystemFocusText.Text = Strings.CurrentLanguage == "vi" ? "Nghỉ" : "Idle";
         ShowBanner(msg, !ok);
+    }
+
+    private async void VerifyFocusChallenge_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_focusChallengeId))
+        {
+            await RequestFocusChallengeAsync();
+            return;
+        }
+
+        if (!int.TryParse(FocusChallengeAnswerBox.Text.Trim(), out int answer))
+        {
+            ShowBanner(Strings.CurrentLanguage == "vi" ? "Đáp án phải là số nguyên." : "Answer must be an integer.", true);
+            return;
+        }
+
+        var (ok, correct, newId, newQuestion, msg) =
+            await _client.VerifyFocusChallengeAsync(_focusChallengeId, answer);
+
+        if (!ok)
+        {
+            ShowBanner(msg, true);
+            return;
+        }
+
+        if (correct)
+        {
+            _focusChallengeId = null;
+            FocusChallengePanel.Visibility = Visibility.Collapsed;
+            FocusChallengeQuestionText.Text = string.Empty;
+            FocusChallengeAnswerBox.Text = string.Empty;
+
+            await _client.SetFocusModeAsync(false);
+            ApplyFocusLock(false);
+            EcosystemFocusText.Text = Strings.CurrentLanguage == "vi" ? "Nghỉ" : "Idle";
+            ShowBanner(Strings.CurrentLanguage == "vi" ? "Đúng rồi! Đã mở khoá." : "Correct! Unlocked.", false);
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(newId)) _focusChallengeId = newId;
+            FocusChallengeQuestionText.Text = newQuestion;
+            FocusChallengeAnswerBox.Text = string.Empty;
+            ShowBanner(msg, true);
+        }
+    }
+
+    private async Task RequestFocusChallengeAsync()
+    {
+        var (ok, id, question, msg) = await _client.RequestFocusChallengeAsync();
+        if (!ok)
+        {
+            ShowBanner(msg, true);
+            return;
+        }
+
+        _focusChallengeId = id;
+        FocusChallengePanel.Visibility = Visibility.Visible;
+        FocusChallengeQuestionText.Text = question;
+        FocusChallengeAnswerBox.Text = string.Empty;
+        FocusChallengeAnswerBox.Focus(FocusState.Programmatic);
+        ShowBanner(
+            Strings.CurrentLanguage == "vi"
+                ? "Giải bài toán dưới đây để mở khoá sớm."
+                : "Solve the challenge below to unlock early.",
+            false);
+    }
+
+    /// <summary>Applies always-on-top and the no-close policy.</summary>
+    private void ApplyFocusLock(bool locked)
+    {
+        _focusLocked = locked;
+
+        try
+        {
+            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            SetWindowPos(
+                hwnd,
+                locked ? new IntPtr(HwndTopMost) : new IntPtr(HwndNoTopMost),
+                0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoActivate);
+        }
+        catch { }
+
+        try
+        {
+            if (this.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+            {
+                presenter.IsClosable = !locked;
+                presenter.IsMinimizable = !locked;
+                presenter.IsMaximizable = !locked;
+            }
+        }
+        catch { }
+
+        if (FocusLockHintText != null)
+        {
+            FocusLockHintText.Text = Strings.CurrentLanguage == "vi"
+                ? "Focus Mode đang bật: cửa sổ luôn nổi và không thể đóng. Giải bài toán để mở khoá."
+                : "Focus Mode is on: this window stays on top and cannot be closed. Solve the challenge to unlock.";
+            FocusLockHintText.Visibility = locked ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (!locked)
+        {
+            _focusChallengeId = null;
+            if (FocusChallengePanel != null)
+                FocusChallengePanel.Visibility = Visibility.Collapsed;
+            if (FocusChallengeAnswerBox != null)
+                FocusChallengeAnswerBox.Text = string.Empty;
+        }
+        else if (FocusChallengePanel != null)
+        {
+            // Always leave a visible way out: the math challenge.
+            FocusChallengePanel.Visibility = Visibility.Visible;
+            if (FocusChallengeQuestionText != null
+                && string.IsNullOrWhiteSpace(FocusChallengeQuestionText.Text))
+            {
+                FocusChallengeQuestionText.Text = Strings.CurrentLanguage == "vi"
+                    ? "Bấm 'Dừng phiên tập trung' để lấy bài toán mở khoá."
+                    : "Press 'Stop focus session' to request the unlock challenge.";
+            }
+        }
+    }
+
+    private void OnAppWindowClosing(
+        Microsoft.UI.Windowing.AppWindow sender,
+        Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (!FocusLockPolicy.ShouldBlockClose(_focusLocked)) return;
+
+        args.Cancel = true;
+        ShowBanner(
+            Strings.CurrentLanguage == "vi"
+                ? "Không thể đóng cửa sổ khi Focus Mode đang bật."
+                : "Cannot close the window while Focus Mode is active.",
+            true);
+    }
+
+    /// <summary>Keeps the lock in sync if the session was ended from another device.</summary>
+    private async Task PollFocusStatusAsync()
+    {
+        if (!_isLoaded) return;
+        if (string.IsNullOrWhiteSpace(_client.Settings.DeviceToken)) return;
+
+        var (ok, active) = await _client.GetFocusStatusAsync();
+        if (!ok || active == _focusLocked) return;
+
+        ApplyFocusLock(active);
+        EcosystemFocusText.Text = active
+            ? "Focus"
+            : (Strings.CurrentLanguage == "vi" ? "Nghỉ" : "Idle");
     }
 
     private async void AddNoteButton_Click(object sender, RoutedEventArgs e)

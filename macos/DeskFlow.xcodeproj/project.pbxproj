@@ -12,6 +12,7 @@
 		A10000030000000000000001 /* DeskFlowApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000001 /* DeskFlowApiClient.swift */; };
 		A10000040000000000000001 /* MainSplitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000001 /* MainSplitView.swift */; };
 		A10000050000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000050000000000000001 /* Assets.xcassets */; };
+		A10000070000000000000001 /* FocusWindowLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000070000000000000001 /* FocusWindowLock.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,6 +22,7 @@
 		A20000040000000000000001 /* MainSplitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskFlow/Views/MainSplitView.swift; sourceTree = "<group>"; };
 		A20000050000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000060000000000000001 /* DeskFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeskFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000070000000000000001 /* FocusWindowLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskFlow/Services/FocusWindowLock.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -30,6 +32,7 @@
 				A20000010000000000000001 /* DeskFlowApp.swift */,
 				A20000020000000000000001 /* ApiModels.swift */,
 				A20000030000000000000001 /* DeskFlowApiClient.swift */,
+				A20000070000000000000001 /* FocusWindowLock.swift */,
 				A20000040000000000000001 /* MainSplitView.swift */,
 				A20000050000000000000001 /* Assets.xcassets */,
 				A20000060000000000000001 /* DeskFlow.app */,
@@ -103,6 +106,7 @@
 				A10000020000000000000001 /* ApiModels.swift in Sources */,
 				A10000030000000000000001 /* DeskFlowApiClient.swift in Sources */,
 				A10000040000000000000001 /* MainSplitView.swift in Sources */,
+				A10000070000000000000001 /* FocusWindowLock.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

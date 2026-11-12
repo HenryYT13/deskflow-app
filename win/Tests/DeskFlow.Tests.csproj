@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <Compile Include="..\DeskFlow\Models\ApiModels.cs" Link="ApiModels.cs" />
+    <Compile Include="..\DeskFlow\Models\FocusLockPolicy.cs" Link="FocusLockPolicy.cs" />
     <Compile Include="..\DeskFlow\Services\DeskFlowApiClient.cs" Link="DeskFlowApiClient.cs" />
   </ItemGroup>
 

@@ -21,6 +21,7 @@ if str(SRC_DIR) not in sys.path:
 from deskflow.api_client import DeskFlowApiClient, logger as deskflow_logger
 from deskflow.models import (
     ConfigStore,
+    FocusLockState,
     MorseCodeConverter,
     ScheduledDarkModeEvaluator,
 )
@@ -596,6 +597,35 @@ class TestDeskFlowLinuxApp(unittest.TestCase):
         # Switch view to tkb
         res_view = self.client.switch_display_view("tkb")
         self.assertTrue(res_view.ok)
+
+
+class FocusLockStateTests(unittest.TestCase):
+    """Focus Mode must block close and quit until the math challenge unlocks it."""
+
+    def test_starts_unlocked(self) -> None:
+        state = FocusLockState()
+        self.assertFalse(state.locked)
+        self.assertFalse(state.should_block_close())
+        self.assertFalse(state.should_block_quit())
+
+    def test_blocks_close_and_quit_while_locked(self) -> None:
+        state = FocusLockState()
+        state.set_locked(True)
+        self.assertTrue(state.should_block_close())
+        self.assertTrue(state.should_block_quit())
+
+    def test_unlocks_after_challenge(self) -> None:
+        state = FocusLockState(locked=True)
+        state.set_locked(False)
+        self.assertFalse(state.should_block_close())
+        self.assertFalse(state.should_block_quit())
+
+    def test_truthy_values_are_coerced(self) -> None:
+        state = FocusLockState()
+        state.set_locked(1)  # type: ignore[arg-type]
+        self.assertTrue(state.locked)
+        state.set_locked(0)  # type: ignore[arg-type]
+        self.assertFalse(state.locked)
 
 
 if __name__ == "__main__":

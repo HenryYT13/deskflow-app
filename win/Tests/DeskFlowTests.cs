@@ -402,4 +402,25 @@ public class DeskFlowTests
         Assert.Equal("sess-test-win", data.SessionId);
         Assert.Contains("My PC", capturedBody);
     }
+
+    [Theory]
+    [InlineData("{\"focus_active\": true}", true)]
+    [InlineData("{\"enabled\": true}", true)]
+    [InlineData("{\"focus_active\": false, \"enabled\": false}", false)]
+    [InlineData("{\"focus_active\": 1}", true)]
+    [InlineData("{\"focus_active\": \"true\"}", true)]
+    [InlineData("{}", false)]
+    [InlineData("not-json", false)]
+    [InlineData(null, false)]
+    public void FocusLockPolicy_ReadsBackendFocusState(string? json, bool expected)
+    {
+        Assert.Equal(expected, FocusLockPolicy.IsFocusActive(json));
+    }
+
+    [Fact]
+    public void FocusLockPolicy_BlocksCloseOnlyWhileLocked()
+    {
+        Assert.True(FocusLockPolicy.ShouldBlockClose(true));
+        Assert.False(FocusLockPolicy.ShouldBlockClose(false));
+    }
 }
