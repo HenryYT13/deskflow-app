@@ -1231,6 +1231,21 @@ private struct FocusMacView: View {
     @State private var quoteAuthor: String = ""
     @State private var isGeneratingQuote: Bool = false
 
+    private static let minutesFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 1
+        formatter.maximum = 180
+        formatter.allowsFloats = false
+        return formatter
+    }()
+
+    private func startFocus(minutes: Int) {
+        let safeMinutes = min(max(minutes, 1), 180)
+        duration = safeMinutes
+        Task { await client.startFocus(durationMinutes: safeMinutes, reason: reason) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Groq AI Motivational Quote
@@ -1278,19 +1293,32 @@ private struct FocusMacView: View {
 
             LiquidGlassCard(client.appLanguage == "vi" ? "Bắt đầu phiên tập trung" : "Start Focus Session", icon: "timer", iconColor: .purple) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Stepper("Duration: \(duration) minutes", value: $duration, in: 5...180, step: 5)
+                    HStack(spacing: 10) {
+                        Text(client.appLanguage == "vi" ? "Thời lượng (phút)" : "Duration (minutes)")
+                        TextField("", value: $duration, formatter: Self.minutesFormatter)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 64)
+                        Stepper("", value: $duration, in: 1...180)
+                            .labelsHidden()
+                        Text(client.appLanguage == "vi" ? "phút" : "min")
+                            .foregroundColor(.secondary)
+                    }
+                    Text(client.appLanguage == "vi"
+                         ? "Nhập số phút bất kỳ, ví dụ 2 hoặc 120."
+                         : "Type any number of minutes, e.g. 2 or 120.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
                     TextField(tr("Session Goal"), text: $reason)
                         .textFieldStyle(.roundedBorder)
+
                     HStack {
-                        Button(tr("Start 25m Focus")) {
-                            duration = 25
-                            Task { await client.startFocus(durationMinutes: 25, reason: reason) }
+                        Button(client.appLanguage == "vi" ? "Bắt đầu \(duration) phút" : "Start \(duration)m Focus") {
+                            startFocus(minutes: duration)
                         }
                         .buttonStyle(.borderedProminent)
-                        Button(tr("Start 50m Deep Work")) {
-                            duration = 50
-                            Task { await client.startFocus(durationMinutes: 50, reason: reason) }
-                        }
+                        Button("25m") { startFocus(minutes: 25) }
+                        Button("50m") { startFocus(minutes: 50) }
                         if client.focusActive {
                             Button(tr("Stop Session"), role: .destructive) {
                                 Task { await client.requestChallenge() }

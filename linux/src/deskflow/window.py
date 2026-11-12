@@ -1107,7 +1107,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         session_group.add(self.focus_lock_row)
 
-        self.focus_duration_spin = Adw.SpinRow.new_with_range(5, 180, 5)
+        self.focus_duration_spin = Adw.SpinRow.new_with_range(1, 180, 1)
         self.focus_duration_spin.set_title("Session Duration (Minutes)")
         self.focus_duration_spin.set_value(25)
         session_group.add(self.focus_duration_spin)
@@ -1154,7 +1154,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         return page
 
     def _on_start_focus_clicked(self, _btn: Gtk.Button) -> None:
-        mins = int(self.focus_duration_spin.get_value())
+        mins = max(1, min(180, int(self.focus_duration_spin.get_value())))
         reason = self.focus_reason_entry.get_text().strip() or "Deep Work"
 
         def _done(res: ApiResult) -> None:

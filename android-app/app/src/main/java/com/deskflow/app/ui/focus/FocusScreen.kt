@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +53,10 @@ fun FocusScreen(
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var selectedDuration by remember { mutableIntStateOf(25) }
+    var customDurationText by remember { mutableStateOf("") }
+    val customDurationValue = customDurationText.toIntOrNull()
+    val customDurationValid =
+        customDurationText.isEmpty() || (customDurationValue != null && customDurationValue in 1..180)
     var reasonText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
@@ -483,7 +489,7 @@ fun FocusScreen(
 
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-                                    // Duration Selector: 15m, 25m, 45m, 60m, 90m
+                                    // Duration Selector: 2m, 15m, 25m, 45m, 60m, 90m
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(
                                             text = stringResource(R.string.duration_label),
@@ -495,11 +501,15 @@ fun FocusScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            listOf(15, 25, 45, 60, 90).forEach { mins ->
-                                                val isSelected = selectedDuration == mins
+                                            listOf(2, 15, 25, 45, 60, 90).forEach { mins ->
+                                                val isSelected =
+                                                    selectedDuration == mins && customDurationText.isEmpty()
                                                 FilterChip(
                                                     selected = isSelected,
-                                                    onClick = { selectedDuration = mins },
+                                                    onClick = {
+                                                        selectedDuration = mins
+                                                        customDurationText = ""
+                                                    },
                                                     label = {
                                                         Text(
                                                             text = "${mins}m",
@@ -510,6 +520,32 @@ fun FocusScreen(
                                                     modifier = Modifier.weight(1f)
                                                 )
                                             }
+                                        }
+
+                                        // Custom duration: any value from 1 to 180 minutes
+                                        OutlinedTextField(
+                                            value = customDurationText,
+                                            onValueChange = { raw ->
+                                                val digits = raw.filter { it.isDigit() }.take(3)
+                                                customDurationText = digits
+                                                digits.toIntOrNull()
+                                                    ?.takeIf { it in 1..180 }
+                                                    ?.let { selectedDuration = it }
+                                            },
+                                            label = { Text("Tùy chỉnh số phút (1–180)") },
+                                            placeholder = { Text("VD: 2") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            isError = !customDurationValid,
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        if (!customDurationValid) {
+                                            Text(
+                                                text = "Số phút phải từ 1 đến 180",
+                                                color = MaterialTheme.colorScheme.error,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
                                         }
                                     }
 
@@ -566,7 +602,7 @@ fun FocusScreen(
                                                 }
                                             }
                                         },
-                                        enabled = !isLoading,
+                                        enabled = !isLoading && customDurationValid,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(54.dp),

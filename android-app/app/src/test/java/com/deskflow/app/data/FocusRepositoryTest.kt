@@ -886,4 +886,30 @@ class FocusRepositoryTest {
         val recorded = mockWebServer.takeRequest()
         assertEquals("/api/focus/pair/session/sess_abc123/reject", recorded.path)
     }
+
+    @Test
+    fun testEnableFocusSupportsCustomShortDuration() = runTest {
+        testToken = "valid-token"
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """{"success": true, "enabled": true, "focus_active": true,
+                       "duration_minutes": 2, "remaining_seconds": 120}"""
+                )
+        )
+
+        val res = repository.enableFocus(durationMinutes = 2, reason = "Học nhanh")
+
+        assertTrue(res is ApiResult.Success)
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("/api/focus/enable", recorded.path)
+        val body = recorded.body.readUtf8()
+        assertTrue(body.contains("\"duration_minutes\":2"))
+
+        val state = (res as ApiResult.Success).data
+        assertTrue(state.isActive)
+        assertEquals(2, state.durationMinutes)
+        assertEquals(120L, state.remainingSeconds)
+    }
 }

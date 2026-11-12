@@ -14,6 +14,13 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
   - **Windows:** dùng `SetWindowPos(HWND_TOPMOST)`, `OverlappedPresenter.IsClosable/IsMinimizable`, sự kiện `AppWindow.Closing` và bộ đếm kiểm tra `/api/focus/status` mỗi 10 giây.
   - **macOS:** đặt `NSWindow.level = .floating`, vô hiệu hoá nút đóng/thu nhỏ, chặn `⌘Q ⌘W ⌘M ⌘H` bằng event monitor và trả `.terminateCancel` từ `applicationShouldTerminate`.
   - **Linux:** chặn `close-request`, chặn action `app.quit` (`Ctrl+Q`), và gắn `_NET_WM_STATE_ABOVE` trên X11. Trên Wayland, compositor không cho ứng dụng tự ép luôn nổi nên chỉ phần khoá đóng/thoát là chắc chắn hoạt động.
+- **Thời lượng Focus Mode tuỳ chỉnh trên cả 4 ứng dụng (Android · Windows · macOS · Linux):**
+  - Nhập số phút bất kỳ từ 1 đến 180, ví dụ **2 phút** hoặc 120 phút, thay vì chỉ chọn 25/50 phút.
+  - **Android:** thêm ô "Tùy chỉnh số phút" bên cạnh các chip nhanh (có thêm chip 2m).
+  - **Windows:** thêm `NumberBox` 1–180 và nút "Bắt đầu với số phút này".
+  - **macOS:** thêm ô nhập số phút + Stepper 1–180 và nút "Bắt đầu X phút", vẫn giữ phím nhanh 25m/50m.
+  - **Linux:** đổi `Adw.SpinRow` từ 5–180 bước 5 thành 1–180 bước 1.
+  - Backend đã chấp nhận mọi `duration_minutes > 0` nên không cần sửa máy chủ.
 
 ### ✅ Kiểm thử (Tests)
 - Thêm unit test cho `FocusLockPolicy` (Windows), `FocusWindowLock` (macOS) và `FocusLockState` (Linux).

@@ -499,6 +499,7 @@ public sealed partial class MainWindow : Window
 
     private async void StartFocus25_Click(object sender, RoutedEventArgs e)
     {
+        FocusDurationBox.Value = 25;
         var (ok, msg) = await _client.SetFocusModeAsync(true, 25);
         EcosystemFocusText.Text = ok ? "25m Focus" : "Nghỉ";
         if (ok) ApplyFocusLock(true);
@@ -507,8 +508,33 @@ public sealed partial class MainWindow : Window
 
     private async void StartFocus50_Click(object sender, RoutedEventArgs e)
     {
+        FocusDurationBox.Value = 50;
         var (ok, msg) = await _client.SetFocusModeAsync(true, 50);
         EcosystemFocusText.Text = ok ? "50m Focus" : "Nghỉ";
+        if (ok) ApplyFocusLock(true);
+        ShowBanner(msg, !ok);
+    }
+
+    private async void StartFocusCustom_Click(object sender, RoutedEventArgs e)
+    {
+        double raw = FocusDurationBox.Value;
+        if (double.IsNaN(raw))
+        {
+            ShowBanner(
+                Strings.CurrentLanguage == "vi"
+                    ? "Nhập số phút trước (1–180)."
+                    : "Enter minutes first (1–180).",
+                true);
+            return;
+        }
+
+        int minutes = Math.Clamp((int)Math.Round(raw), 1, 180);
+        FocusDurationBox.Value = minutes;
+
+        var (ok, msg) = await _client.SetFocusModeAsync(true, minutes);
+        EcosystemFocusText.Text = ok
+            ? $"{minutes}m Focus"
+            : (Strings.CurrentLanguage == "vi" ? "Nghỉ" : "Idle");
         if (ok) ApplyFocusLock(true);
         ShowBanner(msg, !ok);
     }
