@@ -1346,7 +1346,7 @@ public sealed partial class MainWindow : Window
             OledModeBadge.Text = _previewOledView.ToUpper();
             OledScreenTitle.Text = $"VIEW: {_previewOledView.ToUpper()}";
             OledScreenMain.Text = "STATION ONLINE";
-            OledScreenSub.Text = "DeskFlow SSD1306";
+            OledScreenSub.Text = "DeskFlow TFT 320×240";
         }
     }
 

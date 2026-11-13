@@ -2363,9 +2363,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
     def _build_station_page(self) -> Gtk.Widget:
         page = Adw.PreferencesPage()
 
-        # 1. Live ESP32 OLED Display Monitor (128x64 preview)
+        # 1. Live ESP32 TFT Display Monitor (320x240 preview)
         monitor_group = Adw.PreferencesGroup(
-            title="Live ESP32 OLED Display Monitor (128×64)",
+            title="Live ESP32 TFT Display Monitor (320×240)",
             description="High-contrast preview of the screen or watch face before dispatching to ESP32 silicon.",
         )
         page.add(monitor_group)
@@ -2376,7 +2376,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         top_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         dot_label = Gtk.Label(label="●")
         dot_label.add_css_class("deskflow-badge-online")
-        title_label = Gtk.Label(label="128×64 SSD1306 OLED MONITOR", xalign=0.0)
+        title_label = Gtk.Label(label="320×240 TFT (ST7789) MONITOR", xalign=0.0)
         title_label.add_css_class("oled-text-sub")
         self.oled_mode_badge = Gtk.Label(label="CLOCK FACE", xalign=1.0, hexpand=True)
         self.oled_mode_badge.add_css_class("oled-title")
@@ -2388,7 +2388,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         # OLED Screen Glass
         self.oled_glass = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.oled_glass.add_css_class("oled-glass")
-        self.oled_glass.set_size_request(280, 96)
+        self.oled_glass.set_size_request(320, 240)
 
         self.oled_screen_title = Gtk.Label(label="DESKFLOW CLOCK", xalign=0.5)
         self.oled_screen_title.add_css_class("oled-text-sub")
@@ -2513,8 +2513,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         # 3. OLED Display View Switcher (8 Views with Visual Cards)
         view_group = Adw.PreferencesGroup(
-            title="ESP32 OLED Display View Switcher (Clock Page System)",
-            description="Switch the active screen on the 128×64 SSD1306 OLED.",
+            title="ESP32 TFT Display View Switcher (Clock Page System)",
+            description="Switch the active screen on the 320×240 TFT (ST7789) display.",
         )
         page.add(view_group)
 

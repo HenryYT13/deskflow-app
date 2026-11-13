@@ -807,7 +807,7 @@ private struct DashboardMacView: View {
                         value: client.esp32CurrentView.uppercased(),
                         icon: "macbook.and.iphone",
                         tint: .cyan,
-                        subtext: "SSD1306 128×64"
+                        subtext: "TFT 320×240"
                     )
                 }
             }
@@ -1913,11 +1913,11 @@ private struct StationMacView: View {
                     }
                 }
 
-                LiquidGlassCard("Live ESP32 OLED Display Monitor (128×64)", icon: "display.2", iconColor: .cyan) {
+                LiquidGlassCard("Live ESP32 TFT Display Monitor (320×240)", icon: "display.2", iconColor: .cyan) {
                     VStack(spacing: 8) {
                         HStack {
                             Circle().fill(Color.green).frame(width: 7, height: 7)
-                            Text(tr("128×64 SSD1306 OLED MONITOR"))
+                            Text(tr("320×240 TFT (ST7789) MONITOR"))
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -1956,7 +1956,7 @@ private struct StationMacView: View {
                             .padding(.vertical, 10)
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 116)
+                        .frame(height: 240)   // 320x240 TFT panel ratio
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
@@ -2088,7 +2088,7 @@ private struct StationMacView: View {
                 }
 
                 // 3. OLED Display View Switcher (8 Views with Visual Cards)
-                LiquidGlassCard("OLED Display View Switcher (Clock Page System)", icon: "square.grid.2x2", iconColor: .blue) {
+                LiquidGlassCard("TFT Display View Switcher (Clock Page System)", icon: "square.grid.2x2", iconColor: .blue) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(tr("Switch the active page displayed on the ESP32 station:"))
                             .font(.caption)

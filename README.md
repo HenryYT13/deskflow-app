@@ -56,7 +56,7 @@ Tất cả các bản dựng mới nhất được tự động biên dịch và
 
 ### 5. ESP32 Station Firmware (`firmware-esp32/khkt/`)
 Firmware trạm điều khiển phần cứng viết bằng **Arduino C++** cho board **ESP32-WROOM-32**:
-- **Màn hình OLED 0.96" SSD1306**: Hiển thị đồng hồ, phiên Pomodoro, bài hát Spotify đang phát, kỳ thi đếm ngược.
+- **Màn hình TFT 2.8" 320×240 (ST7789)**: Hiển thị đồng hồ, phiên Pomodoro, bài hát Spotify đang phát, kỳ thi đếm ngược.
 - **Thanh LED RGB NeoPixel**: Hiệu ứng ánh sáng theo trạng thái làm việc (xanh dương khi tập trung, xanh lá khi nghỉ, đỏ khi báo thức).
 - **Cảm biến nhiệt độ & độ ẩm DHT11/DHT22**: Giám sát điều kiện phòng học và gửi dữ liệu về máy chủ qua MQTT.
 - **Trình phát Melody MIDI**: Trình phát giai điệu MIDI đơn âm tích hợp trên còi buzzer (kích hoạt qua lệnh MQTT `melody_play` và `melody_stop`).
@@ -108,7 +108,7 @@ Sử dụng **Arduino IDE** (chọn board `ESP32 Dev Module`) hoặc **arduino-c
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32 firmware-esp32/khkt
 ```
-Các thư viện cần cài đặt: `Adafruit GFX Library`, `Adafruit SSD1306`, `Adafruit NeoPixel`, `DHT sensor library`, `PubSubClient`, `ArduinoJson`.
+Các thư viện cần cài đặt: `Adafruit GFX Library`, `Adafruit ST7735 and ST7789 Library`, `Adafruit NeoPixel`, `DHT sensor library`, `PubSubClient`, `ArduinoJson`.
 
 ---
 

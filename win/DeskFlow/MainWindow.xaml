@@ -169,7 +169,7 @@
                                         <StackPanel Spacing="4">
                                             <TextBlock Text="Màn hình OLED" FontSize="11" Foreground="#94A3B8" />
                                             <TextBlock x:Name="EspViewValueText" Text="MAIN" FontSize="20" FontWeight="Bold" Foreground="#00E5FF" />
-                                            <TextBlock Text="SSD1306 128×64" FontSize="11" Foreground="#94A3B8" />
+                                            <TextBlock Text="TFT 320×240 (ST7789)" FontSize="11" Foreground="#94A3B8" />
                                         </StackPanel>
                                     </Border>
                                 </Grid>
@@ -385,12 +385,12 @@
                                 <Grid>
                                     <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
                                         <Ellipse Fill="#10B981" Width="8" Height="8" VerticalAlignment="Center" />
-                                        <TextBlock Text="128×64 SSD1306 OLED MONITOR" Foreground="#94A3B8" FontFamily="Consolas" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
+                                        <TextBlock Text="320×240 TFT (ST7789) MONITOR" Foreground="#94A3B8" FontFamily="Consolas" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <TextBlock x:Name="OledModeBadge" Text="CLOCK FACE" Foreground="#00E5FF" FontFamily="Consolas" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
                                 </Grid>
 
-                                <Border Background="#030509" BorderBrush="#2000E5FF" BorderThickness="1" CornerRadius="6" Padding="12" MinHeight="86">
+                                <Border Background="#030509" BorderBrush="#2000E5FF" BorderThickness="1" CornerRadius="6" Padding="12" Height="180" MaxWidth="240" HorizontalAlignment="Center">
                                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="3">
                                         <TextBlock x:Name="OledScreenTitle" Text="DESKFLOW CLOCK" Foreground="#94A3B8" FontFamily="Consolas" FontSize="11" HorizontalAlignment="Center" />
                                         <TextBlock x:Name="OledScreenMain" Text="12:30 :45" Foreground="#00E5FF" FontFamily="Consolas" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" />

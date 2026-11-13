@@ -1827,14 +1827,14 @@ fun OledSimulatorView(viewKey: String) {
             "OLED DISPLAY",
             "DESKFLOW ESP32",
             "READY",
-            "128×64 SSD1306"
+            "320×240 TFT"
         )
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(136.dp),
+            .aspectRatio(4f / 3f),   // 320x240 TFT, same aspect as the real panel
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF000000)),
         border = BorderStroke(1.5.dp, Color(0xFF334155))
@@ -1862,7 +1862,7 @@ fun OledSimulatorView(viewKey: String) {
                             .background(Color(0xFF10B981))
                     )
                     Text(
-                        text = "128×64 SSD1306 OLED",
+                        text = "320×240 TFT (ST7789)",
                         color = Color(0xFF94A3B8),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,

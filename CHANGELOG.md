@@ -4,6 +4,15 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.1.5] - 2026-11-13
+
+### 🖥️ TFT 320×240 (ST7789)
+- Thay toàn bộ nhãn **OLED 128×64 / SSD1306** trong Windows, Linux, macOS, Android và README thành **TFT 320×240 (ST7789)**.
+- Preview của cả 4 app đổi sang tỷ lệ **4:3**, khớp màn hình thật; không còn preview dạng thanh 128×64.
+- Tên nhóm chuyển trang và mô tả cũng đổi từ OLED sang TFT.
+
+---
+
 ## [v1.1.4] - 2026-11-13
 
 ### 🐛 Sửa lỗi (Fixes)
