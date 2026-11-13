@@ -4,6 +4,16 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.0.9] - 2026-11-13
+
+### 🐛 Sửa lỗi (Fixes)
+- **Windows đồng bộ telemetry thật với backend:** bỏ các giá trị giả cố định `CPU 14.5%`, `RAM 48%`, `pin 92%` gửi mỗi giây.
+- Windows giờ đọc RAM máy thật bằng `GlobalMemoryStatusEx` trước khi gửi `/api/app/control/telemetry`; không còn tự báo sai số RAM máy tính.
+- Clamp RAM server/máy tính về `0–100%` khi hiển thị, nên giá trị lỗi như `441%` không còn xuất hiện trên giao diện.
+- Backend production đã kiểm tra trả RAM server hợp lệ (`43.9%` tại thời điểm kiểm tra).
+
+---
+
 ## [v1.0.8] - 2026-11-12
 
 ### 🐛 Sửa lỗi (Fixes)

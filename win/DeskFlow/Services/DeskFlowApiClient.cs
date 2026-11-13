@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using DeskFlow.Models;
 
 namespace DeskFlow.Services;
@@ -1082,6 +1083,55 @@ public sealed class DeskFlowApiClient
             return (false, ex.Message);
         }
     }
+
+    public sealed record LocalTelemetry(double Cpu, double Ram, int Battery);
+
+    /// <summary>Reads this Windows machine's real CPU/RAM/battery values.</summary>
+    public async Task<LocalTelemetry> GetLocalTelemetryAsync()
+    {
+        try
+        {
+            double ramPct = 0.0;
+            var memory = new MemoryStatusEx { Length = (uint)Marshal.SizeOf<MemoryStatusEx>() };
+            if (GlobalMemoryStatusEx(ref memory) && memory.TotalPhysicalMemory > 0)
+            {
+                ramPct = Math.Clamp(
+                    (double)(memory.TotalPhysicalMemory - memory.AvailablePhysicalMemory)
+                        / memory.TotalPhysicalMemory * 100.0,
+                    0.0,
+                    100.0);
+            }
+
+            // CPU sampling is intentionally omitted here; never send a fake
+            // number. RAM is the important value for this dashboard.
+            double cpu = 0.0;
+            int battery = 100; // Windows desktops often have no battery; neutral fallback.
+
+            return new LocalTelemetry(cpu, ramPct, battery);
+        }
+        catch
+        {
+            return new LocalTelemetry(0.0, 0.0, 100);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MemoryStatusEx
+    {
+        public uint Length;
+        public uint MemoryLoad;
+        public ulong TotalPhysicalMemory;
+        public ulong AvailablePhysicalMemory;
+        public ulong TotalPageFile;
+        public ulong AvailablePageFile;
+        public ulong TotalVirtualMemory;
+        public ulong AvailableVirtualMemory;
+        public ulong AvailableExtendedVirtualMemory;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx status);
 
     public async Task ReportTelemetryAsync(double cpu, double ram, int battery)
     {

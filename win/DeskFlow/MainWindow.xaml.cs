@@ -104,7 +104,8 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                await _client.ReportTelemetryAsync(14.5, 48.0, 92);
+                var localMetrics = await _client.GetLocalTelemetryAsync();
+                await _client.ReportTelemetryAsync(localMetrics.Cpu, localMetrics.Ram, localMetrics.Battery);
             }
             catch {}
 
@@ -124,7 +125,7 @@ public sealed partial class MainWindow : Window
                     if (status.Server != null)
                     {
                         ServerCpuValueText.Text = $"{status.Server.Cpu:0.1}%";
-                        ServerRamValueText.Text = $"{status.Server.RamPct:0.1}%";
+                        ServerRamValueText.Text = $"{Math.Clamp(status.Server.RamPct, 0.0, 100.0):0.1}%";
                         ServerDiskValueText.Text = status.Server.DiskStr ?? "13.3 / 19.1GB";
                     }
                     var comp = status.Computer ?? status.Laptop;
@@ -132,7 +133,7 @@ public sealed partial class MainWindow : Window
                     {
                         ComputerTitleText.Text = Strings.CurrentLanguage == "vi" ? $"Thông số Máy tính ({comp.DeviceName})" : $"Computer Metrics ({comp.DeviceName})";
                         ComputerCpuValueText.Text = $"{comp.Cpu:0.1}%";
-                        ComputerRamValueText.Text = $"{comp.Ram:0.1}%";
+                        ComputerRamValueText.Text = $"{Math.Clamp(comp.Ram, 0.0, 100.0):0.1}%";
                         ComputerBatteryValueText.Text = $"{comp.Battery}%";
                         ComputerStatusText.Text = comp.Online ? "Online" : "Offline";
                     }
