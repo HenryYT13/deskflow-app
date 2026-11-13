@@ -4,6 +4,28 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.1.1] - 2026-11-13
+
+### 🐛 Sửa lỗi (Fixes)
+- **Linux: đổi trang ESP32 bị lỗi 405 `invalid_request`.** Client gọi sai route `/api/app/control/display/switch-view` và chỉ retry khi gặp 404. Giờ gọi đúng `/display/view` trước và retry cả 404 lẫn 405. Đây chính là lỗi trong ảnh chụp màn hình.
+- **Linux: hàng preset bị bóp thành 1 ký tự mỗi dòng.** `Adw.ActionRow.add_suffix()` nhồi 5–7 nút lên một dòng, khiến "Bảng màu gợi ý" và "Color Presets" hiển thị dọc từng chữ cái. Chuyển sang `FlowBox` 4 ô/hàng.
+- **Linux: trang "Chế độ tập trung" không mở được.** Trang này được dựng 2 lần và không có mục trong sidebar. Giờ có mục riêng và chỉ dựng một lần.
+- **Linux: đồng bộ màn hình đang hiển thị với ESP32.** Thêm dòng "Màn hình đang hoạt động trên trạm" và tự cập nhật preview khi trạm đổi màn hình.
+- **Trang đang hiện không đồng bộ ở cả 4 app.** Firmware giờ gửi `active_view` trong mỗi bản tin `status_update`, backend lưu lại và trả qua `/control/status`; app Android poll 3 giây/lần.
+- **Đổi sang tiếng Anh nhưng UI vẫn tiếng Việt.**
+  - Android: thêm cầu nối `AppStrings` dịch toàn bộ ~390 chuỗi hardcode trong Compose (kể cả chuỗi có nội suy `${...}`).
+  - Windows: thêm `UiTranslator` duyệt visual tree và dịch ~130 nhãn hardcode trong `MainWindow.xaml`.
+  - Linux: thêm `i18n.py` dịch toàn bộ widget tree (Adw rows, buttons, labels).
+- **Linux: tiêu đề tab Công cụ và thẻ chọn màn hình vẫn tiếng Việt khi đổi sang EN.** Giờ được dịch lại theo ngôn ngữ.
+
+### ✨ Tính năng mới (New Features)
+- **Linux: phát file MIDI (.mid) trên còi ESP32** — chọn bài mẫu hoặc chọn file từ máy, kèm nút Dừng.
+- **Android: đổi tên thiết bị đã liên kết** (nút bút chì cho từng thiết bị, không chỉ thiết bị hiện tại).
+- **Android: chọn thiết bị hiển thị spec** — danh sách radio chọn máy cấp số liệu CPU/RAM/pin cho ESP32 và mọi app.
+- **Android: tách "Hẹn giờ đếm ngược" khỏi "Danh ngôn AI"** thành hai mục riêng trong Công cụ.
+
+---
+
 ## [v1.1.0] - 2026-11-13
 
 ### ✨ Tính năng mới (New Features)

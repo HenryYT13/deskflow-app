@@ -302,6 +302,7 @@ long focusTotalSeconds = 0;
 int focusCycleCount = 0;
 unsigned long focusStatusReceivedMillis = 0;
 void drawFocusView();
+void publishDeviceStatus();  // forward declaration (defined after the web UI)
 
 String removeAccents(String str) {
   bool isPureAscii = true;
@@ -2006,6 +2007,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       if (doc.containsKey("view")) srvStats.activeView = doc["view"].as<String>();
       if (doc.containsKey("math_q")) currentMathQuestion = doc["math_q"].as<String>();
       screenNeedUpdate = true;
+      publishDeviceStatus();
     }
     else if (topicStr == "deskflow/display" && action == "sticky_note") {
       if (doc.containsKey("note")) {
@@ -2417,10 +2419,12 @@ void publishDeviceStatus() {
   float v = readBatteryVoltage();
   int pct = calculateBatteryPct(v);
 
-  DynamicJsonDocument doc(256);
+  DynamicJsonDocument doc(320);
   doc["battery_pct"] = pct;
   doc["voltage"] = serialized(String(v, 2));
   doc["wifi_rssi"] = WiFi.RSSI();
+  // Report the screen currently shown so every client can stay in sync.
+  doc["active_view"] = srvStats.activeView;
 
   String out;
   serializeJson(doc, out);
@@ -3076,6 +3080,7 @@ void cycleNextView() {
 
   screenNeedUpdate = true;
   addLog("VIEW", "Chuyen sang View: " + srvStats.activeView);
+  publishDeviceStatus();  // let every app know the station screen changed
 }
 
 void handleApiAction() {

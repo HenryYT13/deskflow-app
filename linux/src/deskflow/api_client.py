@@ -717,17 +717,46 @@ class DeskFlowApiClient:
         7: "word",
     }
 
+    def get_melody_presets(self) -> ApiResult:
+        return self.request("GET", "/api/app/control/melody/presets")
+
+    def play_melody_preset(self, preset_id: str) -> ApiResult:
+        return self.request(
+            "POST",
+            "/api/app/control/melody/play",
+            payload={"preset_id": preset_id},
+        )
+
+    def play_melody_file(self, filename: str, midi_bytes: bytes) -> ApiResult:
+        """Upload a .mid file and play it on the ESP32 buzzer."""
+        import base64
+
+        return self.request(
+            "POST",
+            "/api/app/control/melody/play",
+            payload={
+                "midi_base64": base64.b64encode(midi_bytes).decode("ascii"),
+                "filename": filename,
+                "title": filename.rsplit(".", 1)[0],
+            },
+        )
+
+    def stop_melody(self) -> ApiResult:
+        return self.request("POST", "/api/app/control/melody/stop", payload={})
+
     def switch_display_view(self, view: str) -> ApiResult:
+        # Canonical route first. Older deployments only expose /switch-view, and
+        # some proxies answer 405 instead of 404, so retry on both.
         res = self.request(
             "POST",
-            "/api/app/control/display/switch-view",
+            "/api/app/control/display/view",
             payload={"view": view},
             authenticated=False,
         )
-        if not res.ok and res.status_code == 404:
+        if not res.ok and res.status_code in (404, 405):
             res = self.request(
                 "POST",
-                "/api/app/control/display/view",
+                "/api/app/control/display/switch-view",
                 payload={"view": view},
                 authenticated=False,
             )

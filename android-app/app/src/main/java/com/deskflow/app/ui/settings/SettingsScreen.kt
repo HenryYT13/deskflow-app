@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.deskflow.app.ui.i18n.AppStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,6 +82,10 @@ fun SettingsScreen(
     var devicesList by remember { mutableStateOf<List<DeviceInfo>>(emptyList()) }
     var isLoadingDevices by remember { mutableStateOf(false) }
     var deviceToUnpair by remember { mutableStateOf<DeviceInfo?>(null) }
+    var deviceToRename by remember { mutableStateOf<DeviceInfo?>(null) }
+    var deviceRenameInput by remember { mutableStateOf("") }
+    var deviceRenameBusy by remember { mutableStateOf(false) }
+    var displayDeviceId by remember { mutableStateOf<String?>(null) }
 
     fun refreshDevices() {
         coroutineScope.launch {
@@ -88,6 +93,10 @@ fun SettingsScreen(
             val res = repository.getDevices()
             if (res is ApiResult.Success) {
                 devicesList = res.data
+            }
+            val selected = repository.getSelectedDisplayDevice()
+            if (selected is ApiResult.Success) {
+                displayDeviceId = selected.data
             }
             isLoadingDevices = false
         }
@@ -304,10 +313,10 @@ fun SettingsScreen(
                         coroutineScope.launch {
                             val res = repository.unpairOtherDevice(targetId)
                             if (res is ApiResult.Success) {
-                                Toast.makeText(context, "Đã xoá và hủy liên kết thiết bị", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, AppStrings.t("Đã xoá và hủy liên kết thiết bị"), Toast.LENGTH_SHORT).show()
                                 refreshDevices()
                             } else {
-                                Toast.makeText(context, "Lỗi hủy liên kết: ${(res as ApiResult.Error).message}", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, AppStrings.tpl("Lỗi hủy liên kết: ${(res as ApiResult.Error).message}"), Toast.LENGTH_LONG).show()
                                 refreshDevices()
                             }
                         }
@@ -386,7 +395,7 @@ fun SettingsScreen(
                         val sTrim = editStartInput.trim()
                         val eTrim = editEndInput.trim()
                         if (!validRegex.matches(sTrim) || !validRegex.matches(eTrim)) {
-                            scheduleInputError = "Vui lòng nhập định dạng giờ hợp lệ HH:MM (00:00 - 23:59)."
+                            scheduleInputError = AppStrings.t("Vui lòng nhập định dạng giờ hợp lệ HH:MM (00:00 - 23:59).")
                         } else {
                             securePreferences.darkModeStart = sTrim
                             securePreferences.darkModeEnd = eTrim
@@ -627,9 +636,9 @@ fun SettingsScreen(
                                         )
                                         Text(
                                             text = when {
-                                                isEqualTimes -> "Giờ bắt đầu trùng giờ kết thúc (Đang giữ chế độ Sáng)"
-                                                isNowDark -> "Hiện tại đang trong khung giờ Tối ($darkModeStart – $darkModeEnd)"
-                                                else -> "Hiện tại ngoài khung giờ Tối (Chuyển Tối lúc $darkModeStart)"
+                                                isEqualTimes -> AppStrings.t("Giờ bắt đầu trùng giờ kết thúc (Đang giữ chế độ Sáng)")
+                                                isNowDark -> AppStrings.tpl("Hiện tại đang trong khung giờ Tối ($darkModeStart – $darkModeEnd)")
+                                                else -> AppStrings.tpl("Hiện tại ngoài khung giờ Tối (Chuyển Tối lúc $darkModeStart)")
                                             },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -647,7 +656,7 @@ fun SettingsScreen(
                                     ) {
                                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Đổi giờ", style = MaterialTheme.typography.labelMedium)
+                                        Text(AppStrings.t("Đổi giờ"), style = MaterialTheme.typography.labelMedium)
                                     }
                                 }
                             }
@@ -1133,11 +1142,23 @@ fun SettingsScreen(
                                             }
                                         }
                                         Text(
-                                            text = "Nền tảng: ${dev.platform}",
+                                            text = AppStrings.tpl("Nền tảng: ${dev.platform}"),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        deviceRenameInput = dev.deviceName
+                                        deviceToRename = dev
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = stringResource(R.string.device_rename_button),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                                 IconButton(
                                     onClick = {
@@ -1159,6 +1180,94 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // ================= 5c. CHỌN THIẾT BỊ HIỂN THỊ SPEC =================
+            if (devicesList.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = stringResource(R.string.display_device_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.display_device_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        devicesList.forEach { dev ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = displayDeviceId == dev.deviceId,
+                                    onClick = {
+                                        displayDeviceId = dev.deviceId
+                                        coroutineScope.launch {
+                                            repository.setSelectedDisplayDevice(dev.deviceId)
+                                            repository.refreshSystemStatus()
+                                        }
+                                    }
+                                )
+                                Text(
+                                    text = dev.deviceName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Rename dialog for any linked device
+            deviceToRename?.let { target ->
+                AlertDialog(
+                    onDismissRequest = { if (!deviceRenameBusy) deviceToRename = null },
+                    title = { Text(stringResource(R.string.device_rename_label)) },
+                    text = {
+                        Column {
+                            OutlinedTextField(
+                                value = deviceRenameInput,
+                                onValueChange = { deviceRenameInput = it },
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.device_rename_label)) }
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = deviceRenameInput.isNotBlank() && !deviceRenameBusy,
+                            onClick = {
+                                coroutineScope.launch {
+                                    deviceRenameBusy = true
+                                    val res = repository.renameLinkedDevice(target.deviceId, deviceRenameInput)
+                                    deviceRenameBusy = false
+                                    if (res is ApiResult.Success) {
+                                        deviceToRename = null
+                                        refreshDevices()
+                                    }
+                                }
+                            }
+                        ) { Text(stringResource(R.string.device_rename_button)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deviceToRename = null }) { Text("Cancel") }
+                    }
+                )
             }
 
             // ================= 6. ABOUT =================

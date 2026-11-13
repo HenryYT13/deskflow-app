@@ -30,6 +30,7 @@ import com.deskflow.app.data.repository.FocusRepository
 import com.deskflow.app.util.MorseCode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.deskflow.app.ui.i18n.AppStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,19 +121,19 @@ fun MorseConverterScreen(
 
     fun formatMorseError(action: String, error: ApiResult.Error): String {
         return if (error.statusCode == 405) {
-            "$action: Endpoint chưa kích hoạt trên máy chủ sản xuất (405 - Cần deploy backend)"
+            AppStrings.tpl("$action: Endpoint chưa kích hoạt trên máy chủ sản xuất (405 - Cần deploy backend)")
         } else if (error.code == "invalid_morse_pattern") {
-            "$action: Mã Morse hoặc văn bản không hợp lệ"
+            AppStrings.tpl("$action: Mã Morse hoặc văn bản không hợp lệ")
         } else if (error.statusCode == 401 || error.code == "token_invalid") {
-            "$action: Phiên đăng nhập hết hạn hoặc chưa xác thực (401)"
+            AppStrings.tpl("$action: Phiên đăng nhập hết hạn hoặc chưa xác thực (401)")
         } else if (error.statusCode == 403 || error.code == "insufficient_scope") {
-            "$action: Thiết bị thiếu quyền điều khiển 'control' (403)"
+            AppStrings.tpl("$action: Thiết bị thiếu quyền điều khiển 'control' (403)")
         } else if (error.statusCode == 500) {
-            "$action: Lỗi máy chủ khi gửi lệnh còi (500)"
+            AppStrings.tpl("$action: Lỗi máy chủ khi gửi lệnh còi (500)")
         } else if (error.code == "timeout" || error.message.contains("timed out", ignoreCase = true)) {
-            "$action: Quá thời gian chờ máy chủ phản hồi (Timeout)"
+            AppStrings.tpl("$action: Quá thời gian chờ máy chủ phản hồi (Timeout)")
         } else if (error.code == "network_error") {
-            "$action: Lỗi kết nối mạng (${error.message})"
+            AppStrings.tpl("$action: Lỗi kết nối mạng (${error.message})")
         } else {
             "$action: ${error.message.ifBlank { error.code }}"
         }
@@ -143,12 +144,12 @@ fun MorseConverterScreen(
 
         val pattern = activeMorsePattern.trim()
         if (pattern.isEmpty()) {
-            showMessage("Chưa có mã Morse để phát. Vui lòng nhập nội dung!")
+            showMessage(AppStrings.t("Chưa có mã Morse để phát. Vui lòng nhập nội dung!"))
             return
         }
 
         if ((selectedMode == 0 || selectedMode == 2) && morseInput.isNotBlank() && !morseDecodeResult.isValid) {
-            showMessage(morseDecodeResult.errorMessage ?: "Mã Morse không hợp lệ, không thể phát!")
+            showMessage(morseDecodeResult.errorMessage ?: AppStrings.t("Mã Morse không hợp lệ, không thể phát!"))
             return
         }
 
@@ -160,7 +161,7 @@ fun MorseConverterScreen(
             isSubmitting = false
             if (res is ApiResult.Success) {
                 isPlaying = true
-                showMessage("Đã gửi mã Morse tới còi trạm DeskFlow!")
+                showMessage(AppStrings.t("Đã gửi mã Morse tới còi trạm DeskFlow!"))
                 // Estimate playback duration: dots, dashes, spaces
                 val estDurationMs = pattern.fold(0L) { acc, ch ->
                     acc + when (ch) {
@@ -178,7 +179,7 @@ fun MorseConverterScreen(
                 }
             } else if (res is ApiResult.Error) {
                 isPlaying = false
-                showMessage(formatMorseError("Lỗi phát còi", res))
+                showMessage(formatMorseError(AppStrings.t("Lỗi phát còi"), res))
             }
         }
     }
@@ -192,7 +193,7 @@ fun MorseConverterScreen(
             isStopping = false
             isPlaying = false
             if (res is ApiResult.Success) {
-                showMessage("Đã gửi lệnh dừng còi tới trạm!")
+                showMessage(AppStrings.t("Đã gửi lệnh dừng còi tới trạm!"))
             } else if (res is ApiResult.Error) {
                 showMessage(formatMorseError("Lỗi dừng còi", res))
             }
@@ -265,7 +266,7 @@ fun MorseConverterScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Văn bản (Plain Text - Live Sync)",
+                                text = AppStrings.t("Văn bản (Plain Text - Live Sync)"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -273,7 +274,7 @@ fun MorseConverterScreen(
                             if (textInput.isNotBlank()) {
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(textInput))
-                                    showMessage("Đã sao chép văn bản!")
+                                    showMessage(AppStrings.t("Đã sao chép văn bản!"))
                                 }) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy Text", modifier = Modifier.size(18.dp))
                                 }
@@ -283,7 +284,7 @@ fun MorseConverterScreen(
                         OutlinedTextField(
                             value = textInput,
                             onValueChange = { updateFromText(it) },
-                            placeholder = { Text("Nhập chữ cái tiếng Anh, số (VD: SOS, HELLO 2026)") },
+                            placeholder = { Text(AppStrings.t("Nhập chữ cái tiếng Anh, số (VD: SOS, HELLO 2026)")) },
                             minLines = 2,
                             maxLines = 5,
                             modifier = Modifier.fillMaxWidth(),
@@ -308,7 +309,7 @@ fun MorseConverterScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Mã Morse (Morse Code - Live Sync)",
+                                text = AppStrings.t("Mã Morse (Morse Code - Live Sync)"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -316,7 +317,7 @@ fun MorseConverterScreen(
                             if (morseInput.isNotBlank()) {
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(morseInput))
-                                    showMessage("Đã sao chép mã Morse!")
+                                    showMessage(AppStrings.t("Đã sao chép mã Morse!"))
                                 }) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy Morse", modifier = Modifier.size(18.dp))
                                 }
@@ -420,7 +421,7 @@ fun MorseConverterScreen(
                         OutlinedTextField(
                             value = textInput,
                             onValueChange = { updateFromText(it) },
-                            placeholder = { Text("Nhập chữ cái tiếng Anh, số (VD: SOS, HELLO 2026)") },
+                            placeholder = { Text(AppStrings.t("Nhập chữ cái tiếng Anh, số (VD: SOS, HELLO 2026)")) },
                             minLines = 3,
                             maxLines = 6,
                             modifier = Modifier.fillMaxWidth(),
@@ -452,7 +453,7 @@ fun MorseConverterScreen(
                             if (morseOutput.isNotBlank()) {
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(morseOutput))
-                                    showMessage("Đã sao chép mã Morse!")
+                                    showMessage(AppStrings.t("Đã sao chép mã Morse!"))
                                 }) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(20.dp))
                                 }
@@ -465,7 +466,7 @@ fun MorseConverterScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = morseOutput.ifBlank { "Mã Morse dịch tự động sẽ hiển thị ở đây..." },
+                                text = morseOutput.ifBlank { AppStrings.t("Mã Morse dịch tự động sẽ hiển thị ở đây...") },
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
@@ -577,14 +578,14 @@ fun MorseConverterScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Văn bản giải mã:",
+                                text = AppStrings.t("Văn bản giải mã:"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold
                             )
                             if (morseDecodeResult.text.isNotBlank()) {
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(morseDecodeResult.text))
-                                    showMessage("Đã sao chép văn bản!")
+                                    showMessage(AppStrings.t("Đã sao chép văn bản!"))
                                 }) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(20.dp))
                                 }
@@ -597,7 +598,7 @@ fun MorseConverterScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = morseDecodeResult.text.ifBlank { "Văn bản giải mã từ Morse sẽ xuất hiện ở đây..." },
+                                text = morseDecodeResult.text.ifBlank { AppStrings.t("Văn bản giải mã từ Morse sẽ xuất hiện ở đây...") },
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (morseDecodeResult.text.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
@@ -639,12 +640,12 @@ fun MorseConverterScreen(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Phát qua còi chip ESP32",
+                                text = AppStrings.t("Phát qua còi chip ESP32"),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (isPlaying) stringResource(R.string.morse_playing_status) else "Âm thanh phát trực tiếp từ phần cứng trạm",
+                                text = if (isPlaying) stringResource(R.string.morse_playing_status) else AppStrings.t("Âm thanh phát trực tiếp từ phần cứng trạm"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isPlaying) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -659,7 +660,7 @@ fun MorseConverterScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Tốc độ phát: $wpmSpeed WPM ($unitMs ms/đơn vị)",
+                                text = AppStrings.tpl("Tốc độ phát: $wpmSpeed WPM ($unitMs ms/đơn vị)"),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -686,7 +687,7 @@ fun MorseConverterScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = if (freqHz == 1000) "Mặc định (1000 Hz)" else "${freqHz} Hz",
+                                text = if (freqHz == 1000) AppStrings.t("Mặc định (1000 Hz)") else "${freqHz} Hz",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -747,7 +748,7 @@ fun MorseConverterScreen(
                     }
 
                     Text(
-                        text = "Lưu ý: Lệnh được gửi tới trạm qua MQTT. Âm thanh phát từ còi vật lý chip ESP32 (GPIO32), không phát qua loa điện thoại.",
+                        text = AppStrings.t("Lưu ý: Lệnh được gửi tới trạm qua MQTT. Âm thanh phát từ còi vật lý chip ESP32 (GPIO32), không phát qua loa điện thoại."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                         lineHeight = 16.sp

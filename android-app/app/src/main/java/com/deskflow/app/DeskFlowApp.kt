@@ -22,6 +22,9 @@ class DeskFlowApp : Application() {
         instance = this
 
         securePreferences = SecurePreferences(applicationContext)
+        // Prime the inline-string bridge before the first composition so even the
+        // first frame uses the saved language.
+        com.deskflow.app.ui.i18n.AppStrings.language = securePreferences.language
         activityStore = ActivityStore(applicationContext)
 
         val apiService = ApiClientFactory.create(securePreferences)

@@ -304,8 +304,8 @@
     <string name="subcat_alarm_schedule_desc">Cài đặt mốc giờ báo thức dậy học bài</string>
     <string name="subcat_tools_notes">Ghi chú &amp; Đếm ngược</string>
     <string name="subcat_tools_notes_desc">Ghim giấy nhớ lên trạm và đếm ngược ngày thi</string>
-    <string name="subcat_tools_ai">Groq AI &amp; Hẹn giờ đếm ngược</string>
-    <string name="subcat_tools_ai_desc">Sinh danh ngôn tạo động lực và hẹn giờ học</string>
+    <string name="subcat_tools_ai">Danh ngôn AI</string>
+    <string name="subcat_tools_ai_desc">Sinh danh ngôn tạo động lực bằng Groq AI</string>
     <string name="subcat_settings_display">Lịch trình Dark Mode</string>
     <string name="subcat_settings_display_desc">Tùy chỉnh khung giờ Dark Mode tự động</string>
     <string name="subcat_settings_power">Cảnh báo mưa &amp; Pin</string>
@@ -343,6 +343,12 @@
     <string name="overlay_banner">Chế độ tập trung đang bật</string>
 
     <!-- Other Device Pairing / QR Login -->
+    <string name="display_device_title">Thiết bị hiển thị spec</string>
+    <string name="display_device_desc">Chọn máy cung cấp thông số CPU/RAM/pin hiển thị trên ESP32 và trong tất cả ứng dụng.</string>
+    <string name="subcat_tools_timer">Hẹn giờ đếm ngược</string>
+    <string name="subcat_tools_timer_desc">Hẹn giờ Pomodoro / đếm ngược trên màn hình ESP32</string>
+    <string name="btn_generate_quote">Sinh câu</string>
+    <string name="btn_start_timer">Bắt đầu hẹn giờ</string>
     <string name="settings_other_devices_title">Liên kết thiết bị khác</string>
     <string name="settings_other_devices_desc">Quét mã QR hiển thị trên Desktop hoặc thiết bị khác để đăng nhập tài khoản nhanh chóng.</string>
     <string name="settings_other_devices_prompt">Hướng camera về phía mã QR trên màn hình Desktop</string>

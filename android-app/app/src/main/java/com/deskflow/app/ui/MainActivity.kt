@@ -134,6 +134,9 @@ class MainActivity : ComponentActivity() {
                 LocalizedActivityContext(this@MainActivity, configContext)
             }
 
+            // Keep the runtime string bridge in sync with the selected language.
+            com.deskflow.app.ui.i18n.AppStrings.language = currentLanguage
+
             CompositionLocalProvider(
                 LocalContext provides localizedContext,
                 LocalConfiguration provides configuration,
@@ -162,7 +165,7 @@ class MainActivity : ComponentActivity() {
                                 if (res is ApiResult.Success) {
                                     activeChallengeInfo = res.data
                                 } else if (res is ApiResult.Error) {
-                                    Toast.makeText(context, "Không thể tạo thử thách: ${res.message}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, AppStrings.tpl("Không thể tạo thử thách: ${res.message}"), Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }

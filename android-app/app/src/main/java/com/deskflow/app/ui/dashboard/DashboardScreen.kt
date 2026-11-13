@@ -23,6 +23,7 @@ import com.deskflow.app.domain.model.FocusState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import com.deskflow.app.ui.i18n.AppStrings
 
 @Composable
 fun DashboardScreen(
@@ -175,7 +176,7 @@ fun DashboardScreen(
                     }
                 } else {
                     Text(
-                        text = "Thiết bị sẵn sàng cho phiên tập trung mới.",
+                        text = AppStrings.t("Thiết bị sẵn sàng cho phiên tập trung mới."),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -223,7 +224,7 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Đồng bộ lần cuối:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(AppStrings.t("Đồng bộ lần cuối:"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val timeStr = if (focusState.lastSyncedTime > 0) {
                         SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()).format(Date(focusState.lastSyncedTime))
                     } else {

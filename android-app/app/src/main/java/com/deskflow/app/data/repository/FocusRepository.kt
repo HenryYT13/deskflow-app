@@ -341,6 +341,50 @@ class FocusRepository(
         }
     }
 
+    suspend fun renameLinkedDevice(deviceId: String, newName: String): ApiResult<Boolean> {
+        val name = newName.trim()
+        if (deviceId.isBlank() || name.isEmpty()) {
+            return ApiResult.Error("invalid_input", "Missing device id or name")
+        }
+        return try {
+            val response = apiService.renameDeviceById(deviceId, mapOf("name" to name))
+            if (response.isSuccessful) {
+                if (deviceId == securePreferences.deviceId) securePreferences.deviceName = name
+                ApiResult.Success(true)
+            } else {
+                ApiResult.Error("http_${response.code()}", response.message())
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Network error")
+        }
+    }
+
+    suspend fun getSelectedDisplayDevice(): ApiResult<String?> {
+        return try {
+            val response = apiService.getSelectedDevice()
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!.selectedDeviceId)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Network error")
+        }
+    }
+
+    suspend fun setSelectedDisplayDevice(deviceId: String): ApiResult<ActionSuccessResponse> {
+        return try {
+            val response = apiService.setSelectedDevice(mapOf("device_id" to deviceId))
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Network error")
+        }
+    }
+
     suspend fun unpairDevice(): ApiResult<Boolean> {
         return try {
             val response = apiService.unpair()

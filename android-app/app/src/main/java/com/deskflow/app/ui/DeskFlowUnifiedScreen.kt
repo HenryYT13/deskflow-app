@@ -46,6 +46,7 @@ import com.deskflow.app.ui.navigation.WaterdropNavigationBar
 import com.deskflow.app.ui.settings.SettingsScreen
 import com.deskflow.app.ui.spotify.SpotifyScreen
 import com.deskflow.app.ui.timetable.TimetableScreen
+import com.deskflow.app.ui.i18n.AppStrings
 
 private fun getScreenOrder(route: String): Int = when (route) {
     AppScreens.ROUTE_FOCUS -> 0
@@ -381,7 +382,7 @@ fun ScreenSwitcherModalSheet(
                                 )
                                 if (isSelected) {
                                     Text(
-                                        text = "Đang mở",
+                                        text = AppStrings.t("Đang mở"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Bold

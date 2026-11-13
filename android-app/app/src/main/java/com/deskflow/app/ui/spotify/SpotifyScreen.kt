@@ -43,6 +43,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
+import com.deskflow.app.ui.i18n.AppStrings
 
 private val imageHttpClient = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS)
@@ -451,7 +452,7 @@ fun SpotifyScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "LỜI BÀI HÁT ĐỒNG BỘ",
+                                text = AppStrings.t("LỜI BÀI HÁT ĐỒNG BỘ"),
                                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1DB954)
@@ -530,13 +531,13 @@ fun SpotifyScreen(
                         )
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "Chưa có lời bài hát đồng bộ",
+                                text = AppStrings.t("Chưa có lời bài hát đồng bộ"),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = if (spotifyState.isPlaying) "Bài hát này không có dữ liệu lời đồng bộ từ Spotify." else "Phát nhạc trên Spotify để bắt đầu đồng bộ lời bài hát.",
+                                text = if (spotifyState.isPlaying) AppStrings.t("Bài hát này không có dữ liệu lời đồng bộ từ Spotify.") else AppStrings.t("Phát nhạc trên Spotify để bắt đầu đồng bộ lời bài hát."),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -645,7 +646,7 @@ fun SpotifyScreen(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "Âm lượng Spotify",
+                                text = AppStrings.t("Âm lượng Spotify"),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )

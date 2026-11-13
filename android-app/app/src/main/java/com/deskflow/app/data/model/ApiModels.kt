@@ -137,6 +137,12 @@ data class DeviceDto(
 )
 
 @Serializable
+data class SelectedDeviceResponse(
+    @SerialName("success") val success: Boolean = false,
+    @SerialName("selected_device_id") val selectedDeviceId: String? = null
+)
+
+@Serializable
 data class DevicesResponse(
     @SerialName("success") val success: Boolean = false,
     @SerialName("devices") val devices: List<DeviceDto> = emptyList()

@@ -177,6 +177,10 @@ public sealed partial class MainWindow : Window
 
         _isLoaded = true;
 
+        // The visual tree only exists after layout, so apply the saved language
+        // once more now that every control has been realised.
+        ApplyLanguage();
+
         // If a focus session is already running (started from phone/another
         // device), lock this window as soon as the app finishes loading.
         _ = PollFocusStatusAsync();
@@ -1517,6 +1521,13 @@ public sealed partial class MainWindow : Window
         if (GateInstructionsText != null) GateInstructionsText.Text = isVi ? "Gõ lệnh /app pair trên Discord hoặc mở app DeskFlow trên điện thoại để nhận mã ghép nối 8 ký tự:" : "Type /app pair in Discord or open the DeskFlow mobile app to get your 8-char pairing code:";
         if (GatePairButton != null) GatePairButton.Content = isVi ? "Ghép nối thiết bị" : "Pair Device";
         if (GateServerUrlText != null) GateServerUrlText.Text = isVi ? $"Máy chủ: {_client.Settings.ApiUrl}" : $"Server: {_client.Settings.ApiUrl}";
+
+        // Retranslate the hardcoded labels in MainWindow.xaml (the XAML keeps
+        // Vietnamese as the source of truth; this swaps the whole tree).
+        if (Content is DependencyObject rootVisual)
+        {
+            UiTranslator.Apply(rootVisual, isVi);
+        }
 
         UpdatePairingStatusLabel();
     }

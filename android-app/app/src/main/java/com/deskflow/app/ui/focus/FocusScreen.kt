@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import com.deskflow.app.ui.i18n.AppStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -342,7 +343,7 @@ fun FocusScreen(
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
                                                 Text(
-                                                    text = "Mục tiêu ban đầu",
+                                                    text = AppStrings.t("Mục tiêu ban đầu"),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
@@ -366,7 +367,7 @@ fun FocusScreen(
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
                                                 Text(
-                                                    text = "Đã trôi qua",
+                                                    text = AppStrings.t("Đã trôi qua"),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
@@ -403,7 +404,7 @@ fun FocusScreen(
                                                         activeDialogChallenge = challengeRes.data
                                                     }
                                                     is ApiResult.Error -> {
-                                                        actionError = "Không thể tạo thử thách: ${challengeRes.code}"
+                                                        actionError = AppStrings.tpl("Không thể tạo thử thách: ${challengeRes.code}")
                                                     }
                                                 }
                                             }
@@ -480,7 +481,7 @@ fun FocusScreen(
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = "Khóa xao nhãng & đồng bộ mọi thiết bị",
+                                                text = AppStrings.t("Khóa xao nhãng & đồng bộ mọi thiết bị"),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -542,7 +543,7 @@ fun FocusScreen(
                                         )
                                         if (!customDurationValid) {
                                             Text(
-                                                text = "Số phút phải từ 1 đến 300",
+                                                text = AppStrings.t("Số phút phải từ 1 đến 300"),
                                                 color = MaterialTheme.colorScheme.error,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
@@ -571,7 +572,7 @@ fun FocusScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            listOf("Ôn thi Toán", "Lập trình", "Đọc sách", "Tiếng Anh").forEach { suggestion ->
+                                            listOf(AppStrings.t("Ôn thi Toán"), "Lập trình", AppStrings.t("Đọc sách"), "Tiếng Anh").forEach { suggestion ->
                                                 SuggestionChip(
                                                     onClick = { reasonText = suggestion },
                                                     label = { Text(suggestion, style = MaterialTheme.typography.labelSmall) },
@@ -598,7 +599,7 @@ fun FocusScreen(
                                                 val res = repository.enableFocus(selectedDuration, reasonText)
                                                 isLoading = false
                                                 if (res is ApiResult.Error) {
-                                                    actionError = "Kích hoạt thất bại: ${res.code}"
+                                                    actionError = AppStrings.tpl("Kích hoạt thất bại: ${res.code}")
                                                 }
                                             }
                                         },
@@ -746,7 +747,7 @@ fun FocusHistoryCard(
                         Text(
                             text = when {
                                 isCompleted -> stringResource(R.string.session_status_completed)
-                                isActive -> "Đang hoạt động"
+                                isActive -> AppStrings.t("Đang hoạt động")
                                 else -> stringResource(R.string.session_status_interrupted)
                             },
                             style = MaterialTheme.typography.labelMedium,
@@ -778,7 +779,7 @@ fun FocusHistoryCard(
             ) {
                 Column {
                     Text(
-                        text = "Bắt đầu",
+                        text = AppStrings.t("Bắt đầu"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

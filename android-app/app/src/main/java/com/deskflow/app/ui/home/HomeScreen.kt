@@ -24,6 +24,7 @@ import com.deskflow.app.R
 import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.repository.FocusRepository
 import kotlinx.coroutines.launch
+import com.deskflow.app.ui.i18n.AppStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -287,7 +288,7 @@ fun HomeScreen(
             }
 
             Text(
-                text = "Tính năng chính",
+                text = AppStrings.t("Tính năng chính"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -342,7 +343,7 @@ fun HomeScreen(
                                 text = if (focusState.isActive)
                                     stringResource(R.string.status_active)
                                 else
-                                    "Sẵn sàng bắt đầu phiên",
+                                    AppStrings.t("Sẵn sàng bắt đầu phiên"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -401,9 +402,9 @@ fun HomeScreen(
                             val subCount = (todayTkb?.morning?.size ?: 0) + (todayTkb?.afternoon?.size ?: 0)
                             Text(
                                 text = if (todayTkb?.hasAnyClass == true)
-                                    "Hôm nay: $subCount tiết học (${todayTkb.uniformMorning})"
+                                    AppStrings.tpl("Hôm nay: $subCount tiết học (${todayTkb.uniformMorning})")
                                 else
-                                    "Hôm nay: Nghỉ học",
+                                    AppStrings.t("Hôm nay: Nghỉ học"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -459,7 +460,7 @@ fun HomeScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Báo thức, Màn hình, Đèn LED & AI",
+                                text = AppStrings.t("Báo thức, Màn hình, Đèn LED & AI"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

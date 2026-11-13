@@ -27,6 +27,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
 import kotlinx.coroutines.launch
+import com.deskflow.app.ui.i18n.AppStrings
 
 @Composable
 fun PairingScreen(
@@ -53,7 +54,7 @@ fun PairingScreen(
             pairingCode = code.uppercase()
             errorMessage = null
         } else {
-            errorMessage = "QR không hợp lệ / Invalid QR"
+            errorMessage = AppStrings.t("QR không hợp lệ / Invalid QR")
         }
     }
 
@@ -189,7 +190,7 @@ fun PairingScreen(
             Button(
                 onClick = {
                     if (pairingCode.length != 8) {
-                        errorMessage = "Vui lòng nhập đủ 8 ký tự mã ghép đôi."
+                        errorMessage = AppStrings.t("Vui lòng nhập đủ 8 ký tự mã ghép đôi.")
                         return@Button
                     }
                     isLoading = true
@@ -203,10 +204,10 @@ fun PairingScreen(
                             }
                             is ApiResult.Error -> {
                                 errorMessage = when (result.code) {
-                                    "pair_code_invalid" -> "Mã ghép đôi không hợp lệ, đã hết hạn hoặc đã sử dụng."
-                                    "rate_limited" -> "Đã thử quá số lần cho phép. Vui lòng chờ ${result.retryAfter ?: 60}s."
-                                    "network_error" -> "Không thể kết nối đến máy chủ DeskFlow: ${result.message}"
-                                    else -> "Ghép đôi thất bại: ${result.code}"
+                                    "pair_code_invalid" -> AppStrings.t("Mã ghép đôi không hợp lệ, đã hết hạn hoặc đã sử dụng.")
+                                    "rate_limited" -> AppStrings.tpl("Đã thử quá số lần cho phép. Vui lòng chờ ${result.retryAfter ?: 60}s.")
+                                    "network_error" -> AppStrings.tpl("Không thể kết nối đến máy chủ DeskFlow: ${result.message}")
+                                    else -> AppStrings.tpl("Ghép đôi thất bại: ${result.code}")
                                 }
                             }
                         }

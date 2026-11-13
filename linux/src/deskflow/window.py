@@ -10,10 +10,11 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 import io
 from .api_client import ApiResult, DeskFlowApiClient, logger
+from .i18n import apply_to_widget_tree
 from .models import (
     AlarmItem,
     ConfigStore,
@@ -117,6 +118,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         ("spotify", "Spotify & Âm nhạc", "audio-x-generic-symbolic"),
         ("alarms", "Báo thức & Còi báo", "alarm-symbolic"),
         ("tools", "Công cụ & Groq AI", "document-edit-symbolic"),
+        ("focus", "Chế độ tập trung", "preferences-system-time-symbolic"),
         ("settings", "Cài đặt & Giao diện", "emblem-system-symbolic"),
     ]
 
@@ -260,13 +262,10 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.content_stack.add_named(self._build_alarms_page(), "alarms")
         self.content_stack.add_named(self._build_tkb_page(), "tkb")
         self.content_stack.add_named(self._build_tools_page(), "tools")
-        self.content_stack.add_named(self._build_settings_page(), "settings")
-        # Direct aliases
-        self.content_stack.add_named(self._build_weather_page(), "weather")
-        self.content_stack.add_named(self._build_notes_page(), "notes")
-        self.content_stack.add_named(self._build_countdowns_page(), "countdowns")
-        self.content_stack.add_named(self._build_morse_page(), "morse")
         self.content_stack.add_named(self._build_focus_page(), "focus")
+        self.content_stack.add_named(self._build_settings_page(), "settings")
+        # Direct alias used by the dashboard "weather" shortcut button.
+        self.content_stack.add_named(self._build_weather_page(), "weather")
 
         for page_id, title, icon_name in self.PAGES:
             row = Gtk.ListBoxRow()
@@ -339,10 +338,18 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                     comp_on = "Online" if computer.get("online", True) else "Offline"
                     comp_sub = f"Thiết bị: {comp_name} • CPU: {comp_cpu}% • RAM: {comp_ram}% • Pin: {comp_bat}% • Trạng thái: {comp_on}"
 
+                    station_view = str(station.get("current_view") or "").strip().lower()
+
                     def _update_ui():
                         self.esp_status_row.set_subtitle(esp_sub)
                         self.server_status_row.set_subtitle(srv_sub)
                         self.computer_status_row.set_subtitle(comp_sub)
+                        # Follow the screen the station is actually showing so the
+                        # OLED preview never drifts from the ESP32 (all apps sync).
+                        if station_view and station_view != self.preview_oled_view:
+                            self.preview_oled_view = station_view
+                            self._update_oled_preview()
+                            self._update_active_view_badge()
                         return False
 
                     GLib.idle_add(_update_ui)
@@ -767,7 +774,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             subtitle="Sticky notes, countdowns, AI motivational quotes, and Morse studio.",
         )
         tools_btn = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
-        tools_btn.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("notes"))
+        tools_btn.connect("clicked", lambda *_: self.content_stack.set_visible_child_name("tools"))
         tools_cat_row.add_suffix(tools_btn)
         cat_group.add(tools_cat_row)
 
@@ -1119,10 +1126,15 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         switcher.set_stack(stack)
         box.append(switcher)
 
-        stack.add_titled_with_icon(self._build_notes_page(), "notes", "Ghi chú & AI", "document-edit-symbolic")
-        stack.add_titled_with_icon(self._build_countdowns_page(), "countdowns", "Đếm ngược", "x-office-calendar-symbolic")
-        stack.add_titled_with_icon(self._build_morse_page(), "morse", "Mã Morse Studio", "audio-speakers-symbolic")
-        stack.add_titled_with_icon(self._build_focus_page(), "focus", "Chế độ Tập trung", "preferences-system-time-symbolic")
+        self.tools_tabs: Dict[str, tuple] = {
+            "notes": ("Ghi chú & AI", "Notes & AI"),
+            "countdowns": ("Đếm ngược", "Countdowns"),
+            "morse": ("Mã Morse Studio", "Morse Studio"),
+        }
+        stack.add_titled_with_icon(self._build_notes_page(), "notes", self._tr(*self.tools_tabs["notes"]), "document-edit-symbolic")
+        stack.add_titled_with_icon(self._build_countdowns_page(), "countdowns", self._tr(*self.tools_tabs["countdowns"]), "x-office-calendar-symbolic")
+        stack.add_titled_with_icon(self._build_morse_page(), "morse", self._tr(*self.tools_tabs["morse"]), "audio-speakers-symbolic")
+        self.tools_stack = stack
 
         box.append(stack)
         return box
@@ -1207,6 +1219,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 self.focus_dash_row.set_subtitle(f"ACTIVE • {mins} min ({reason})")
                 self._set_focus_lock(True)
                 self.show_toast(f"Focus Mode enabled for {mins} minutes!")
+                # Re-read authoritative state so the page never stays "Inactive".
+                self._refresh_focus_status_async()
             else:
                 self.show_toast(f"Could not start Focus Mode: {res.error_message}")
 
@@ -1267,15 +1281,30 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         return self.focus_lock.locked
 
     def _initial_focus_lock_check(self) -> bool:
-        """If a session was started from another device, lock on launch too."""
+        """Sync the Focus page + window lock with the backend on launch."""
+        self._refresh_focus_status_async()
+        return False
 
+    def _refresh_focus_status_async(self) -> None:
         def _done(res: ApiResult) -> None:
-            if res.ok and isinstance(res.data, dict):
-                active = bool(res.data.get("focus_active") or res.data.get("enabled"))
-                self._set_focus_lock(active)
+            if not (res.ok and isinstance(res.data, dict)):
+                return
+            data = res.data.get("data") if isinstance(res.data.get("data"), dict) else res.data
+            active = bool(data.get("focus_active") or data.get("enabled"))
+            self._set_focus_lock(active)
+
+            remaining = data.get("remaining_seconds")
+            phase = str(data.get("phase") or ("WORK" if active else "IDLE"))
+            if getattr(self, "focus_state_row", None) is not None:
+                if active:
+                    mins = (int(remaining) // 60) if isinstance(remaining, int) else 0
+                    self.focus_state_row.set_subtitle(f"ACTIVE • {phase} • ~{mins} min left")
+                else:
+                    self.focus_state_row.set_subtitle("Inactive — Ready to start.")
+            if getattr(self, "focus_dash_row", None) is not None:
+                self.focus_dash_row.set_subtitle(f"ACTIVE • {phase}" if active else "Status: Idle")
 
         self._run_bg(self.api_client.get_focus_status, _done)
-        return False
 
     def _on_close_request(self, *_args: Any) -> bool:
         if not self.focus_lock.should_block_close():
@@ -2164,7 +2193,93 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         action_row.add_suffix(stop_btn)
         hw_group.add(action_row)
 
+        # ---- MIDI melody player (.mid upload + built-in chiptunes) ----
+        melody_group = Adw.PreferencesGroup(
+            title="Phát nhạc MIDI trên còi ESP32",
+            description="Chọn bài 8-bit có sẵn hoặc tải lên file .mid để phát qua còi trạm.",
+        )
+        page.add(melody_group)
+
+        self.melody_preset_combo = Adw.ComboRow(
+            title="Giai điệu có sẵn",
+            subtitle="Chọn bài rồi bấm Phát.",
+        )
+        self.melody_preset_combo.set_model(Gtk.StringList.new(["Mario", "Nokia Tune", "Zelda", "Tetris"]))
+        melody_group.add(self.melody_preset_combo)
+
+        melody_actions = Adw.ActionRow(
+            title="Điều khiển phát nhạc",
+            subtitle="Phát bài đã chọn, hoặc chọn file .mid từ máy tính.",
+        )
+        play_preset_btn = Gtk.Button(label="▶ Phát bài mẫu", valign=Gtk.Align.CENTER)
+        play_preset_btn.add_css_class("suggested-action")
+        play_preset_btn.connect("clicked", self._on_play_melody_preset)
+        melody_actions.add_suffix(play_preset_btn)
+
+        file_btn = Gtk.Button(label="📂 Chọn file .mid", valign=Gtk.Align.CENTER)
+        file_btn.connect("clicked", self._on_pick_midi_file)
+        melody_actions.add_suffix(file_btn)
+
+        stop_melody_btn = Gtk.Button(label="⏹ Dừng", valign=Gtk.Align.CENTER)
+        stop_melody_btn.add_css_class("destructive-action")
+        stop_melody_btn.connect("clicked", lambda *_: self._run_bg(
+            self.api_client.stop_melody,
+            lambda r: self.show_toast("Đã dừng phát nhạc." if r.ok else r.error_message),
+        ))
+        melody_actions.add_suffix(stop_melody_btn)
+        melody_group.add(melody_actions)
+
         return page
+
+    MELODY_PRESET_IDS = ["mario", "nokia", "zelda", "tetris"]
+
+    def _on_play_melody_preset(self, _btn: Gtk.Button) -> None:
+        idx = self.melody_preset_combo.get_selected()
+        if idx < 0 or idx >= len(self.MELODY_PRESET_IDS):
+            idx = 0
+        preset_id = self.MELODY_PRESET_IDS[idx]
+        self._run_bg(
+            lambda: self.api_client.play_melody_preset(preset_id),
+            lambda r: self.show_toast(
+                f"Đang phát {preset_id} trên còi ESP32!" if r.ok else r.error_message
+            ),
+        )
+
+    def _on_pick_midi_file(self, _btn: Gtk.Button) -> None:
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Chọn file MIDI (.mid / .midi)")
+
+        midi_filter = Gtk.FileFilter()
+        midi_filter.set_name("MIDI files")
+        midi_filter.add_pattern("*.mid")
+        midi_filter.add_pattern("*.midi")
+
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(midi_filter)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(midi_filter)
+
+        def _opened(source: Any, result: Any) -> None:
+            try:
+                gfile = source.open_finish(result)
+                path = gfile.get_path()
+                if not path:
+                    return
+                with open(path, "rb") as fh:
+                    data = fh.read()
+                import os
+
+                filename = os.path.basename(path)
+                self._run_bg(
+                    lambda: self.api_client.play_melody_file(filename, data),
+                    lambda r: self.show_toast(
+                        f"Đang phát {filename} trên còi ESP32!" if r.ok else r.error_message
+                    ),
+                )
+            except Exception as exc:
+                logger.debug("[MIDI] File dialog closed or failed: %s", exc)
+
+        dialog.open(self, None, _opened)
 
     def _on_text_changed_live(self, _entry: Any) -> None:
         if getattr(self, "_is_updating_morse", False):
@@ -2345,10 +2460,6 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         page.add(accent_group)
 
-        swatches_row = Adw.ActionRow(
-            title="Bảng màu gợi ý",
-            subtitle="Sky Blue, Emerald Green, Amber Orange, Rose Red, Purple, Pink, White.",
-        )
         accent_swatches = [
             ("Sky Blue", "#38BDF8"),
             ("Emerald", "#10B981"),
@@ -2358,11 +2469,15 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             ("Pink", "#EC4899"),
             ("White", "#FFFFFF"),
         ]
-        for name, hx in accent_swatches:
-            b = Gtk.Button(label=name, valign=Gtk.Align.CENTER)
-            b.connect("clicked", lambda _b, col=hx: self._apply_clock_accent_color(col))
-            swatches_row.add_suffix(b)
-        accent_group.add(swatches_row)
+        accent_group.add(
+            self._build_preset_flow(
+                "Bảng màu gợi ý",
+                "Sky Blue, Emerald Green, Amber Orange, Rose Red, Purple, Pink, White.",
+                accent_swatches,
+                self._apply_clock_accent_color,
+                columns=4,
+            )
+        )
 
         self.clock_accent_entry = Adw.EntryRow(title="Mã màu Hex (#RRGGBB)")
         self.clock_accent_entry.set_text(self.clock_accent_color)
@@ -2394,6 +2509,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         page.add(view_group)
 
+        self._view_card_labels: List[tuple] = []
         view_flow = Gtk.FlowBox()
         view_flow.set_selection_mode(Gtk.SelectionMode.NONE)
         view_flow.set_max_children_per_line(4)
@@ -2411,6 +2527,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             lbl_desc = Gtk.Label(label=view_desc, xalign=0.0)
             lbl_desc.add_css_class("caption")
             lbl_desc.set_wrap(True)
+            self._view_card_labels.append((view_key, lbl_title))
             card_box.append(lbl_title)
             card_box.append(lbl_desc)
 
@@ -2420,6 +2537,13 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             btn.connect("clicked", lambda _b, vk=view_key: self._select_oled_view(vk))
             view_flow.append(btn)
         view_group.add(view_flow)
+
+        self.active_view_row = Adw.ActionRow(
+            title=self._tr("Màn hình đang hoạt động trên trạm", "Currently active station screen"),
+            subtitle=self._tr("Trạm ESP32 đang hiển thị: Main Dashboard",
+                              "The ESP32 station is showing: Main Dashboard"),
+        )
+        view_group.add(self.active_view_row)
 
         # Initialize OLED preview
         self._update_oled_preview()
@@ -2435,15 +2559,22 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.lamp_hex_entry.set_text("#8B5CF6")
         self._lamp_on = True
 
-        presets_row = Adw.ActionRow(
-            title="Color Presets",
-            subtitle="One-click hardware ambiance.",
+        self.lamp_preset_flow = self._build_preset_flow(
+            "7 màu đèn có sẵn trên ESP32",
+            "Trắng, Đỏ, Xanh lá, Xanh dương, Vàng, Tím, Xanh ngọc.",
+            [
+                ("Trắng", "#FFFFFF"),
+                ("Đỏ", "#FF0000"),
+                ("Xanh lá", "#00FF00"),
+                ("Xanh dương", "#0000FF"),
+                ("Vàng", "#FFFF00"),
+                ("Tím", "#FF00FF"),
+                ("Xanh ngọc", "#00FFFF"),
+            ],
+            self._apply_lamp_color,
+            columns=4,
         )
-        for name, hx in [("Warm White", "#FFC7AC"), ("White", "#FFFFFF"), ("Purple", "#8B5CF6"), ("Emerald", "#10B981"), ("Cyan", "#06B6D4"), ("Amber", "#F59E0B"), ("Red", "#EF4444")]:
-            btn = Gtk.Button(label=name, valign=Gtk.Align.CENTER)
-            btn.connect("clicked", lambda _b, color=hx: self._apply_lamp_color(color))
-            presets_row.add_suffix(btn)
-        lamp_group.add(presets_row)
+        lamp_group.add(self.lamp_preset_flow)
 
         apply_color_btn = Gtk.Button(label="Set Custom Color", valign=Gtk.Align.CENTER)
         apply_color_btn.add_css_class("suggested-action")
@@ -2498,15 +2629,15 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.buzzer_duration_spin.set_value(40)
         buzzer_group.add(self.buzzer_duration_spin)
 
-        buzz_presets_row = Adw.ActionRow(
-            title="Duration Presets",
-            subtitle="Android Custom Beep presets.",
+        buzzer_group.add(
+            self._build_preset_flow(
+                "Duration Presets",
+                "Beep length presets.",
+                [(f"{d}ms", str(d)) for d in (40, 80, 150, 250, 500)],
+                lambda v: self._on_buzz_preset_clicked(int(v)),
+                columns=5,
+            )
         )
-        for dur in [40, 80, 150, 250, 500]:
-            bb = Gtk.Button(label=f"{dur}ms", valign=Gtk.Align.CENTER)
-            bb.connect("clicked", lambda _b, d=dur: self._on_buzz_preset_clicked(d))
-            buzz_presets_row.add_suffix(bb)
-        buzzer_group.add(buzz_presets_row)
 
         test_buzz_row = Adw.ActionRow(
             title="Buzzer Hardware Actions",
@@ -2575,9 +2706,26 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             lambda r: self.show_toast(f"Watch Face Style #{style_id} activated!" if r.ok else r.error_message),
         )
 
+    def _tr(self, vi: str, en: str) -> str:
+        return vi if self.config_store.config.language == "vi" else en
+
+    def _update_active_view_badge(self) -> None:
+        """Highlight which station screen is currently live."""
+        if not hasattr(self, "active_view_row"):
+            return
+        label = self.preview_oled_view or "main"
+        for view_key, view_label, _desc in self.DISPLAY_VIEWS:
+            if view_key == label:
+                label = view_label
+                break
+        self.active_view_row.set_subtitle(
+            self._tr(f"Trạm ESP32 đang hiển thị: {label}", f"The ESP32 station is showing: {label}")
+        )
+
     def _select_oled_view(self, view_key: str) -> None:
         self.preview_oled_view = view_key
         self._update_oled_preview()
+        self._update_active_view_badge()
         self._run_bg(
             lambda: self.api_client.switch_display_view(view_key),
             lambda r: self.show_toast(f"Switched OLED view to {view_key}" if r.ok else r.error_message),
@@ -2692,6 +2840,38 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
     # =========================================================================
     # Page 8: Settings, Health Check & Scheduled Dark Mode
     # =========================================================================
+    def _build_preset_flow(
+        self,
+        title: str,
+        description: str,
+        presets: List[Any],
+        on_click: Callable[[str], None],
+        columns: int = 4,
+    ) -> Gtk.Widget:
+        """Preset chips in a wrapping grid.
+
+        Adw.ActionRow.add_suffix() puts every suffix on one line, so rows with
+        5-7 buttons were squeezed to one character per line. A FlowBox keeps the
+        labels readable when the window is narrow.
+        """
+        group = Adw.PreferencesGroup(title=title, description=description)
+        flow = Gtk.FlowBox()
+        flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        flow.set_max_children_per_line(columns)
+        flow.set_min_children_per_line(min(columns, max(1, len(presets))))
+        flow.set_column_spacing(8)
+        flow.set_row_spacing(8)
+        flow.set_homogeneous(True)
+
+        for label, value in presets:
+            btn = Gtk.Button(label=label)
+            btn.set_size_request(90, -1)
+            btn.connect("clicked", lambda _b, v=value: on_click(v))
+            flow.append(btn)
+
+        group.add(flow)
+        return group
+
     def _build_settings_page(self) -> Gtk.Widget:
         page = Adw.PreferencesPage()
 
@@ -2767,15 +2947,15 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.dark_end_entry.add_suffix(save_sched_btn)
         theme_group.add(self.dark_end_entry)
 
-        preset_row = Adw.ActionRow(
-            title="Quick Schedule Presets",
-            subtitle="One-click overnight dark mode schedules.",
+        theme_group.add(
+            self._build_preset_flow(
+                "Quick Schedule Presets",
+                "One-click overnight dark mode schedules.",
+                [("20:00–06:00", "20:00|06:00"), ("22:00–06:00", "22:00|06:00"), ("21:00–07:00", "21:00|07:00")],
+                lambda v: self._apply_schedule_preset(*v.split("|")),
+                columns=3,
+            )
         )
-        for label, s_time, e_time in [("20:00–06:00", "20:00", "06:00"), ("22:00–06:00", "22:00", "06:00"), ("21:00–07:00", "21:00", "07:00")]:
-            pb = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
-            pb.connect("clicked", lambda _b, s=s_time, e=e_time: self._apply_schedule_preset(s, e))
-            preset_row.add_suffix(pb)
-        theme_group.add(preset_row)
 
         self.schedule_status_row = Adw.ActionRow(
             title="Scheduled Dark Mode Evaluator Status",
@@ -2867,6 +3047,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             "alarms": ("Báo thức & Còi báo", "Alarms & Buzzer"),
             "tkb": ("Thời khóa biểu (TKB)", "Timetable (TKB)"),
             "tools": ("Công cụ & Groq AI", "Tools & Groq AI"),
+            "focus": ("Chế độ tập trung", "Focus Mode"),
             "settings": ("Cài đặt & Giao diện", "Settings & Appearance"),
         }
         sidebar = getattr(self, "sidebar_list", None)
@@ -2887,6 +3068,42 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 "Chọn ngôn ngữ giao diện giữa English và Tiếng Việt."
                 if is_vi else "Choose interface language between English and Tiếng Việt."
             )
+
+        # Tools tabs
+        for tab_id, (vi_title, en_title) in getattr(self, "tools_tabs", {}).items():
+            page = self.tools_stack.get_child_by_name(tab_id) if hasattr(self, "tools_stack") else None
+            if page is not None:
+                self.tools_stack.get_page(page).set_title(vi_title if is_vi else en_title)
+
+        # OLED view cards
+        view_titles = {
+            "main": ("Main Dashboard (Default)", "Main Dashboard (Default)"),
+            "clock": ("Clock Face", "Clock Face"),
+            "weather": ("Weather", "Weather"),
+            "notes": ("Sticky Note", "Sticky Note"),
+            "countdown": ("Countdown", "Countdown"),
+            "focus": ("Chế độ tập trung", "Focus Mode"),
+            "stats": ("Server Stats", "Server Stats"),
+            "tkb": ("Timetable", "Timetable"),
+            "lyrics": ("Spotify", "Spotify"),
+        }
+        for view_key, title_lbl in getattr(self, "_view_card_labels", []):
+            vi_title, en_title = view_titles.get(view_key, (view_key, view_key))
+            title_lbl.set_text(vi_title if is_vi else en_title)
+
+        if hasattr(self, "active_view_row"):
+            self.active_view_row.set_title(
+                "Màn hình đang hoạt động trên trạm" if is_vi else "Currently active station screen"
+            )
+            self._update_active_view_badge()
+
+        # Translate every remaining inline label in the window (Adw rows, entry
+        # rows, buttons, labels) so switching to English really changes the UI.
+        try:
+            apply_to_widget_tree(self.get_content(), "vi" if is_vi else "en")
+        except Exception as exc:  # pragma: no cover - GTK runtime only
+            logger.debug("[i18n] Widget translation skipped: %s", exc)
+
         self.show_toast("Đã chuyển ngôn ngữ sang Tiếng Việt" if is_vi else "Language switched to English")
 
     def _on_esp32_language_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:

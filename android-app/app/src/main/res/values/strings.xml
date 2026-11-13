@@ -304,8 +304,8 @@
     <string name="subcat_alarm_schedule_desc">Set future math alarm wake-up times</string>
     <string name="subcat_tools_notes">Notes &amp; Countdowns</string>
     <string name="subcat_tools_notes_desc">Pin screen sticky notes and exam countdowns</string>
-    <string name="subcat_tools_ai">AI Quotes &amp; Timer</string>
-    <string name="subcat_tools_ai_desc">Groq motivational quotes and study timers</string>
+    <string name="subcat_tools_ai">AI Quotes</string>
+    <string name="subcat_tools_ai_desc">Groq motivational quotes for the station screen</string>
     <string name="subcat_settings_display">Dark Mode Schedule</string>
     <string name="subcat_settings_display_desc">Auto dark mode schedule and styles</string>
     <string name="subcat_settings_power">Weather &amp; Battery Protection</string>
@@ -343,6 +343,12 @@
     <string name="overlay_banner">Focus Mode is active</string>
 
     <!-- Other Device Pairing / QR Login -->
+    <string name="display_device_title">Metrics device</string>
+    <string name="display_device_desc">Choose which machine supplies the CPU/RAM/battery metrics shown on the ESP32 and in every app.</string>
+    <string name="subcat_tools_timer">Countdown timer</string>
+    <string name="subcat_tools_timer_desc">Pomodoro / countdown timer on the ESP32 screen</string>
+    <string name="btn_generate_quote">Generate</string>
+    <string name="btn_start_timer">Start timer</string>
     <string name="settings_other_devices_title">Link Other Devices</string>
     <string name="settings_other_devices_desc">Scan the QR code displayed on Desktop or other devices to log in quickly.</string>
     <string name="settings_other_devices_prompt">Point camera at QR code on Desktop screen</string>

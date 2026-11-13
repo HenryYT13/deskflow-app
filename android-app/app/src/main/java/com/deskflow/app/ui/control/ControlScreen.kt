@@ -64,6 +64,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import com.deskflow.app.ui.i18n.AppStrings
 
 // ================= HIERARCHY DATA DEFINITIONS =================
 
@@ -163,6 +164,12 @@ val CONTROL_CATEGORIES = listOf(
                 titleRes = R.string.subcat_tools_ai,
                 descRes = R.string.subcat_tools_ai_desc,
                 icon = Icons.Default.Psychology
+            ),
+            ControlSubCategoryItem(
+                id = "subcat_tools_timer",
+                titleRes = R.string.subcat_tools_timer,
+                descRes = R.string.subcat_tools_timer_desc,
+                icon = Icons.Default.Timer
             )
         )
     ),
@@ -249,7 +256,7 @@ fun ControlScreen(
     var stickyNoteText by rememberSaveable { mutableStateOf("") }
     var examNameText by rememberSaveable { mutableStateOf("") }
     var examDateText by rememberSaveable { mutableStateOf("15/01") }
-    var quoteTopicText by rememberSaveable { mutableStateOf("học tập và kiên trì") }
+    var quoteTopicText by rememberSaveable { mutableStateOf(AppStrings.t("học tập và kiên trì")) }
     var pomodoroDurationText by rememberSaveable { mutableStateOf("25m") }
     var pomodoroNoteText by rememberSaveable { mutableStateOf("Tập trung học") }
 
@@ -299,25 +306,25 @@ fun ControlScreen(
     fun formatControlError(action: String, error: ApiResult.Error): String {
         return when {
             error.statusCode == 400 || error.code.startsWith("invalid_") ->
-                "$action: Dữ liệu không hợp lệ (${error.message.ifBlank { error.code }})"
+                AppStrings.tpl("$action: Dữ liệu không hợp lệ (${error.message.ifBlank { error.code }})")
             error.statusCode == 401 || error.code == "unauthorized" ->
-                "$action: Phiên xác thực hết hạn hoặc thiết bị chưa ghép đôi (401)"
+                AppStrings.tpl("$action: Phiên xác thực hết hạn hoặc thiết bị chưa ghép đôi (401)")
             error.statusCode == 403 || error.code == "forbidden" || error.code == "insufficient_scope" ->
-                "$action: Thiết bị không có quyền 'control' (403)"
+                AppStrings.tpl("$action: Thiết bị không có quyền 'control' (403)")
             error.statusCode == 404 || error.code == "not_found" || error.code.contains("not_found") ->
-                "$action: Mục này không còn tồn tại trên máy chủ (404)"
+                AppStrings.tpl("$action: Mục này không còn tồn tại trên máy chủ (404)")
             error.statusCode == 405 ->
-                "$action: Endpoint chưa kích hoạt trên máy chủ sản xuất (405)"
+                AppStrings.tpl("$action: Endpoint chưa kích hoạt trên máy chủ sản xuất (405)")
             error.statusCode == 409 || error.code == "duplicate_request" ->
-                "$action: Đang xử lý yêu cầu trước đó, vui lòng chờ..."
+                AppStrings.tpl("$action: Đang xử lý yêu cầu trước đó, vui lòng chờ...")
             error.statusCode == 500 || error.code == "server_error" ->
-                "$action: Lỗi máy chủ nội bộ (500)"
+                AppStrings.tpl("$action: Lỗi máy chủ nội bộ (500)")
             error.code == "timeout" ->
-                "$action: Quá thời gian chờ phản hồi từ máy chủ (Timeout)"
+                AppStrings.tpl("$action: Quá thời gian chờ phản hồi từ máy chủ (Timeout)")
             error.code == "network_error" ->
-                "$action: Không thể kết nối máy chủ (${error.message})"
+                AppStrings.tpl("$action: Không thể kết nối máy chủ (${error.message})")
             else ->
-                "$action: Thất bại (${error.message.ifBlank { error.code }})"
+                AppStrings.tpl("$action: Thất bại (${error.message.ifBlank { error.code }})")
         }
     }
 
@@ -329,7 +336,7 @@ fun ControlScreen(
                 notesList = res.data.allNotes
                 activeStationNoteId = res.data.currentActiveNoteId
             } else if (res is ApiResult.Error) {
-                showFeedback(formatControlError("Tải ghi chú", res))
+                showFeedback(formatControlError(AppStrings.t("Tải ghi chú"), res))
             }
             isLoadingNotes = false
         }
@@ -343,7 +350,7 @@ fun ControlScreen(
                 countdownsList = res.data.allCountdowns
                 activeStationCountdownId = res.data.currentActiveId
             } else if (res is ApiResult.Error) {
-                showFeedback(formatControlError("Tải đếm ngược", res))
+                showFeedback(formatControlError(AppStrings.t("Tải đếm ngược"), res))
             }
             isLoadingCountdowns = false
         }
@@ -366,9 +373,9 @@ fun ControlScreen(
             if (res is ApiResult.Success) {
                 notesList = res.data.allNotes
                 activeStationNoteId = res.data.currentActiveNoteId
-                showFeedback("Đã lưu ghi chú thành công!")
+                showFeedback(AppStrings.t("Đã lưu ghi chú thành công!"))
             } else if (res is ApiResult.Error) {
-                showFeedback(formatControlError("Lưu ghi chú", res))
+                showFeedback(formatControlError(AppStrings.t("Lưu ghi chú"), res))
             }
         }
     }
@@ -382,7 +389,7 @@ fun ControlScreen(
             if (res is ApiResult.Success) {
                 notesList = res.data.allNotes
                 activeStationNoteId = res.data.currentActiveNoteId
-                showFeedback("Đã xóa ghi chú khỏi máy chủ và trạm!")
+                showFeedback(AppStrings.t("Đã xóa ghi chú khỏi máy chủ và trạm!"))
             } else if (res is ApiResult.Error) {
                 showFeedback(formatControlError("Xóa ghi chú", res))
                 if (res.statusCode == 404 || res.code.contains("not_found")) {
@@ -398,7 +405,7 @@ fun ControlScreen(
             val res = repository.pinNote(id)
             if (res is ApiResult.Success) {
                 activeStationNoteId = id
-                showFeedback("Đã ghim ghi chú lên màn hình trạm!")
+                showFeedback(AppStrings.t("Đã ghim ghi chú lên màn hình trạm!"))
             } else if (res is ApiResult.Error) {
                 showFeedback(formatControlError("Ghim ghi chú", res))
             }
@@ -410,7 +417,7 @@ fun ControlScreen(
             val res = repository.unpinNote()
             if (res is ApiResult.Success) {
                 activeStationNoteId = null
-                showFeedback("Đã bỏ ghim ghi chú khỏi màn hình trạm!")
+                showFeedback(AppStrings.t("Đã bỏ ghim ghi chú khỏi màn hình trạm!"))
             } else if (res is ApiResult.Error) {
                 showFeedback(formatControlError("Bỏ ghim", res))
             }
@@ -423,9 +430,9 @@ fun ControlScreen(
             if (res is ApiResult.Success) {
                 countdownsList = res.data.allCountdowns
                 activeStationCountdownId = res.data.currentActiveId
-                showFeedback("Đã thêm đếm ngược $name!")
+                showFeedback(AppStrings.tpl("Đã thêm đếm ngược $name!"))
             } else if (res is ApiResult.Error) {
-                showFeedback(formatControlError("Thêm đếm ngược", res))
+                showFeedback(formatControlError(AppStrings.t("Thêm đếm ngược"), res))
             }
         }
     }
@@ -439,9 +446,9 @@ fun ControlScreen(
             if (res is ApiResult.Success) {
                 countdownsList = res.data.allCountdowns
                 activeStationCountdownId = res.data.currentActiveId
-                showFeedback("Đã xóa đếm ngược!")
+                showFeedback(AppStrings.t("Đã xóa đếm ngược!"))
             } else if (res is ApiResult.Error) {
-                showFeedback(formatControlError("Xóa đếm ngược", res))
+                showFeedback(formatControlError(AppStrings.t("Xóa đếm ngược"), res))
                 if (res.statusCode == 404 || res.code.contains("not_found")) {
                     refreshCountdowns()
                 }
@@ -455,9 +462,9 @@ fun ControlScreen(
             val res = repository.pinCountdown(id)
             if (res is ApiResult.Success) {
                 activeStationCountdownId = id
-                showFeedback("Đã ghim đếm ngược lên màn hình trạm!")
+                showFeedback(AppStrings.t("Đã ghim đếm ngược lên màn hình trạm!"))
             } else if (res is ApiResult.Error) {
-                showFeedback(formatControlError("Ghim đếm ngược", res))
+                showFeedback(formatControlError(AppStrings.t("Ghim đếm ngược"), res))
             }
         }
     }
@@ -485,6 +492,15 @@ fun ControlScreen(
                 selectedClockStyle = res.data.style
             }
             clockConfigLoading = false
+        }
+    }
+
+    // Poll the station status so the OLED preview follows whatever the ESP32 is
+    // actually showing (including screens changed from another app or buttons).
+    LaunchedEffect(Unit) {
+        while (true) {
+            repository.refreshSystemStatus()
+            kotlinx.coroutines.delay(3000L)
         }
     }
 
@@ -530,7 +546,7 @@ fun ControlScreen(
                 )
             },
             title = { Text(stringResource(R.string.alarm_emergency_stop)) },
-            text = { Text("Dừng còi khẩn cấp và thiết lập lại trạng thái báo thức trên thiết bị?") },
+            text = { Text(AppStrings.t("Dừng còi khẩn cấp và thiết lập lại trạng thái báo thức trên thiết bị?")) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -538,7 +554,7 @@ fun ControlScreen(
                         coroutineScope.launch {
                             val res = repository.emergencyStop()
                             if (res is ApiResult.Success) {
-                                showFeedback("Đã dừng khẩn cấp còi báo!")
+                                showFeedback(AppStrings.t("Đã dừng khẩn cấp còi báo!"))
                             }
                             repository.refreshAlarm()
                         }
@@ -782,7 +798,7 @@ fun ControlScreen(
                                         selectedColorHex = hex
                                         coroutineScope.launch {
                                             repository.setLampColor(hex)
-                                            showFeedback("Đã chuyển màu đèn: $hex")
+                                            showFeedback(AppStrings.tpl("Đã chuyển màu đèn: $hex"))
                                         }
                                     },
                                     ledBrightness = ledBrightness,
@@ -815,13 +831,13 @@ fun ControlScreen(
                                     onTurnOnLamp = {
                                         coroutineScope.launch {
                                             repository.controlLed("on")
-                                            showFeedback("Đã bật đèn LED!")
+                                            showFeedback(AppStrings.t("Đã bật đèn LED!"))
                                         }
                                     },
                                     onTurnOffLamp = {
                                         coroutineScope.launch {
                                             repository.turnLampOff()
-                                            showFeedback("Đã tắt đèn LED!")
+                                            showFeedback(AppStrings.t("Đã tắt đèn LED!"))
                                         }
                                     }
                                 )
@@ -836,9 +852,9 @@ fun ControlScreen(
                                         coroutineScope.launch {
                                             val res = repository.switchDisplayView(vKey)
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Đã chuyển màn hình sang $vLabel")
+                                                showFeedback(AppStrings.tpl("Đã chuyển màn hình sang $vLabel"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Chuyển màn hình", res))
+                                                showFeedback(formatControlError(AppStrings.t("Chuyển màn hình"), res))
                                             }
                                         }
                                     },
@@ -847,9 +863,9 @@ fun ControlScreen(
                                             val res = repository.closeTkb()
                                             if (res is ApiResult.Success) {
                                                 currentView = "main"
-                                                showFeedback("Đã đưa màn hình về Dashboard chính")
+                                                showFeedback(AppStrings.t("Đã đưa màn hình về Dashboard chính"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Đóng TKB", res))
+                                                showFeedback(formatControlError(AppStrings.t("Đóng TKB"), res))
                                             }
                                         }
                                     }
@@ -867,12 +883,12 @@ fun ControlScreen(
                                                 clockConfig = res.data
                                                 selectedClockStyle = res.data.style
                                                 if (res.data.appliedByStation) {
-                                                    showFeedback("✓ Đã đồng bộ & Áp dụng trên trạm ESP32!")
+                                                    showFeedback(AppStrings.t("✓ Đã đồng bộ & Áp dụng trên trạm ESP32!"))
                                                 } else {
-                                                    showFeedback("Đã lưu máy chủ! Đang chờ trạm ESP32 kết nối để áp dụng...")
+                                                    showFeedback(AppStrings.t("Đã lưu máy chủ! Đang chờ trạm ESP32 kết nối để áp dụng..."))
                                                 }
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Cài đặt mặt đồng hồ", res))
+                                                showFeedback(formatControlError(AppStrings.t("Cài đặt mặt đồng hồ"), res))
                                             }
                                             clockConfigSaving = false
                                         }
@@ -907,9 +923,9 @@ fun ControlScreen(
                                         coroutineScope.launch {
                                             val res = repository.updateSettings(newSettings)
                                             if (res is ApiResult.Success) {
-                                                showFeedback("✓ Đã lưu cài đặt còi thành công!")
+                                                showFeedback(AppStrings.t("✓ Đã lưu cài đặt còi thành công!"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Cài đặt còi", res))
+                                                showFeedback(formatControlError(AppStrings.t("Cài đặt còi"), res))
                                             }
                                         }
                                     },
@@ -917,9 +933,9 @@ fun ControlScreen(
                                         coroutineScope.launch {
                                             val res = repository.triggerBuzz(dur)
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Đã kích hoạt còi bíp trên trạm ($dur ms)!")
+                                                showFeedback(AppStrings.tpl("Đã kích hoạt còi bíp trên trạm ($dur ms)!"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Kích hoạt còi", res))
+                                                showFeedback(formatControlError(AppStrings.t("Kích hoạt còi"), res))
                                             }
                                         }
                                     },
@@ -953,14 +969,14 @@ fun ControlScreen(
                                                 isSubmittingAlarm = false
                                                 if (res is ApiResult.Success) {
                                                     answerText = ""
-                                                    showFeedback("Đã giải đúng và dập tắt còi!")
+                                                    showFeedback(AppStrings.t("Đã giải đúng và dập tắt còi!"))
                                                     repository.refreshAlarm()
                                                 } else if (res is ApiResult.Error) {
                                                     if (res.code == "invalid_request") {
-                                                        showFeedback("Phiên báo thức đã kết thúc hoặc không khớp")
+                                                        showFeedback(AppStrings.t("Phiên báo thức đã kết thúc hoặc không khớp"))
                                                         repository.refreshAlarm()
                                                     } else {
-                                                        showFeedback("Đáp án chưa chính xác: ${res.code}")
+                                                        showFeedback(AppStrings.tpl("Đáp án chưa chính xác: ${res.code}"))
                                                     }
                                                 }
                                             }
@@ -984,9 +1000,9 @@ fun ControlScreen(
                                                 val res = repository.scheduleAlarm(scheduleAlarmTime.trim())
                                                 isSchedulingAlarm = false
                                                 if (res is ApiResult.Success) {
-                                                    showFeedback("Đã hẹn giờ báo thức lúc $scheduleAlarmTime!")
+                                                    showFeedback(AppStrings.tpl("Đã hẹn giờ báo thức lúc $scheduleAlarmTime!"))
                                                 } else if (res is ApiResult.Error) {
-                                                    showFeedback(formatControlError("Hẹn giờ báo thức", res))
+                                                    showFeedback(formatControlError(AppStrings.t("Hẹn giờ báo thức"), res))
                                                 }
                                             }
                                         }
@@ -1025,21 +1041,27 @@ fun ControlScreen(
                                 )
                             }
 
-                            // Tools > Groq AI Quote & Timer
+                            // Tools > Groq AI Quote
                             "subcat_tools_ai" -> {
-                                AiToolsControlsCard(
+                                QuoteGeneratorCard(
                                     quoteTopicText = quoteTopicText,
                                     onQuoteTopicChange = { quoteTopicText = it },
                                     onGenerateQuote = {
                                         coroutineScope.launch {
                                             val res = repository.generateQuote(quoteTopicText.trim(), 75)
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Danh ngôn: \"${res.data.quote}\"")
+                                                showFeedback(AppStrings.t("Danh ngôn: ") + "\"${res.data.quote}\"")
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Tạo danh ngôn", res))
+                                                showFeedback(formatControlError(AppStrings.t("Tạo danh ngôn"), res))
                                             }
                                         }
-                                    },
+                                    }
+                                )
+                            }
+
+                            // Tools > Countdown timer (own section)
+                            "subcat_tools_timer" -> {
+                                CountdownTimerCard(
                                     timerDurationText = pomodoroDurationText,
                                     onTimerDurationChange = { pomodoroDurationText = it },
                                     timerNoteText = pomodoroNoteText,
@@ -1051,9 +1073,9 @@ fun ControlScreen(
                                                 note = pomodoroNoteText.trim()
                                             )
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Đã bắt đầu hẹn giờ đếm ngược $pomodoroDurationText!")
+                                                showFeedback(AppStrings.tpl("Đã bắt đầu hẹn giờ đếm ngược $pomodoroDurationText!"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Bắt đầu hẹn giờ", res))
+                                                showFeedback(formatControlError(AppStrings.t("Bắt đầu hẹn giờ"), res))
                                             }
                                         }
                                     }
@@ -1090,9 +1112,9 @@ fun ControlScreen(
                                         coroutineScope.launch {
                                             val res = repository.updateSettings(newSettings)
                                             if (res is ApiResult.Success) {
-                                                showFeedback("✓ Đã lưu cấu hình Dark Mode lên trạm!")
+                                                showFeedback(AppStrings.t("✓ Đã lưu cấu hình Dark Mode lên trạm!"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Lưu cấu hình Dark Mode", res))
+                                                showFeedback(formatControlError(AppStrings.t("Lưu cấu hình Dark Mode"), res))
                                             }
                                         }
                                     }
@@ -1127,9 +1149,9 @@ fun ControlScreen(
                                         coroutineScope.launch {
                                             val res = repository.updateSettings(newSettings)
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Đã lưu cấu hình cảnh báo thời tiết & pin!")
+                                                showFeedback(AppStrings.t("Đã lưu cấu hình cảnh báo thời tiết & pin!"))
                                             } else if (res is ApiResult.Error) {
-                                                showFeedback(formatControlError("Lưu cấu hình", res))
+                                                showFeedback(formatControlError(AppStrings.t("Lưu cấu hình"), res))
                                             }
                                         }
                                     }
@@ -1144,7 +1166,7 @@ fun ControlScreen(
                                         coroutineScope.launch {
                                             val res = repository.refreshSystemStatus()
                                             if (res is ApiResult.Success) {
-                                                showFeedback("Đã cập nhật thông số telemetry!")
+                                                showFeedback(AppStrings.t("Đã cập nhật thông số telemetry!"))
                                             } else if (res is ApiResult.Error) {
                                                 showFeedback(formatControlError("Telemetry", res))
                                             }
@@ -1219,7 +1241,7 @@ fun ControlCategoryListView(
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Text(
-                            text = "Chạm để giải toán dập tắt còi ngay!",
+                            text = AppStrings.t("Chạm để giải toán dập tắt còi ngay!"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -1308,7 +1330,7 @@ fun ControlCategoryListView(
                         )
 
                         Text(
-                            text = "${category.subcategories.size} mục điều khiển",
+                            text = AppStrings.tpl("${category.subcategories.size} mục điều khiển"),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1493,13 +1515,13 @@ fun ControlSubCategoryListView(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Ghi chú & Đếm ngược",
+                    text = AppStrings.t("Ghi chú & Đếm ngược"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 TextButton(onClick = { onSubCategorySelect("subcat_tools_notes") }) {
-                    Text("Toàn màn hình")
+                    Text(AppStrings.t("Toàn màn hình"))
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(imageVector = Icons.Default.OpenInFull, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
@@ -1678,7 +1700,7 @@ fun LedControlsCard(
                     OutlinedTextField(
                         value = customHexInput,
                         onValueChange = { customHexInput = it },
-                        label = { Text("Mã màu HEX (#RRGGBB)") },
+                        label = { Text(AppStrings.t("Mã màu HEX (#RRGGBB)")) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -1692,7 +1714,7 @@ fun LedControlsCard(
                         enabled = parsedColor != null,
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Áp dụng")
+                        Text(AppStrings.t("Áp dụng"))
                     }
                 }
             }
@@ -1760,15 +1782,15 @@ fun OledSimulatorView(viewKey: String) {
         )
         "tkb" -> OledPreviewQuadruple(
             "TIMETABLE",
-            "TKB — SÁNG THỨ 2",
-            "Toán • Vật Lý • Hóa Học",
-            "Anh Văn • Sinh Học"
+            AppStrings.t("TKB — SÁNG THỨ 2"),
+            AppStrings.t("Toán • Vật Lý • Hóa Học"),
+            AppStrings.t("Anh Văn • Sinh Học")
         )
         "weather" -> OledPreviewQuadruple(
             "WEATHER FORECAST",
-            "THỜI TIẾT HẠ LONG",
-            "28°C  NẮNG ĐẸP",
-            "POP: 20% • ĐỘ ẨM: 65%"
+            AppStrings.t("THỜI TIẾT HẠ LONG"),
+            AppStrings.t("28°C  NẮNG ĐẸP"),
+            AppStrings.t("POP: 20% • ĐỘ ẨM: 65%")
         )
         "lyrics" -> OledPreviewQuadruple(
             "SPOTIFY LYRICS",
@@ -1791,12 +1813,12 @@ fun OledSimulatorView(viewKey: String) {
         "countdown" -> OledPreviewQuadruple(
             "TARGET COUNTDOWN",
             "KỲ THI KHKT 2026",
-            "CÒN 45 NGÀY",
-            "MỤC TIÊU: 15/01/2026"
+            AppStrings.t("CÒN 45 NGÀY"),
+            AppStrings.t("MỤC TIÊU: 15/01/2026")
         )
         "focus" -> OledPreviewQuadruple(
             "FOCUS SESSION",
-            "CHẾ ĐỘ TẬP TRUNG",
+            AppStrings.t("CHẾ ĐỘ TẬP TRUNG"),
             "24:58",
             "[████████░░░░] CÒN 72%"
         )
@@ -1942,7 +1964,7 @@ fun DisplayControlsCard(
 
             // Live OLED Display Simulator
             Text(
-                text = "Ví dụ hiển thị màn hình OLED (Live Preview)",
+                text = AppStrings.t("Ví dụ hiển thị màn hình OLED (Live Preview)"),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2003,14 +2025,14 @@ data class ClockStyleMeta(
     val desc: String
 )
 
-val CLOCK_STYLES_LIST = listOf(
-    ClockStyleMeta("digital_classic", "Số cổ điển", "Chữ số lớn 24h/12h quen thuộc"),
-    ClockStyleMeta("digital_minimal", "Tối giản", "Thanh lịch, không viền rườm rà"),
-    ClockStyleMeta("digital_neon", "Đèn Neon", "Khung sáng viền kép công nghệ cao"),
-    ClockStyleMeta("analog", "Đồng hồ kim", "Mặt tròn 3 kim chuyển động mượt"),
-    ClockStyleMeta("flip", "Đồng hồ lật", "Thẻ lật 2D chia nửa trên dưới"),
-    ClockStyleMeta("binary", "Đồng hồ nhị phân", "Ma trận LED mã BCD 8-4-2-1"),
-    ClockStyleMeta("word", "Đồng hồ chữ", "Hiển thị giờ bằng chữ viết")
+fun clockStylesList(): List<ClockStyleMeta> = listOf(
+    ClockStyleMeta("digital_classic", AppStrings.t("Số cổ điển"), "Chữ số lớn 24h/12h quen thuộc"),
+    ClockStyleMeta("digital_minimal", AppStrings.t("Tối giản"), AppStrings.t("Thanh lịch, không viền rườm rà")),
+    ClockStyleMeta("digital_neon", AppStrings.t("Đèn Neon"), AppStrings.t("Khung sáng viền kép công nghệ cao")),
+    ClockStyleMeta("analog", AppStrings.t("Đồng hồ kim"), AppStrings.t("Mặt tròn 3 kim chuyển động mượt")),
+    ClockStyleMeta("flip", AppStrings.t("Đồng hồ lật"), AppStrings.t("Thẻ lật 2D chia nửa trên dưới")),
+    ClockStyleMeta("binary", AppStrings.t("Đồng hồ nhị phân"), AppStrings.t("Ma trận LED mã BCD 8-4-2-1")),
+    ClockStyleMeta("word", AppStrings.t("Đồng hồ chữ"), "Hiển thị giờ bằng chữ viết")
 )
 
 @Composable
@@ -2067,7 +2089,7 @@ fun ClockStyleStudioCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Mặt đồng hồ & Hoạt ảnh thời gian thực",
+                        text = AppStrings.t("Mặt đồng hồ & Hoạt ảnh thời gian thực"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2123,10 +2145,10 @@ fun ClockStyleStudioCard(
 
                     Column(modifier = Modifier.weight(1f)) {
                         val statusText = when {
-                            isLoading -> "Đang đồng bộ cấu hình từ máy chủ..."
-                            isSaving -> "Đang gửi cấu hình lên máy chủ & trạm..."
-                            clockConfig.appliedByStation -> "Đã đồng bộ & Áp dụng thành công trên trạm ESP32 (v${clockConfig.configVersion})"
-                            else -> "Đã lưu máy chủ — Chờ trạm ESP32 nhận (v${clockConfig.configVersion})"
+                            isLoading -> AppStrings.t("Đang đồng bộ cấu hình từ máy chủ...")
+                            isSaving -> AppStrings.t("Đang gửi cấu hình lên máy chủ & trạm...")
+                            clockConfig.appliedByStation -> AppStrings.tpl("Đã đồng bộ & Áp dụng thành công trên trạm ESP32 (v${clockConfig.configVersion})")
+                            else -> AppStrings.tpl("Đã lưu máy chủ — Chờ trạm ESP32 nhận (v${clockConfig.configVersion})")
                         }
                         Text(
                             text = statusText,
@@ -2136,7 +2158,7 @@ fun ClockStyleStudioCard(
                         )
                         if (previewStyle != clockConfig.lastAppliedStyle) {
                             Text(
-                                text = "Xem trước: $previewStyle | Đang chạy trên trạm: ${clockConfig.lastAppliedStyle}",
+                                text = AppStrings.tpl("Xem trước: $previewStyle | Đang chạy trên trạm: ${clockConfig.lastAppliedStyle}"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2148,7 +2170,7 @@ fun ClockStyleStudioCard(
 
             // Style Carousel / Selector
             Text(
-                text = "Chọn kiểu mặt đồng hồ (7 Kiểu)",
+                text = AppStrings.t("Chọn kiểu mặt đồng hồ (7 Kiểu)"),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -2157,7 +2179,7 @@ fun ClockStyleStudioCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(CLOCK_STYLES_LIST) { meta ->
+                items(clockStylesList()) { meta ->
                     val isSelected = previewStyle == meta.id
                     val isLiveOnStation = clockConfig.lastAppliedStyle == meta.id
 
@@ -2304,7 +2326,7 @@ fun ClockStyleStudioCard(
                                         .background(Color(0xFF1B3825), RoundedCornerShape(4.dp))
                                         .padding(horizontal = 4.dp, vertical = 2.dp)
                                 ) {
-                                    Text("Đang chạy", style = MaterialTheme.typography.labelSmall, color = Color(0xFF38B26C), fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp))
+                                    Text(AppStrings.t("Đang chạy"), style = MaterialTheme.typography.labelSmall, color = Color(0xFF38B26C), fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp))
                                 }
                             }
                         }
@@ -2317,7 +2339,7 @@ fun ClockStyleStudioCard(
 
             // Configuration Controls
             Text(
-                text = "Tùy biến hiển thị & Ngôn ngữ",
+                text = AppStrings.t("Tùy biến hiển thị & Ngôn ngữ"),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -2365,7 +2387,7 @@ fun ClockStyleStudioCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Hiển thị giây", style = MaterialTheme.typography.bodySmall)
+                Text(AppStrings.t("Hiển thị giây"), style = MaterialTheme.typography.bodySmall)
                 Switch(
                     checked = editShowSeconds,
                     onCheckedChange = { editShowSeconds = it }
@@ -2377,7 +2399,7 @@ fun ClockStyleStudioCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Hiển thị ngày tháng", style = MaterialTheme.typography.bodySmall)
+                Text(AppStrings.t("Hiển thị ngày tháng"), style = MaterialTheme.typography.bodySmall)
                 Switch(
                     checked = editShowDate,
                     onCheckedChange = { editShowDate = it }
@@ -2389,7 +2411,7 @@ fun ClockStyleStudioCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Bật hoạt ảnh (Animations)", style = MaterialTheme.typography.bodySmall)
+                Text(AppStrings.t("Bật hoạt ảnh (Animations)"), style = MaterialTheme.typography.bodySmall)
                 Switch(
                     checked = editAnimationEnabled,
                     onCheckedChange = { editAnimationEnabled = it }
@@ -2402,7 +2424,7 @@ fun ClockStyleStudioCard(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Tốc độ hoạt ảnh", style = MaterialTheme.typography.bodySmall)
+                        Text(AppStrings.t("Tốc độ hoạt ảnh"), style = MaterialTheme.typography.bodySmall)
                         Text("${String.format("%.1f", editAnimationSpeed)}x", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     Slider(
@@ -2416,7 +2438,7 @@ fun ClockStyleStudioCard(
 
 
             // Accent Color Palette
-            Text("Màu điểm nhấn (Accent Color)", style = MaterialTheme.typography.bodySmall)
+            Text(AppStrings.t("Màu điểm nhấn (Accent Color)"), style = MaterialTheme.typography.bodySmall)
             val palette = listOf("#38BDF8", "#F59E0B", "#A855F7", "#10B981", "#EF4444", "#D4AF37")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2468,11 +2490,11 @@ fun ClockStyleStudioCard(
                 if (isSaving) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Đang đồng bộ lên trạm...")
+                    Text(AppStrings.t("Đang đồng bộ lên trạm..."))
                 } else {
                     Icon(imageVector = Icons.Default.Done, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Áp dụng lên trạm DeskFlow")
+                    Text(AppStrings.t("Áp dụng lên trạm DeskFlow"))
                 }
             }
 
@@ -2499,16 +2521,16 @@ fun BuzzerControlsCard(
         customDurText = input
         val trimmed = input.trim()
         if (trimmed.isEmpty()) {
-            errorMessage = "Thời lượng còi không được để trống"
+            errorMessage = AppStrings.t("Thời lượng còi không được để trống")
             return false
         }
         val num = trimmed.toIntOrNull()
         if (num == null) {
-            errorMessage = "Vui lòng nhập số nguyên hợp lệ"
+            errorMessage = AppStrings.t("Vui lòng nhập số nguyên hợp lệ")
             return false
         }
         if (num < 10 || num > 1000) {
-            errorMessage = "Thời lượng còi phải từ 10ms đến 1000ms (nhập: $num)"
+            errorMessage = AppStrings.tpl("Thời lượng còi phải từ 10ms đến 1000ms (nhập: $num)")
             return false
         }
         errorMessage = null
@@ -2541,7 +2563,7 @@ fun BuzzerControlsCard(
             }
 
             Text(
-                text = "Cấu hình âm thanh còi chip vật lý (GPIO 32) trên trạm ESP32. Âm báo thức khẩn cấp luôn kêu ngay cả khi tắt tiếng phản hồi.",
+                text = AppStrings.t("Cấu hình âm thanh còi chip vật lý (GPIO 32) trên trạm ESP32. Âm báo thức khẩn cấp luôn kêu ngay cả khi tắt tiếng phản hồi."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -2559,7 +2581,7 @@ fun BuzzerControlsCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = if (buzzerEnabled) "Đang bật âm phản hồi" else "Đang tắt tiếng (Mute)",
+                        text = if (buzzerEnabled) AppStrings.t("Đang bật âm phản hồi") else AppStrings.t("Đang tắt tiếng (Mute)"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2580,12 +2602,12 @@ fun BuzzerControlsCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Thời lượng tiếng bíp (mili-giây):",
+                        text = AppStrings.t("Thời lượng tiếng bíp (mili-giây):"),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Đã lưu: ${savedDuration}ms",
+                        text = AppStrings.tpl("Đã lưu: ${savedDuration}ms"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium
@@ -2595,7 +2617,7 @@ fun BuzzerControlsCard(
                 OutlinedTextField(
                     value = customDurText,
                     onValueChange = { validateAndSet(it) },
-                    label = { Text("Độ dài bíp (10 - 1000 ms)") },
+                    label = { Text(AppStrings.t("Độ dài bíp (10 - 1000 ms)")) },
                     placeholder = { Text("Ví dụ: 40, 100, 175, 300") },
                     singleLine = true,
                     isError = errorMessage != null,
@@ -2603,7 +2625,7 @@ fun BuzzerControlsCard(
                         if (errorMessage != null) {
                             Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
                         } else {
-                            Text("Giới hạn an toàn phần cứng: 10ms đến 1000ms")
+                            Text(AppStrings.t("Giới hạn an toàn phần cứng: 10ms đến 1000ms"))
                         }
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -2612,7 +2634,7 @@ fun BuzzerControlsCard(
                 )
 
                 Text(
-                    text = "Gợi ý nhanh:",
+                    text = AppStrings.t("Gợi ý nhanh:"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2644,7 +2666,7 @@ fun BuzzerControlsCard(
             ) {
                 Icon(imageVector = Icons.Default.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Lưu cài đặt còi")
+                Text(AppStrings.t("Lưu cài đặt còi"))
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -2660,7 +2682,7 @@ fun BuzzerControlsCard(
             ) {
                 Icon(imageVector = Icons.Default.NotificationsActive, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Phát thử tiếng bíp (${buzzerDuration}ms)")
+                Text(AppStrings.tpl("Phát thử tiếng bíp (${buzzerDuration}ms)"))
             }
 
             // Action: Emergency Stop
@@ -2683,7 +2705,7 @@ fun BuzzerControlsCard(
                 ) {
                     Icon(imageVector = Icons.Default.GraphicEq, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Mở bộ mã Morse (Chuyển văn bản & Phát còi)")
+                    Text(AppStrings.t("Mở bộ mã Morse (Chuyển văn bản & Phát còi)"))
                 }
             }
 
@@ -2717,21 +2739,21 @@ fun MidiJukeboxCard(
                     }
                     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     if (bytes == null || bytes.isEmpty()) {
-                        onShowMessage("Không thể đọc tệp MIDI đã chọn")
+                        onShowMessage(AppStrings.t("Không thể đọc tệp MIDI đã chọn"))
                         return@launch
                     }
                     val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    onShowMessage("Đang gửi và phát '$displayName'...")
+                    onShowMessage(AppStrings.tpl("Đang gửi và phát '$displayName'..."))
                     val res = repository.playMidiFile(base64 = base64, filename = displayName)
                     if (res is ApiResult.Success) {
                         isPlaying = true
                         currentSongTitle = displayName
-                        onShowMessage("✓ Đang phát: $displayName")
+                        onShowMessage(AppStrings.tpl("✓ Đang phát: $displayName"))
                     } else if (res is ApiResult.Error) {
-                        onShowMessage("Lỗi phát MIDI: ${res.message}")
+                        onShowMessage(AppStrings.tpl("Lỗi phát MIDI: ${res.message}"))
                     }
                 } catch (e: Exception) {
-                    onShowMessage("Lỗi xử lý file: ${e.message}")
+                    onShowMessage(AppStrings.tpl("Lỗi xử lý file: ${e.message}"))
                 }
             }
         }
@@ -2769,12 +2791,12 @@ fun MidiJukeboxCard(
                 )
                 Column {
                     Text(
-                        text = "Trình phát nhạc MIDI (Buzzer Jukebox)",
+                        text = AppStrings.t("Trình phát nhạc MIDI (Buzzer Jukebox)"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Phát các giai điệu 8-bit hoặc file .mid qua còi ESP32",
+                        text = AppStrings.t("Phát các giai điệu 8-bit hoặc file .mid qua còi ESP32"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2799,7 +2821,7 @@ fun MidiJukeboxCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Đang phát: $currentSongTitle",
+                            text = AppStrings.tpl("Đang phát: $currentSongTitle"),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -2810,7 +2832,7 @@ fun MidiJukeboxCard(
             }
 
             Text(
-                text = "Bài mẫu 8-bit có sẵn:",
+                text = AppStrings.t("Bài mẫu 8-bit có sẵn:"),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium
             )
@@ -2824,14 +2846,14 @@ fun MidiJukeboxCard(
                         onClick = {
                             selectedPreset = id
                             coroutineScope.launch {
-                                onShowMessage("Đang phát $label...")
+                                onShowMessage(AppStrings.tpl("Đang phát $label..."))
                                 val res = repository.playMelodyPreset(id)
                                 if (res is ApiResult.Success) {
                                     isPlaying = true
                                     currentSongTitle = label
-                                    onShowMessage("✓ Đang phát: $label")
+                                    onShowMessage(AppStrings.tpl("✓ Đang phát: $label"))
                                 } else if (res is ApiResult.Error) {
-                                    onShowMessage("Lỗi phát bài: ${res.message}")
+                                    onShowMessage(AppStrings.tpl("Lỗi phát bài: ${res.message}"))
                                 }
                             }
                         },
@@ -2866,7 +2888,7 @@ fun MidiJukeboxCard(
                             if (res is ApiResult.Success) {
                                 isPlaying = false
                                 currentSongTitle = null
-                                onShowMessage("Đã dừng phát nhạc trên ESP32.")
+                                onShowMessage(AppStrings.t("Đã dừng phát nhạc trên ESP32."))
                             }
                         }
                     },
@@ -2922,7 +2944,7 @@ fun ActiveAlarmCard(
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Text(
-                            text = alarmState.question ?: "Giải toán để tắt còi",
+                            text = alarmState.question ?: AppStrings.t("Giải toán để tắt còi"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -3003,7 +3025,7 @@ fun ActiveAlarmCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Không có báo thức đang kêu trên thiết bị. Bạn có thể hẹn giờ báo thức mới ở mục 'Hẹn giờ báo thức'.",
+                    text = AppStrings.t("Không có báo thức đang kêu trên thiết bị. Bạn có thể hẹn giờ báo thức mới ở mục 'Hẹn giờ báo thức'."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3204,14 +3226,14 @@ fun NotesAndCountdownsManagerCard(
             },
             title = {
                 Text(
-                    text = "Xóa đếm ngược này?",
+                    text = AppStrings.t("Xóa đếm ngược này?"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "Sự kiện \"${targetCd.displayName}\" (${targetCd.targetDate}) sẽ bị xóa khỏi máy chủ và trạm DeskFlow.",
+                    text = AppStrings.tpl("Sự kiện \"${targetCd.displayName}\" (${targetCd.targetDate}) sẽ bị xóa khỏi máy chủ và trạm DeskFlow."),
                     style = MaterialTheme.typography.bodySmall
                 )
             },
@@ -3244,7 +3266,7 @@ fun NotesAndCountdownsManagerCard(
     if (showAddNoteDialog) {
         AlertDialog(
             onDismissRequest = { showAddNoteDialog = false },
-            title = { Text("Thêm ghi chú mới", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+            title = { Text(AppStrings.t("Thêm ghi chú mới"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
@@ -3256,7 +3278,7 @@ fun NotesAndCountdownsManagerCard(
                         maxLines = 5,
                         shape = RoundedCornerShape(12.dp)
                     )
-                    Text("Màu sắc thẻ ghi chú:", style = MaterialTheme.typography.labelMedium)
+                    Text(AppStrings.t("Màu sắc thẻ ghi chú:"), style = MaterialTheme.typography.labelMedium)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -3301,7 +3323,7 @@ fun NotesAndCountdownsManagerCard(
                     },
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Lưu ghi chú")
+                    Text(AppStrings.t("Lưu ghi chú"))
                 }
             }
 ,
@@ -3317,14 +3339,14 @@ fun NotesAndCountdownsManagerCard(
     if (showAddCountdownDialog) {
         AlertDialog(
             onDismissRequest = { showAddCountdownDialog = false },
-            title = { Text("Thêm đếm ngược mới", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+            title = { Text(AppStrings.t("Thêm đếm ngược mới"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = newCdName,
                         onValueChange = { newCdName = it },
-                        label = { Text("Tên sự kiện / Kỳ thi") },
-                        placeholder = { Text("VD: Thi Giữa Kỳ, Bảo Vệ Đồ Án") },
+                        label = { Text(AppStrings.t("Tên sự kiện / Kỳ thi")) },
+                        placeholder = { Text(AppStrings.t("VD: Thi Giữa Kỳ, Bảo Vệ Đồ Án")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
@@ -3332,14 +3354,14 @@ fun NotesAndCountdownsManagerCard(
                     OutlinedTextField(
                         value = newCdDate,
                         onValueChange = { newCdDate = it },
-                        label = { Text("Ngày đích") },
+                        label = { Text(AppStrings.t("Ngày đích")) },
                         placeholder = { Text("VD: 2026-12-31 hoặc 31/12/2026 hoặc 15/01") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
                     Text(
-                        text = "Hỗ trợ định dạng: YYYY-MM-DD, DD/MM/YYYY, hoặc DD/MM (múi giờ GMT+7)",
+                        text = AppStrings.t("Hỗ trợ định dạng: YYYY-MM-DD, DD/MM/YYYY, hoặc DD/MM (múi giờ GMT+7)"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -3358,7 +3380,7 @@ fun NotesAndCountdownsManagerCard(
                     },
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Tạo đếm ngược")
+                    Text(AppStrings.t("Tạo đếm ngược"))
                 }
             }
 ,
@@ -3407,7 +3429,7 @@ fun NotesAndCountdownsManagerCard(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Thêm", style = MaterialTheme.typography.labelMedium)
+                    Text(AppStrings.t("Thêm"), style = MaterialTheme.typography.labelMedium)
                 }
             }
 
@@ -3416,7 +3438,7 @@ fun NotesAndCountdownsManagerCard(
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else if (notes.isEmpty()) {
                 Text(
-                    text = "Chưa có ghi chú nào. Bấm 'Thêm' để tạo ghi chú mới và ghim lên màn hình trạm DeskFlow!",
+                    text = AppStrings.t("Chưa có ghi chú nào. Bấm 'Thêm' để tạo ghi chú mới và ghim lên màn hình trạm DeskFlow!"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3467,7 +3489,7 @@ fun NotesAndCountdownsManagerCard(
                                     if (isPinned) {
                                         SuggestionChip(
                                             onClick = onUnpinNote,
-                                            label = { Text("Đang ghim trên trạm (Bỏ ghim)") },
+                                            label = { Text(AppStrings.t("Đang ghim trên trạm (Bỏ ghim)")) },
                                             icon = { Icon(Icons.Default.PushPin, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp)) },
                                             colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
                                         )
@@ -3479,7 +3501,7 @@ fun NotesAndCountdownsManagerCard(
                                         ) {
                                             Icon(Icons.Default.PushPin, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Ghim lên trạm", style = MaterialTheme.typography.labelSmall)
+                                            Text(AppStrings.t("Ghim lên trạm"), style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                     if (note.createdAt != null) {
@@ -3511,7 +3533,7 @@ fun NotesAndCountdownsManagerCard(
                 ) {
                     Icon(imageVector = Icons.Default.HourglassTop, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Text(
-                        text = "Đếm ngược sự kiện",
+                        text = AppStrings.t("Đếm ngược sự kiện"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -3523,7 +3545,7 @@ fun NotesAndCountdownsManagerCard(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Thêm", style = MaterialTheme.typography.labelMedium)
+                    Text(AppStrings.t("Thêm"), style = MaterialTheme.typography.labelMedium)
                 }
             }
 
@@ -3532,7 +3554,7 @@ fun NotesAndCountdownsManagerCard(
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else if (countdowns.isEmpty()) {
                 Text(
-                    text = "Chưa có đếm ngược nào. Bấm 'Thêm' để tạo kỳ thi hoặc sự kiện sắp tới!",
+                    text = AppStrings.t("Chưa có đếm ngược nào. Bấm 'Thêm' để tạo kỳ thi hoặc sự kiện sắp tới!"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3558,7 +3580,7 @@ fun NotesAndCountdownsManagerCard(
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "Ngày: ${cd.targetDate}",
+                                            text = AppStrings.tpl("Ngày: ${cd.targetDate}"),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -3566,12 +3588,12 @@ fun NotesAndCountdownsManagerCard(
                                     if (cd.isExpired) {
                                         SuggestionChip(
                                             onClick = {},
-                                            label = { Text("Đã hết hạn", color = MaterialTheme.colorScheme.error) }
+                                            label = { Text(AppStrings.t("Đã hết hạn"), color = MaterialTheme.colorScheme.error) }
                                         )
                                     } else {
                                         SuggestionChip(
                                             onClick = {},
-                                            label = { Text("Còn ${cd.daysLeft} ngày", fontWeight = FontWeight.Bold) }
+                                            label = { Text(AppStrings.tpl("Còn ${cd.daysLeft} ngày"), fontWeight = FontWeight.Bold) }
                                         )
                                     }
                                     val isDeletingThisCd = deletingCountdownId == cd.id
@@ -3599,7 +3621,7 @@ fun NotesAndCountdownsManagerCard(
                                     if (isPinned) {
                                         SuggestionChip(
                                             onClick = {},
-                                            label = { Text("Đang hiện trên trạm") },
+                                            label = { Text(AppStrings.t("Đang hiện trên trạm")) },
                                             icon = { Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp)) },
                                             colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
                                         )
@@ -3611,7 +3633,7 @@ fun NotesAndCountdownsManagerCard(
                                         ) {
                                             Icon(Icons.Default.Tv, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Hiện trên trạm", style = MaterialTheme.typography.labelSmall)
+                                            Text(AppStrings.t("Hiện trên trạm"), style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                 }
@@ -3626,10 +3648,57 @@ fun NotesAndCountdownsManagerCard(
 }
 
 @Composable
-fun AiToolsControlsCard(
+fun QuoteGeneratorCard(
     quoteTopicText: String,
     onQuoteTopicChange: (String) -> Unit,
-    onGenerateQuote: () -> Unit,
+    onGenerateQuote: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = stringResource(R.string.quote_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = quoteTopicText,
+                    onValueChange = onQuoteTopicChange,
+                    label = { Text(stringResource(R.string.quote_topic_label)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                )
+                Button(onClick = onGenerateQuote, shape = RoundedCornerShape(12.dp)) {
+                    Text(stringResource(R.string.btn_generate_quote))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CountdownTimerCard(
     timerDurationText: String,
     onTimerDurationChange: (String) -> Unit,
     timerNoteText: String,
@@ -3646,56 +3715,19 @@ fun AiToolsControlsCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(imageVector = Icons.Default.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Icon(imageVector = Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(
-                    text = stringResource(R.string.subcat_tools_ai),
+                    text = stringResource(R.string.timer_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
-
-            // Groq Quote
-            Text(
-                text = stringResource(R.string.quote_title),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = quoteTopicText,
-                    onValueChange = onQuoteTopicChange,
-                    label = { Text(stringResource(R.string.quote_topic_label)) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
-                )
-                Button(
-                    onClick = onGenerateQuote,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Sinh câu")
-                }
-            }
-
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            // Countdown Timer
-            Text(
-                text = stringResource(R.string.timer_title),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3717,13 +3749,14 @@ fun AiToolsControlsCard(
                     modifier = Modifier.weight(1.5f)
                 )
             }
-
             Button(
                 onClick = onStartTimer,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.timer_start_btn))
+                Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(stringResource(R.string.btn_start_timer))
             }
         }
     }
@@ -3778,14 +3811,14 @@ fun DarkModeSettingsCard(
             ) {
                 Icon(imageVector = Icons.Default.DarkMode, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(
-                    text = "Lịch trình Dark Mode màn hình trạm",
+                    text = AppStrings.t("Lịch trình Dark Mode màn hình trạm"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
 
             Text(
-                text = "Điều khiển bảng màu hiển thị Sáng/Tối của màn hình ST7789 trên trạm ESP32. Lịch này chỉ tác động lên màn hình, không làm thay đổi độ sáng LED hay còi chip.",
+                text = AppStrings.t("Điều khiển bảng màu hiển thị Sáng/Tối của màn hình ST7789 trên trạm ESP32. Lịch này chỉ tác động lên màn hình, không làm thay đổi độ sáng LED hay còi chip."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -3803,12 +3836,12 @@ fun DarkModeSettingsCard(
                 ) {
                     Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     val savedModeLabel = when (savedMode) {
-                        "always", "always_on" -> "Luôn bật (Tối)"
+                        "always", "always_on" -> AppStrings.t("Luôn bật (Tối)")
                         "scheduled", "custom" -> "Theo lịch ($savedStart - $savedEnd)"
-                        else -> "Tắt (Sáng)"
+                        else -> AppStrings.t("Tắt (Sáng)")
                     }
                     Text(
-                        text = "Đang lưu trên trạm: $savedModeLabel",
+                        text = AppStrings.tpl("Đang lưu trên trạm: $savedModeLabel"),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium
                     )
@@ -3817,7 +3850,7 @@ fun DarkModeSettingsCard(
 
 
             Text(
-                text = "Chế độ hiển thị trạm:",
+                text = AppStrings.t("Chế độ hiển thị trạm:"),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold
             )
@@ -3833,13 +3866,13 @@ fun DarkModeSettingsCard(
                 FilterChip(
                     selected = isOff,
                     onClick = { onDarkModeChange("off") },
-                    label = { Text("Tắt (Sáng)") },
+                    label = { Text(AppStrings.t("Tắt (Sáng)")) },
                     modifier = Modifier.weight(1f)
                 )
                 FilterChip(
                     selected = isAlways,
                     onClick = { onDarkModeChange("always_on") },
-                    label = { Text("Luôn bật (Tối)") },
+                    label = { Text(AppStrings.t("Luôn bật (Tối)")) },
                     modifier = Modifier.weight(1f)
                 )
                 FilterChip(
@@ -3860,7 +3893,7 @@ fun DarkModeSettingsCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Khung giờ tự động chuyển Dark Mode:",
+                        text = AppStrings.t("Khung giờ tự động chuyển Dark Mode:"),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -3876,7 +3909,7 @@ fun DarkModeSettingsCard(
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Bắt đầu tối", style = MaterialTheme.typography.labelSmall)
+                                Text(AppStrings.t("Bắt đầu tối"), style = MaterialTheme.typography.labelSmall)
                                 Text(
                                     text = editDarkModeStart,
                                     style = MaterialTheme.typography.titleMedium,
@@ -3892,7 +3925,7 @@ fun DarkModeSettingsCard(
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Chuyển sáng", style = MaterialTheme.typography.labelSmall)
+                                Text(AppStrings.t("Chuyển sáng"), style = MaterialTheme.typography.labelSmall)
                                 Text(
                                     text = editDarkModeEnd,
                                     style = MaterialTheme.typography.titleMedium,
@@ -3906,14 +3939,14 @@ fun DarkModeSettingsCard(
                     // Notice if start == end
                     if (editDarkModeStart == editDarkModeEnd) {
                         Text(
-                            text = "⚠ Giờ bắt đầu trùng giờ kết thúc (khoảng 0 phút): Màn hình sẽ duy trì chế độ Sáng (Tắt).",
+                            text = AppStrings.t("⚠ Giờ bắt đầu trùng giờ kết thúc (khoảng 0 phút): Màn hình sẽ duy trì chế độ Sáng (Tắt)."),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
                     }
 
                     Text(
-                        text = "Gợi ý khung giờ nhanh:",
+                        text = AppStrings.t("Gợi ý khung giờ nhanh:"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -3947,7 +3980,7 @@ fun DarkModeSettingsCard(
             ) {
                 Icon(imageVector = Icons.Default.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Lưu cấu hình Dark Mode")
+                Text(AppStrings.t("Lưu cấu hình Dark Mode"))
             }
         }
     }
@@ -3976,10 +4009,10 @@ fun PowerSettingsCard(
     if (showTimeDialog) {
         AlertDialog(
             onDismissRequest = { showTimeDialog = false },
-            title = { Text("Đặt giờ quét mưa dự báo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+            title = { Text(AppStrings.t("Đặt giờ quét mưa dự báo"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Nhập thời gian quét dự báo hàng ngày (HH:mm):", style = MaterialTheme.typography.bodySmall)
+                    Text(AppStrings.t("Nhập thời gian quét dự báo hàng ngày (HH:mm):"), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = tempTimeText,
                         onValueChange = { tempTimeText = it },
@@ -3988,7 +4021,7 @@ fun PowerSettingsCard(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("Gợi ý các khung giờ quét phổ biến:", style = MaterialTheme.typography.labelSmall)
+                    Text(AppStrings.t("Gợi ý các khung giờ quét phổ biến:"), style = MaterialTheme.typography.labelSmall)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4014,7 +4047,7 @@ fun PowerSettingsCard(
                     },
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Xác nhận")
+                    Text(AppStrings.t("Xác nhận"))
                 }
             }
 ,
@@ -4064,7 +4097,7 @@ fun PowerSettingsCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Thành phố: $weatherCity",
+                        text = AppStrings.tpl("Thành phố: $weatherCity"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -4083,12 +4116,12 @@ fun PowerSettingsCard(
             ) {
                 Column {
                     Text(
-                        text = "Giờ quét mưa dự báo",
+                        text = AppStrings.t("Giờ quét mưa dự báo"),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Đang đặt: $weatherAlertTime (GMT+7)",
+                        text = AppStrings.tpl("Đang đặt: $weatherAlertTime (GMT+7)"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -4102,7 +4135,7 @@ fun PowerSettingsCard(
                 ) {
                     Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Đổi giờ")
+                    Text(AppStrings.t("Đổi giờ"))
                 }
             }
 
@@ -4114,7 +4147,7 @@ fun PowerSettingsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Dự báo thời tiết OpenWeatherMap",
+                    text = AppStrings.t("Dự báo thời tiết OpenWeatherMap"),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -4136,7 +4169,7 @@ fun PowerSettingsCard(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else if (forecastIntervals.isEmpty()) {
                     Text(
-                        text = "Không có dữ liệu dự báo. Vui lòng kiểm tra kết nối mạng backend.",
+                        text = AppStrings.t("Không có dữ liệu dự báo. Vui lòng kiểm tra kết nối mạng backend."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -4172,14 +4205,14 @@ fun PowerSettingsCard(
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     if (interval.isRain || popPct >= 40) {
                                         Text(
-                                            text = "Mưa ($popPct%)",
+                                            text = AppStrings.tpl("Mưa ($popPct%)"),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.error,
                                             fontWeight = FontWeight.Bold
                                         )
                                     } else {
                                         Text(
-                                            text = "$popPct% mưa",
+                                            text = AppStrings.tpl("$popPct% mưa"),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -4214,7 +4247,7 @@ fun PowerSettingsCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Báo cắm: < ${batteryLow}%", style = MaterialTheme.typography.bodySmall)
+                    Text(AppStrings.tpl("Báo cắm: < ${batteryLow}%"), style = MaterialTheme.typography.bodySmall)
                     Slider(
                         value = batteryLow.toFloat(),
                         onValueChange = { onBatteryLowChange(it.roundToInt()) },
@@ -4222,7 +4255,7 @@ fun PowerSettingsCard(
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Báo rút: > ${batteryHigh}%", style = MaterialTheme.typography.bodySmall)
+                    Text(AppStrings.tpl("Báo rút: > ${batteryHigh}%"), style = MaterialTheme.typography.bodySmall)
                     Slider(
                         value = batteryHigh.toFloat(),
                         onValueChange = { onBatteryHighChange(it.roundToInt()) },
@@ -4293,7 +4326,7 @@ fun TelemetryDetailCard(
                 val sys = systemStatus
                 // Section 1: ESP32 Station Metrics
                 Text(
-                    text = "Thông số ESP32 Station",
+                    text = AppStrings.t("Thông số ESP32 Station"),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -4322,7 +4355,7 @@ fun TelemetryDetailCard(
 
                 // Section 2: Server Metrics
                 Text(
-                    text = "Thông số Server Companion",
+                    text = AppStrings.t("Thông số Server Companion"),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.secondary
@@ -4347,7 +4380,7 @@ fun TelemetryDetailCard(
                     }
                     Box(modifier = Modifier.weight(1.3f)) {
                         TelemetryPill(
-                            label = "Dung lượng (20GB)",
+                            label = AppStrings.t("Dung lượng (20GB)"),
                             value = sys.server.diskStr.ifBlank { "${sys.server.diskUsedGb} / ${sys.server.diskTotalGb}GB" },
                             icon = Icons.Default.Storage
                         )
@@ -4358,7 +4391,7 @@ fun TelemetryDetailCard(
 
                 // Section 3: Máy tính (đang đặt để show spec)
                 Text(
-                    text = "Thông số Máy tính: ${sys.laptop.deviceName} ${if (sys.laptop.online) "● Online" else "○ Offline"}",
+                    text = AppStrings.tpl("Thông số Máy tính: ${sys.laptop.deviceName} ${if (sys.laptop.online) ")● Online" else "○ Offline"}",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (sys.laptop.online) Color(0xFF10B981) else MaterialTheme.colorScheme.error
@@ -4369,21 +4402,21 @@ fun TelemetryDetailCard(
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
                         TelemetryPill(
-                            label = "CPU Máy tính",
+                            label = AppStrings.t("CPU Máy tính"),
                             value = "${sys.laptop.cpu}%",
                             icon = Icons.Default.Laptop
                         )
                     }
                     Box(modifier = Modifier.weight(1f)) {
                         TelemetryPill(
-                            label = "RAM Máy tính",
+                            label = AppStrings.t("RAM Máy tính"),
                             value = "${sys.laptop.ram}%",
                             icon = Icons.Default.Memory
                         )
                     }
                     Box(modifier = Modifier.weight(1f)) {
                         TelemetryPill(
-                            label = "Pin Máy tính",
+                            label = AppStrings.t("Pin Máy tính"),
                             value = "${sys.laptop.battery}%",
                             icon = Icons.Default.BatteryChargingFull
                         )
@@ -4405,13 +4438,13 @@ fun TelemetryDetailCard(
                         modifier = Modifier.size(36.dp)
                     )
                     Text(
-                        text = "Chưa nhận được phản hồi telemetry",
+                        text = AppStrings.t("Chưa nhận được phản hồi telemetry"),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Endpoint /api/app/control/status chưa được kích hoạt trên máy chủ sản xuất hoặc trạm chưa gửi dữ liệu lên MQTT.",
+                        text = AppStrings.t("Endpoint /api/app/control/status chưa được kích hoạt trên máy chủ sản xuất hoặc trạm chưa gửi dữ liệu lên MQTT."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -4423,7 +4456,7 @@ fun TelemetryDetailCard(
                     ) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Thử lại")
+                        Text(AppStrings.t("Thử lại"))
                     }
                 }
             }

@@ -23,6 +23,7 @@ import com.deskflow.app.data.repository.FocusRepository
 import com.deskflow.app.domain.model.ChallengeInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.deskflow.app.ui.i18n.AppStrings
 
 @Composable
 fun ChallengeDialog(
@@ -47,7 +48,7 @@ fun ChallengeDialog(
             delay(1000L)
             remainingSeconds--
         }
-        errorMessage = "Thử thách đã hết hạn. Vui lòng lấy thử thách mới."
+        errorMessage = AppStrings.t("Thử thách đã hết hạn. Vui lòng lấy thử thách mới.")
     }
 
     // Cooldown Countdown Effect
@@ -114,7 +115,7 @@ fun ChallengeDialog(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = currentChallenge.question.ifBlank { "Đang tải bài toán..." },
+                            text = currentChallenge.question.ifBlank { AppStrings.t("Đang tải bài toán...") },
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 24.sp
@@ -181,7 +182,7 @@ fun ChallengeDialog(
                     onClick = {
                         val ans = answerText.toIntOrNull()
                         if (ans == null) {
-                            errorMessage = "Vui lòng nhập số nguyên hợp lệ."
+                            errorMessage = AppStrings.t("Vui lòng nhập số nguyên hợp lệ.")
                             return@Button
                         }
 
@@ -196,7 +197,7 @@ fun ChallengeDialog(
                                     if (res.data.correct) {
                                         onSuccessUnlocked()
                                     } else {
-                                        errorMessage = res.data.message ?: "Đáp án chưa đúng. Đã đổi bài toán mới."
+                                        errorMessage = res.data.message ?: AppStrings.t("Đáp án chưa đúng. Đã đổi bài toán mới.")
                                         answerText = ""
                                         res.data.newChallenge?.let { nc ->
                                             currentChallenge = ChallengeInfo(
@@ -212,9 +213,9 @@ fun ChallengeDialog(
                                 is ApiResult.Error -> {
                                     if (res.code == "cooldown") {
                                         cooldownSeconds = res.retryAfter ?: 60
-                                        errorMessage = "Đã nhập sai quá 5 lần. Chờ ${cooldownSeconds}s."
+                                        errorMessage = AppStrings.tpl("Đã nhập sai quá 5 lần. Chờ ${cooldownSeconds}s.")
                                     } else {
-                                        errorMessage = "Lỗi xác thực: ${res.code}"
+                                        errorMessage = AppStrings.tpl("Lỗi xác thực: ${res.code}")
                                     }
                                 }
                             }

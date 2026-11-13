@@ -141,6 +141,20 @@ interface FocusApiService {
         @Body request: ViewSwitchRequest
     ): Response<ActionSuccessResponse>
 
+    @GET("api/app/control/device/selected")
+    suspend fun getSelectedDevice(): Response<SelectedDeviceResponse>
+
+    @POST("api/app/control/device/selected")
+    suspend fun setSelectedDevice(
+        @Body body: Map<String, String>
+    ): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/device/{deviceId}/rename")
+    suspend fun renameDeviceById(
+        @Path("deviceId") deviceId: String,
+        @Body body: Map<String, String>
+    ): Response<ActionSuccessResponse>
+
     @POST("api/app/control/display/close-tkb")
     suspend fun closeTkb(): Response<ActionSuccessResponse>
 

@@ -22,6 +22,7 @@ import com.deskflow.app.R
 import com.deskflow.app.data.model.DayScheduleDto
 import com.deskflow.app.data.repository.FocusRepository
 import kotlinx.coroutines.launch
+import com.deskflow.app.ui.i18n.AppStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,7 +197,7 @@ fun DayScheduleCard(
     emptyText: String,
     modifier: Modifier = Modifier
 ) {
-    val dayName = dayDto?.day?.takeIf { it.isNotBlank() } ?: (if (isToday) "Hôm nay" else "Ngày mai")
+    val dayName = dayDto?.day?.takeIf { it.isNotBlank() } ?: (if (isToday) AppStrings.t("Hôm nay") else AppStrings.t("Ngày mai"))
     val hasClasses = dayDto?.hasAnyClass ?: false
 
     Card(
@@ -382,7 +383,7 @@ fun LessonRow(
     isMorning: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // rawItem format: "Tiết 1: Toán"
+    // rawItem format: AppStrings.t("Tiết 1: Toán")
     val parts = rawItem.split(":")
     val periodLabel = if (parts.size > 1) parts[0].trim() else "Tiết"
     val subjectLabel = if (parts.size > 1) parts.drop(1).joinToString(":").trim() else rawItem.trim()
