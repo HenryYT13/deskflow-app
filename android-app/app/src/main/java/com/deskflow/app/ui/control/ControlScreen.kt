@@ -4391,7 +4391,8 @@ fun TelemetryDetailCard(
 
                 // Section 3: Máy tính (đang đặt để show spec)
                 Text(
-                    text = AppStrings.tpl("Thông số Máy tính: ${sys.laptop.deviceName} ${if (sys.laptop.online) ")● Online" else "○ Offline"}",
+                    text = AppStrings.tpl("Thông số Máy tính: ${sys.laptop.deviceName}") +
+                        (if (sys.laptop.online) " ● Online" else " ○ Offline"),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (sys.laptop.online) Color(0xFF10B981) else MaterialTheme.colorScheme.error

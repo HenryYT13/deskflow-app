@@ -39,6 +39,7 @@ import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.domain.model.ChallengeInfo
 import com.deskflow.app.service.FocusNotificationService
+import com.deskflow.app.ui.i18n.AppStrings
 import com.deskflow.app.ui.focus.ChallengeDialog
 import com.deskflow.app.ui.focus.FocusActiveNoticeDialog
 import com.deskflow.app.ui.navigation.Screen
