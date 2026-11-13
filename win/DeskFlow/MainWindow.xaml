@@ -91,7 +91,6 @@
                 <NavigationViewItem x:Name="NavSpotifyItem" Icon="Audio" Content="Spotify &amp; Âm nhạc" Tag="spotify" />
                 <NavigationViewItem x:Name="NavAlarmsItem" Icon="Important" Content="Báo thức &amp; Còi báo" Tag="alarms" />
                 <NavigationViewItem x:Name="NavToolsItem" Icon="Edit" Content="Công cụ &amp; Groq AI" Tag="tools" />
-                <NavigationViewItem x:Name="NavFocusItem" Icon="Clock" Content="Focus Mode" Tag="focus" />
                 <NavigationViewItem x:Name="NavSettingsItem" Icon="Setting" Content="Cài đặt &amp; Giao diện" Tag="settings" />
             </NavigationView.MenuItems>
 
@@ -514,9 +513,11 @@
                             <Button Content="Đồng hồ" Tag="clock" Click="SwitchViewButton_Click" />
                             <Button Content="Thời khóa biểu" Tag="tkb" Click="SwitchViewButton_Click" />
                             <Button Content="Thời tiết" Tag="weather" Click="SwitchViewButton_Click" />
+                            <Button Content="Lời bài hát" Tag="lyrics" Click="SwitchViewButton_Click" />
                             <Button Content="Ghi chú" Tag="notes" Click="SwitchViewButton_Click" />
                             <Button Content="Đếm ngược" Tag="countdown" Click="SwitchViewButton_Click" />
-                            <Button Content="Hoạt ảnh" Tag="anim" Click="SwitchViewButton_Click" />
+                            <Button Content="Tập trung" Tag="focus" Click="SwitchViewButton_Click" />
+                            <Button Content="Thông số máy chủ" Tag="stats" Click="SwitchViewButton_Click" />
                         </StackPanel>
 
                         <!-- NeoPixel LED & RGB Lamp -->

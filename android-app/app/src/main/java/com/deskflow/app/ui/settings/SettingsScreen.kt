@@ -990,6 +990,40 @@ fun SettingsScreen(
                     Text(stringResource(R.string.overlay_title), style = MaterialTheme.typography.titleSmall)
                     Text(stringResource(R.string.overlay_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = AppStrings.t("Chạy nền khi bật Focus Mode"),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = AppStrings.t("Tắt tối ưu pin cho DeskFlow để dịch vụ Focus Mode không bị hệ thống dừng khi chạy nền."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val powerManager = remember { ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
+                    var batteryExempt by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(ctx.packageName)) }
+                    if (batteryExempt) {
+                        Text(AppStrings.t("Đã tắt tối ưu pin."), style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Button(onClick = {
+                            try {
+                                ctx.startActivity(
+                                    android.content.Intent(
+                                        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                        android.net.Uri.parse("package:" + ctx.packageName)
+                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (_: Exception) {
+                                ctx.startActivity(
+                                    android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                            batteryExempt = powerManager.isIgnoringBatteryOptimizations(ctx.packageName)
+                        }) { Text(AppStrings.t("Tắt tối ưu pin")) }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                     if (overlayGranted) {
                         Text(stringResource(R.string.overlay_granted), style = MaterialTheme.typography.bodyMedium)
                     } else {

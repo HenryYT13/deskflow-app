@@ -355,6 +355,27 @@ class FocusNotificationService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Swiping the app away must not end the session: restart the foreground
+        // service so the overlay/timer keep running in the background.
+        if (isFocusSessionActive()) {
+            val restart = Intent(applicationContext, FocusNotificationService::class.java).apply {
+                action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(restart)
+            } else {
+                applicationContext.startService(restart)
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
+    private fun isFocusSessionActive(): Boolean {
+        val app = applicationContext as? DeskFlowApp ?: return false
+        return app.focusRepository.focusState.value.isActive
+    }
+
     override fun onDestroy() {
         if (instance == this) instance = null
         watchdogJob?.cancel()

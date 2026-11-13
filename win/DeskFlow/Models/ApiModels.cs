@@ -623,7 +623,11 @@ public sealed class TimetableDayDto
 
 public sealed class DualDayTimetableData
 {
+    // PocketBase stores week_number as a number for some weeks and as a string
+    // for others, which made System.Text.Json throw
+    // "The JSON value could not be converted to System.String".
     [JsonPropertyName("week_number")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string WeekNumber { get; set; } = "N/A";
 
     [JsonPropertyName("today")]
@@ -640,4 +644,27 @@ public sealed class TimetableTodayResponse
 
     [JsonPropertyName("data")]
     public DualDayTimetableData? Data { get; set; }
+}
+
+/// <summary>
+/// Reads a JSON string, number or bool into a string so mixed-type fields
+/// (e.g. PocketBase week_number) never break deserialisation.
+/// </summary>
+public sealed class FlexibleStringConverter : JsonConverter<string>
+{
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.String => reader.GetString() ?? string.Empty,
+            JsonTokenType.Number => reader.TryGetInt64(out var l) ? l.ToString() : reader.GetDouble().ToString("0.##"),
+            JsonTokenType.True => "true",
+            JsonTokenType.False => "false",
+            JsonTokenType.Null => string.Empty,
+            _ => string.Empty,
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value);
 }

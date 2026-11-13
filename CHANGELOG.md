@@ -4,6 +4,31 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.1.3] - 2026-11-13
+
+### 🐛 ESP32
+- **Chọn màu không còn bị đá về menu chính.** Nhấn PLAY để áp dụng một màu vẫn ở lại màn chọn màu, cho phép thử màu khác ngay; chỉ giữ `>>` hoặc mục EXIT mới thoát.
+- **Mở Cài đặt phần cứng giờ trỏ dòng đầu tiên** (Bật/tắt đèn) thay vì nhảy vào "Màu đèn".
+- **Âm lượng Spotify:** backend đọc lại giá trị thật sau khi đặt, trả `applied/requested` và chỉ phát giá trị thật xuống trạm, nên màn ESP32 khớp với Spotify.
+
+### 🐛 Windows
+- **TKB không tải được** (`the JSON value could not be converted to System.String ... week_number`): `week_number` có tuần là số, có tuần là chuỗi. Thêm `FlexibleStringConverter`.
+- **Spec server:** `psutil.cpu_percent(interval=None)` trả 0.0 ở lần gọi đầu → backend lấy mẫu 0.1s khi gặp 0.
+- **Spec máy tính 0%/0%/0%:** backend giữ giá trị cuối và clamp 0–100 thay vì trả 0 tuyệt đối; Windows hiện `--` và nhãn "Offline — đang dùng số liệu cuối" thay vì số 0 giả.
+- **Thiếu màn hình ESP32:** thêm Lời bài hát, Tập trung, Thông số máy chủ (đủ 9 màn, bỏ nút "Hoạt ảnh" không tồn tại).
+- **Spotify không realtime:** nội suy tiến trình mỗi 250 ms giữa các lần poll; sửa parse trạng thái Spotify (endpoint trả object phẳng, không có wrapper `data`).
+- **Chế độ giao diện Windows hiện rỗng:** restore `ThemeModeCombo` từ settings khi khởi động.
+- **Bỏ mục Focus Mode riêng:** Focus nằm trong Công cụ, giống macOS/Linux.
+
+### 🐛 Android
+- **Focus Mode không tự cập nhật / bị dừng khi chạy nền:** thêm `android:stopWithTask="false"`, restart service trong `onTaskRemoved`, xin `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (có nút trong Cài đặt), và refresh trạng thái ngay sau khi bật.
+
+### 🐛 Linux
+- **Tên màn hình ESP32 bị tiếng Anh khi để tiếng Việt:** bảng `DISPLAY_VIEWS` giờ có cả tiêu đề và mô tả VI/EN, dịch lại khi đổi ngôn ngữ.
+- **Layout 3 bản desktop giống nhau:** Focus chuyển vào tab Công cụ (bỏ mục sidebar riêng).
+
+---
+
 ## [v1.1.2] - 2026-11-13
 
 ### 🐛 Sửa lỗi ESP32 (Fixes)

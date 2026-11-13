@@ -1309,7 +1309,9 @@ public sealed class DeskFlowApiClient
             if (!resp.IsSuccessStatusCode) return null;
             var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("data", out var dataEl))
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("data", out var dataEl) &&
+                dataEl.ValueKind == JsonValueKind.Object)
             {
                 return JsonSerializer.Deserialize<SpotifyStatusDto>(dataEl.GetRawText(), JsonOpts);
             }

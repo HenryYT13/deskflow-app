@@ -35,6 +35,7 @@ import com.deskflow.app.R
 import com.deskflow.app.data.model.FocusSessionDto
 import com.deskflow.app.data.repository.ApiResult
 import com.deskflow.app.data.repository.FocusRepository
+import com.deskflow.app.service.FocusNotificationService
 import com.deskflow.app.domain.model.ChallengeInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -65,6 +66,7 @@ fun FocusScreen(
 
     var activeDialogChallenge by remember { mutableStateOf<ChallengeInfo?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Countdown State for Active Session
     var liveRemainingSeconds by remember(focusState.remainingSeconds, focusState.isActive) {
@@ -600,6 +602,13 @@ fun FocusScreen(
                                                 isLoading = false
                                                 if (res is ApiResult.Error) {
                                                     actionError = AppStrings.tpl("Kích hoạt thất bại: ${res.code}")
+                                                } else {
+                                                    // The backend is authoritative: pull the new
+                                                    // state so the UI, timer and background
+                                                    // service update immediately.
+                                                    repository.refreshStatus()
+                                                    repository.refreshFocusHistory()
+                                                    FocusNotificationService.startService(context)
                                                 }
                                             }
                                         },

@@ -75,6 +75,21 @@ public sealed partial class MainWindow : Window
         _suppressEsp32LanguageSave = true;
         if (Esp32LanguageCombo != null) Esp32LanguageCombo.SelectedIndex = (_client.Settings.Esp32Language == "en") ? 1 : 0;
         _suppressEsp32LanguageSave = false;
+        // Restore the saved Windows theme into the combo. Without this the box
+        // rendered empty ("") until the user picked something.
+        if (ThemeModeCombo != null)
+        {
+            int themeIndex = ScheduledDarkModeEvaluator.NormalizeTheme(_client.Settings.AppTheme) switch
+            {
+                "light" => 1,
+                "dark" => 2,
+                "scheduled" => 3,
+                _ => 0,
+            };
+            _suppressThemeComboSave = true;
+            ThemeModeCombo.SelectedIndex = themeIndex;
+            _suppressThemeComboSave = false;
+        }
         if (Esp32ThemeCombo != null) Esp32ThemeCombo.SelectedIndex = 0;
 
         try
@@ -135,10 +150,21 @@ public sealed partial class MainWindow : Window
                     if (comp != null)
                     {
                         ComputerTitleText.Text = Strings.CurrentLanguage == "vi" ? $"Thông số Máy tính ({comp.DeviceName})" : $"Computer Metrics ({comp.DeviceName})";
-                        ComputerCpuValueText.Text = $"{comp.Cpu:0.1}%";
-                        ComputerRamValueText.Text = $"{Math.Clamp(comp.Ram, 0.0, 100.0):0.1}%";
-                        ComputerBatteryValueText.Text = $"{comp.Battery}%";
-                        ComputerStatusText.Text = comp.Online ? "Online" : "Offline";
+
+                        // A machine that is not reporting must not look like a real
+                        // 0% reading: show the last known value with an explicit
+                        // offline marker instead of three zeros.
+                        string dash = comp.Online ? "" : " (offline)";
+                        ComputerCpuValueText.Text = comp.Cpu > 0 ? $"{Math.Clamp(comp.Cpu, 0.0, 100.0):0.1}%" : "--";
+                        ComputerRamValueText.Text = comp.Ram > 0 ? $"{Math.Clamp(comp.Ram, 0.0, 100.0):0.1}%" : "--";
+                        ComputerBatteryValueText.Text = comp.Battery > 0 ? $"{comp.Battery}%" : "--";
+                        ComputerStatusText.Text = comp.Online
+                            ? (Strings.CurrentLanguage == "vi" ? "Online" : "Online")
+                            : (Strings.CurrentLanguage == "vi" ? "Offline — đang dùng số liệu cuối" : "Offline — last known values");
+                        if (!string.IsNullOrEmpty(dash) && ComputerTitleText != null)
+                        {
+                            ComputerTitleText.Text += dash;
+                        }
                     }
                 }
             }
@@ -164,6 +190,13 @@ public sealed partial class MainWindow : Window
             catch {}
         };
         telTimer.Start();
+
+        // Spotify progress is interpolated locally between 1-second polls, so the
+        // bar and clock move smoothly instead of jumping once per second.
+        var spTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        spTimer.Interval = TimeSpan.FromMilliseconds(250);
+        spTimer.Tick += (_, _) => InterpolateSpotifyProgress();
+        spTimer.Start();
 
         var tkbTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         tkbTimer.Interval = TimeSpan.FromSeconds(20);
@@ -1297,9 +1330,12 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private bool _suppressThemeComboSave;
+
     private void ThemeModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_isLoaded || _client == null) return;
+        if (!_isLoaded || _client == null || _suppressThemeComboSave) return;
+        if (ThemeModeCombo?.SelectedItem is not ComboBoxItem) return;
         if (ThemeModeCombo.SelectedItem is ComboBoxItem item && item.Tag is string theme)
         {
             _client.Settings.AppTheme = theme;
@@ -1534,6 +1570,7 @@ public sealed partial class MainWindow : Window
 
     private SpotifyStatusDto? _lastSpotify;
     private bool _isSpotifyPlaying;
+    private DateTime _lastSpotifySync = DateTime.MinValue;
 
     private async Task RefreshSpotifyAsync()
     {
@@ -1619,6 +1656,8 @@ public sealed partial class MainWindow : Window
         if (MiniSpotifyArtistText != null) MiniSpotifyArtistText.Text = $"{artist} • {statusText}";
         if (MiniSpotifyPlayBtn != null) MiniSpotifyPlayBtn.Content = sp.IsPlaying ? "\uE769" : "\uE768";
 
+        _lastSpotifySync = DateTime.Now;
+
         // Full Spotify Studio
         UpdateSpotifyCover(sp.CoverUrl);
         if (SpotifyTrackTitle != null) SpotifyTrackTitle.Text = track;
@@ -1637,6 +1676,26 @@ public sealed partial class MainWindow : Window
             SpotifyCurrentLyricText.Text = string.IsNullOrWhiteSpace(sp.CurrentLyric) ? (Strings.CurrentLanguage == "vi" ? "Đang đồng bộ lời bài hát từ Spotify / LRCLIB..." : "Syncing lyrics from Spotify / LRCLIB...") : sp.CurrentLyric;
         if (SpotifyNextLyricText != null)
             SpotifyNextLyricText.Text = sp.NextLyric ?? "...";
+    }
+
+    private void InterpolateSpotifyProgress()
+    {
+        var sp = _lastSpotify;
+        if (sp == null || !sp.IsPlaying || sp.DurationMs <= 0) return;
+        if (_lastSpotifySync == DateTime.MinValue) return;
+
+        long elapsed = (long)(DateTime.Now - _lastSpotifySync).TotalMilliseconds;
+        long pos = Math.Clamp(sp.ProgressMs + elapsed, 0, sp.DurationMs);
+
+        if (SpotifyProgressBar != null)
+        {
+            SpotifyProgressBar.Value = Math.Clamp(pos * 100.0 / sp.DurationMs, 0, 100);
+        }
+        if (SpotifyCurrentTimeText != null)
+        {
+            long sec = pos / 1000;
+            SpotifyCurrentTimeText.Text = $"{sec / 60:D2}:{sec % 60:D2}";
+        }
     }
 
     private async void SpotifyPlayToggle_Click(object sender, RoutedEventArgs e)

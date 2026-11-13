@@ -118,20 +118,30 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         ("spotify", "Spotify & Âm nhạc", "audio-x-generic-symbolic"),
         ("alarms", "Báo thức & Còi báo", "alarm-symbolic"),
         ("tools", "Công cụ & Groq AI", "document-edit-symbolic"),
-        ("focus", "Chế độ tập trung", "preferences-system-time-symbolic"),
         ("settings", "Cài đặt & Giao diện", "emblem-system-symbolic"),
     ]
 
+    # (key, Vietnamese title, English title, Vietnamese desc, English desc)
     DISPLAY_VIEWS = [
-        ("main", "Main Dashboard (Default)", "Authoritative default: Clock, Weather, Music & Quotes"),
-        ("clock", "Clock Face", "Digital clock with date & day"),
-        ("weather", "Weather", "Ha Long temperature & forecast"),
-        ("notes", "Sticky Note", "Pinned reminder on station"),
-        ("countdown", "Countdown", "Exam deadline countdown"),
-        ("focus", "Chế độ tập trung", "Bộ hẹn giờ tập trung chuyên sâu"),
-        ("stats", "Server Stats", "Host CPU & RAM utilization"),
-        ("tkb", "Timetable", "Class schedule & uniform"),
-        ("lyrics", "Spotify", "Live lyrics & now playing"),
+        ("main", "Màn hình chính", "Main Dashboard",
+         "Mặc định: đồng hồ, thời tiết, nhạc & danh ngôn",
+         "Default: clock, weather, music & quotes"),
+        ("clock", "Mặt đồng hồ", "Clock Face",
+         "Đồng hồ số kèm ngày tháng", "Digital clock with date & day"),
+        ("weather", "Thời tiết", "Weather",
+         "Nhiệt độ và dự báo Hạ Long", "Ha Long temperature & forecast"),
+        ("notes", "Ghi chú", "Sticky Note",
+         "Ghi chú được ghim lên trạm", "Pinned reminder on station"),
+        ("countdown", "Đếm ngược", "Countdown",
+         "Đếm ngược ngày thi", "Exam deadline countdown"),
+        ("focus", "Tập trung", "Focus Mode",
+         "Bộ hẹn giờ tập trung", "Focus session timer"),
+        ("stats", "Thông số máy chủ", "Server Stats",
+         "CPU & RAM của máy chủ", "Host CPU & RAM utilization"),
+        ("tkb", "Thời khóa biểu", "Timetable",
+         "Lịch học và đồng phục", "Class schedule & uniform"),
+        ("lyrics", "Lời bài hát", "Spotify Lyrics",
+         "Lời bài hát và đang phát", "Live lyrics & now playing"),
     ]
 
     CLOCK_STYLES = [
@@ -262,7 +272,6 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.content_stack.add_named(self._build_alarms_page(), "alarms")
         self.content_stack.add_named(self._build_tkb_page(), "tkb")
         self.content_stack.add_named(self._build_tools_page(), "tools")
-        self.content_stack.add_named(self._build_focus_page(), "focus")
         self.content_stack.add_named(self._build_settings_page(), "settings")
         # Direct alias used by the dashboard "weather" shortcut button.
         self.content_stack.add_named(self._build_weather_page(), "weather")
@@ -1130,10 +1139,12 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             "notes": ("Ghi chú & AI", "Notes & AI"),
             "countdowns": ("Đếm ngược", "Countdowns"),
             "morse": ("Mã Morse Studio", "Morse Studio"),
+            "focus": ("Chế độ tập trung", "Focus Mode"),
         }
         stack.add_titled_with_icon(self._build_notes_page(), "notes", self._tr(*self.tools_tabs["notes"]), "document-edit-symbolic")
         stack.add_titled_with_icon(self._build_countdowns_page(), "countdowns", self._tr(*self.tools_tabs["countdowns"]), "x-office-calendar-symbolic")
         stack.add_titled_with_icon(self._build_morse_page(), "morse", self._tr(*self.tools_tabs["morse"]), "audio-speakers-symbolic")
+        stack.add_titled_with_icon(self._build_focus_page(), "focus", self._tr("Chế độ tập trung", "Focus Mode"), "preferences-system-time-symbolic")
         self.tools_stack = stack
 
         box.append(stack)
@@ -2519,7 +2530,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         view_flow.set_max_children_per_line(4)
         view_flow.set_column_spacing(10)
         view_flow.set_row_spacing(10)
-        for view_key, view_label, view_desc in self.DISPLAY_VIEWS:
+        for view_key, vi_title, en_title, vi_desc, en_desc in self.DISPLAY_VIEWS:
+            view_label = self._tr(vi_title, en_title)
+            view_desc = self._tr(vi_desc, en_desc)
             card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             card_box.set_size_request(140, 65)
             card_box.set_margin_top(6)
@@ -2531,7 +2544,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             lbl_desc = Gtk.Label(label=view_desc, xalign=0.0)
             lbl_desc.add_css_class("caption")
             lbl_desc.set_wrap(True)
-            self._view_card_labels.append((view_key, lbl_title))
+            self._view_card_labels.append((view_key, lbl_title, lbl_desc))
             card_box.append(lbl_title)
             card_box.append(lbl_desc)
 
@@ -2717,10 +2730,11 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         """Highlight which station screen is currently live."""
         if not hasattr(self, "active_view_row"):
             return
-        label = self.preview_oled_view or "main"
-        for view_key, view_label, _desc in self.DISPLAY_VIEWS:
-            if view_key == label:
-                label = view_label
+        view_key_now = self.preview_oled_view or "main"
+        label = view_key_now
+        for key, vi_title, en_title, _vi_desc, _en_desc in self.DISPLAY_VIEWS:
+            if key == view_key_now:
+                label = self._tr(vi_title, en_title)
                 break
         self.active_view_row.set_subtitle(
             self._tr(f"Trạm ESP32 đang hiển thị: {label}", f"The ESP32 station is showing: {label}")
@@ -3080,20 +3094,13 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                 self.tools_stack.get_page(page).set_title(vi_title if is_vi else en_title)
 
         # OLED view cards
-        view_titles = {
-            "main": ("Main Dashboard (Default)", "Main Dashboard (Default)"),
-            "clock": ("Clock Face", "Clock Face"),
-            "weather": ("Weather", "Weather"),
-            "notes": ("Sticky Note", "Sticky Note"),
-            "countdown": ("Countdown", "Countdown"),
-            "focus": ("Chế độ tập trung", "Focus Mode"),
-            "stats": ("Server Stats", "Server Stats"),
-            "tkb": ("Timetable", "Timetable"),
-            "lyrics": ("Spotify", "Spotify"),
-        }
-        for view_key, title_lbl in getattr(self, "_view_card_labels", []):
-            vi_title, en_title = view_titles.get(view_key, (view_key, view_key))
+        for view_key, title_lbl, desc_lbl in getattr(self, "_view_card_labels", []):
+            entry = next((v for v in self.DISPLAY_VIEWS if v[0] == view_key), None)
+            if entry is None:
+                continue
+            _, vi_title, en_title, vi_desc, en_desc = entry
             title_lbl.set_text(vi_title if is_vi else en_title)
+            desc_lbl.set_text(vi_desc if is_vi else en_desc)
 
         if hasattr(self, "active_view_row"):
             self.active_view_row.set_title(

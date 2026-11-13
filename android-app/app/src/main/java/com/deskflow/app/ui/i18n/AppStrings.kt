@@ -306,5 +306,9 @@ private val FRAGMENTS: List<Pair<String, String>> = listOf(
     "% mưa" to "% rain",
     "Báo cắm: < " to "Plug alert: < ",
     "Báo rút: > " to "Unplug alert: > ",
+    "Chạy nền khi bật Focus Mode" to "Keep running in the background during Focus Mode",
+    "Tắt tối ưu pin cho DeskFlow để dịch vụ Focus Mode không bị hệ thống dừng khi chạy nền." to "Disable battery optimisation for DeskFlow so Android does not stop the Focus Mode service in the background.",
+    "Đã tắt tối ưu pin." to "Battery optimisation is disabled.",
+    "Tắt tối ưu pin" to "Disable battery optimisation",
     "Thông số Máy tính: " to "Computer metrics: "
 )

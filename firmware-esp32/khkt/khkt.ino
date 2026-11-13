@@ -3214,7 +3214,8 @@ void handleMenuPlay() {
       addLog("MENU", "Thoat menu cai dat qua muc EXIT.");
     }
   } else if (menuState == MENU_LED_COLOR) {
-    // Apply the highlighted preset: store it, light the ring, then go back.
+    // Apply the highlighted preset and STAY on the colour screen, so another
+    // colour can be tried immediately without reopening the menu.
     srvStats.lampColor = LED_PRESETS[ledPresetIndex];
     prefs.putString("lamp_col", srvStats.lampColor);
     prefs.putInt("led_color_idx", ledPresetIndex);
@@ -3222,7 +3223,6 @@ void handleMenuPlay() {
     ledBlinkMode = false;
     prefs.putBool("led_state", true);
     updateLampLed();
-    menuState = MENU_MAIN;
     screenNeedUpdate = true;
     triggerBuzz(45);
     addLog("LED", "Preset color: " + srvStats.lampColor);
@@ -3427,9 +3427,9 @@ void handleHardwareButtons() {
       if (!inSettingsMenu) {
         inSettingsMenu = true;
         menuState = MENU_MAIN;
-        // Land on "MAU DEN" so holding >> immediately offers the 7 lamp colours.
-        menuCurrentItem = 1;
-        menuPage = menuCurrentItem / MENU_ROWS_PER_PAGE;
+        // Always start on the first row (LED on/off) for predictable navigation.
+        menuCurrentItem = 0;
+        menuPage = 0;
         lastRenderedView = "";
         screenNeedUpdate = true;
         addLog("MENU", "Mo menu cai dat (Mau den).");
