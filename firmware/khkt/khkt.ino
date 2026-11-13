@@ -3238,7 +3238,13 @@ void handleHardwareButtons() {
         screenNeedUpdate = true;
         triggerBuzz(60);
         addLog("VIEW", "Da chon man hinh (hold): " + srvStats.activeView);
-      } else if (!inSettingsMenu) {
+      } else if (inSettingsMenu) {
+        // A long PLAY is still a valid selection while the hardware settings
+        // menu is open. Previously this branch did nothing, which made PLAY
+        // appear dead in the settings menu.
+        handleMenuPlay();
+        addLog("BUTTON", "PLAY hold: activate selected settings item");
+      } else {
         triggerBuzz(80);
         cycleNextView();
         if (srvStats.activeView != "focus") {
