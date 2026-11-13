@@ -733,6 +733,16 @@ class DeskFlowApiClient:
             )
         return res
 
+    def set_clock_language(self, language: str) -> ApiResult:
+        """Set the ESP32 clock/OLED display language ("vi" or "en")."""
+        lang = "en" if str(language).strip().lower().startswith("en") else "vi"
+        return self.request(
+            "POST",
+            "/api/app/control/clock-style",
+            payload={"language": lang},
+            authenticated=False,
+        )
+
     def set_clock_style(self, style: Any, accent_color: Optional[str] = None) -> ApiResult:
         if isinstance(style, int) or (isinstance(style, str) and style.isdigit()):
             code = self.CLOCK_STYLE_ID_TO_CODE.get(int(style), "digital_classic")

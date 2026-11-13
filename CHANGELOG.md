@@ -4,6 +4,37 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.1.0] - 2026-11-13
+
+### ✨ Tính năng mới (New Features)
+- **ESP32: menu đổi màu đèn khi giữ nút `>>`.** Giữ `>>` mở bảng cài đặt phần cứng và đặt sẵn ở dòng **"MÀU ĐÈN"**; nhấn `PLAY` để mở 7 màu có sẵn (Trắng, Đỏ, Xanh lá, Xanh dương, Vàng, Tím, Xanh ngọc), `PREV/NEXT` chọn, `PLAY` áp dụng. Toàn bộ đèn vẫn dùng đúng **GPIO 2** như cũ.
+- **Lưới chọn màu 4 ô/hàng** trên màn OLED để bố cục không còn bị dồn cục; menu chính thu gọn chiều cao cho đủ 8 dòng.
+- **Nấc chỉnh độ sáng LED đổi 10% → 5%** mỗi lần nhấn `PREV/NEXT` trên trạm.
+- **Android: khoá màn hình khi bật Focus Mode.** Overlay giờ phủ toàn màn hình và chặn thao tác, vẫn chạy nền qua foreground service (không dùng Device Admin).
+- **Android: bảng chọn 7 màu đèn có sẵn**, xếp 4 ô mỗi hàng, khớp preset của firmware.
+- **Windows/Linux: cover art Spotify** hiển thị ảnh bìa thật từ `cover_url`.
+- **Windows/Linux: chọn ngôn ngữ màn hình ESP32 (VI/EN)** tách biệt với ngôn ngữ ứng dụng.
+- **Linux: nhập chủ đề câu danh ngôn AI** thay vì luôn dùng chủ đề học tập mặc định.
+- **Windows: 7 preset màu đèn** xếp 4 ô mỗi hàng, đúng màu firmware.
+
+### 🐛 Sửa lỗi (Fixes)
+- **TKB Windows không đồng bộ:** panel TKB giờ tự làm mới mỗi 20 giây khi đang mở, báo lỗi rõ khi tải thất bại, và nút "Hiển thị TKB lên ESP32" gửi kèm dữ liệu thời khoá biểu nên màn trạm không còn trống.
+- **Backend gửi kèm TKB khi chuyển view `tkb`**, thay vì chỉ gửi `switch_view`.
+- **Monitor stats bị 0, 0, 0 khi cấu hình từ Windows:** view `stats` lấy đúng số liệu máy báo qua HTTP telemetry thay vì đọc dict legacy rỗng.
+- **RAM cũ (441%) vẫn hiển thị sau khi thoát app:** máy offline giờ trả 0 thay vì giữ giá trị cuối, và backend tự chuyển sang máy đang báo số liệu thật.
+- **Windows gửi CPU/pin thật** qua `GetSystemTimes` / `GetSystemPowerStatus` thay vì hằng số.
+- **Spotify volume không chỉnh được:** backend tự tìm thiết bị đang hoạt động và thử lại một lần thay vì im lặng bỏ qua.
+- **Linux: đổi ngôn ngữ ứng dụng** giờ cập nhật ngay thanh điều hướng, không cần khởi động lại.
+- **Linux: bỏ dòng `Theme: <theme>`** ở góc trên bên phải.
+- **Linux: TKB hiển thị theo dạng thẻ ngày** giống bản macOS (badge đồng phục + hai cột sáng/chiều).
+- **Windows: thứ tự thanh điều hướng** khớp macOS (Hệ thống → Phần cứng → TKB → Spotify → Báo thức → Công cụ → Cài đặt).
+
+### 📦 Thay đổi cấu trúc
+- **Firmware ESP32 chuyển sang thư mục `firmware-esp32/`** (trước là `firmware/`). Lệnh build mới:
+  `arduino-cli compile --fqbn esp32:esp32:esp32 firmware-esp32/khkt`
+
+---
+
 ## [v1.0.9] - 2026-11-13
 
 ### 🐛 Sửa lỗi (Fixes)

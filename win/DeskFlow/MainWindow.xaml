@@ -86,8 +86,8 @@
 
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="NavSystemItem" Icon="Home" Content="Giám sát hệ thống &amp; Đo từ xa" Tag="system" />
-                <NavigationViewItem x:Name="NavTimetableItem" Icon="Calendar" Content="Thời khóa biểu (TKB)" Tag="timetable" />
                 <NavigationViewItem x:Name="NavStationItem" Icon="AllApps" Content="Phần cứng &amp; Trạm ESP32" Tag="station" />
+                <NavigationViewItem x:Name="NavTimetableItem" Icon="Calendar" Content="Thời khóa biểu (TKB)" Tag="timetable" />
                 <NavigationViewItem x:Name="NavSpotifyItem" Icon="Audio" Content="Spotify &amp; Âm nhạc" Tag="spotify" />
                 <NavigationViewItem x:Name="NavAlarmsItem" Icon="Important" Content="Báo thức &amp; Còi báo" Tag="alarms" />
                 <NavigationViewItem x:Name="NavToolsItem" Icon="Edit" Content="Công cụ &amp; Groq AI" Tag="tools" />
@@ -334,7 +334,13 @@
                             <StackPanel Spacing="20">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20">
                                     <Border Grid.Column="0" Width="120" Height="120" CornerRadius="16" Background="#1A1DB954" BorderBrush="#501DB954" BorderThickness="1.5">
-                                        <FontIcon Glyph="&#xE8D6;" FontSize="48" Foreground="#1DB954" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Grid>
+                                            <Grid.Clip>
+                                                <RectangleGeometry Rect="0,0,120,120" RadiusX="16" RadiusY="16" />
+                                            </Grid.Clip>
+                                            <Image x:Name="SpotifyCoverImage" Stretch="UniformToFill" Visibility="Collapsed" ImageOpened="SpotifyCoverImage_ImageOpened" ImageFailed="SpotifyCoverImage_ImageFailed" />
+                                            <FontIcon x:Name="SpotifyCoverPlaceholder" Glyph="&#xE8D6;" FontSize="48" Foreground="#1DB954" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
                                     </Border>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -529,13 +535,18 @@
                                 </DropDownButton.Flyout>
                             </DropDownButton>
                             <Button Content="Đặt màu tùy biến" Click="SetLampColorButton_Click" VerticalAlignment="Bottom" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Trắng ấm" Tag="#FFC7AC" Click="PresetLampColor_Click" VerticalAlignment="Bottom" />
-                            <Button Content="Tím" Tag="#8B5CF6" Click="PresetLampColor_Click" VerticalAlignment="Bottom" />
-                            <Button Content="Lục bảo" Tag="#10B981" Click="PresetLampColor_Click" VerticalAlignment="Bottom" />
-                            <Button Content="Cyan" Tag="#06B6D4" Click="PresetLampColor_Click" VerticalAlignment="Bottom" />
-                            <Button Content="Hổ phách" Tag="#F59E0B" Click="PresetLampColor_Click" VerticalAlignment="Bottom" />
-                            <Button Content="Đỏ" Tag="#EF4444" Click="PresetLampColor_Click" VerticalAlignment="Bottom" />
                         </StackPanel>
+
+                        <!-- 7 màu có sẵn trên ESP32, xếp 4 ô mỗi hàng -->
+                        <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8" Margin="0,6,0,0">
+                            <Button Grid.Row="0" Grid.Column="0" Content="Trắng" Tag="#FFFFFF" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="0" Grid.Column="1" Content="Đỏ" Tag="#FF0000" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="0" Grid.Column="2" Content="Xanh lá" Tag="#00FF00" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="0" Grid.Column="3" Content="Xanh dương" Tag="#0000FF" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="1" Grid.Column="0" Content="Vàng" Tag="#FFFF00" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="1" Grid.Column="1" Content="Tím" Tag="#FF00FF" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                            <Button Grid.Row="1" Grid.Column="2" Content="Xanh ngọc" Tag="#00FFFF" Click="PresetLampColor_Click" HorizontalAlignment="Stretch" />
+                        </Grid>
 
                         <!-- Đèn: Bật / Tắt + độ sáng LED 0-100% (đèn nền OLED là cố định) -->
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
@@ -826,6 +837,11 @@
 
                                 <ComboBox x:Name="LanguageCombo" Header="Ngôn ngữ ứng dụng (Display Language)" SelectionChanged="LanguageCombo_SelectionChanged" Width="280">
                                     <ComboBoxItem Content="Tiếng Việt (Vietnamese)" Tag="vi" />
+                                    <ComboBoxItem Content="English" Tag="en" />
+                                </ComboBox>
+
+                                <ComboBox x:Name="Esp32LanguageCombo" Header="Ngôn ngữ màn hình ESP32 (Device Language)" SelectionChanged="Esp32LanguageCombo_SelectionChanged" Width="280">
+                                    <ComboBoxItem Content="Tiếng Việt" Tag="vi" />
                                     <ComboBoxItem Content="English" Tag="en" />
                                 </ComboBox>
 

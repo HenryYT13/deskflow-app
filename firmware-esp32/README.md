@@ -13,9 +13,9 @@ Arduino C++ firmware for the ESP32-WROOM-32 DeskFlow Station (`ST7789 240×320 T
 
 ## Compiling with Arduino CLI
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32 firmware/khkt --output-dir artifacts/firmware
+arduino-cli compile --fqbn esp32:esp32:esp32 firmware-esp32/khkt --output-dir artifacts/firmware
 ```
-Output binaries: `artifacts/firmware/khkt.ino.bin`, `khkt.ino.elf`, `khkt.ino.merged.bin`
+Output binaries: `artifacts/firmware-esp32/khkt.ino.bin`, `khkt.ino.elf`, `khkt.ino.merged.bin`
 
 ## MIDI melody playback (`melody.h`)
 Minimal non-blocking monophonic SMF player on the buzzer pin (`BUZZER_PIN`). Supports format 0/1 files with PPQ timing, tempo meta events, up to 128 notes (first track containing notes; channel 10/drums ignored). Respects the buzzer mute setting.

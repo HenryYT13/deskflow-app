@@ -54,7 +54,7 @@ Tất cả các bản dựng mới nhất được tự động biên dịch và
 - Tự động đóng gói thành `.dmg` kéo thả hoàn chỉnh và file `.zip` (bảo toàn quyền thực thi qua `ditto`).
 - Hướng dẫn chi tiết cách mở ứng dụng trên macOS không cần chứng chỉ trả phí: [Xem Hướng dẫn Cài đặt & Gatekeeper](docs/MACOS_INSTALL.md).
 
-### 5. ESP32 Station Firmware (`firmware/khkt/`)
+### 5. ESP32 Station Firmware (`firmware-esp32/khkt/`)
 Firmware trạm điều khiển phần cứng viết bằng **Arduino C++** cho board **ESP32-WROOM-32**:
 - **Màn hình OLED 0.96" SSD1306**: Hiển thị đồng hồ, phiên Pomodoro, bài hát Spotify đang phát, kỳ thi đếm ngược.
 - **Thanh LED RGB NeoPixel**: Hiệu ứng ánh sáng theo trạng thái làm việc (xanh dương khi tập trung, xanh lá khi nghỉ, đỏ khi báo thức).
@@ -106,7 +106,7 @@ swift build -c release
 ### ESP32 Firmware
 Sử dụng **Arduino IDE** (chọn board `ESP32 Dev Module`) hoặc **arduino-cli**:
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32 firmware/khkt
+arduino-cli compile --fqbn esp32:esp32:esp32 firmware-esp32/khkt
 ```
 Các thư viện cần cài đặt: `Adafruit GFX Library`, `Adafruit SSD1306`, `Adafruit NeoPixel`, `DHT sensor library`, `PubSubClient`, `ArduinoJson`.
 

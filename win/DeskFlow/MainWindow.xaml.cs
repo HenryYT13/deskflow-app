@@ -72,6 +72,9 @@ public sealed partial class MainWindow : Window
         Strings.CurrentLanguage = _client.Settings.Language ?? "vi";
         ApplyLanguage();
         if (LanguageCombo != null) LanguageCombo.SelectedIndex = (_client.Settings.Language == "en") ? 1 : 0;
+        _suppressEsp32LanguageSave = true;
+        if (Esp32LanguageCombo != null) Esp32LanguageCombo.SelectedIndex = (_client.Settings.Esp32Language == "en") ? 1 : 0;
+        _suppressEsp32LanguageSave = false;
         if (Esp32ThemeCombo != null) Esp32ThemeCombo.SelectedIndex = 0;
 
         try
@@ -161,6 +164,11 @@ public sealed partial class MainWindow : Window
             catch {}
         };
         telTimer.Start();
+
+        var tkbTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        tkbTimer.Interval = TimeSpan.FromSeconds(20);
+        tkbTimer.Tick += TkbAutoRefresh_Tick;
+        tkbTimer.Start();
 
         ApplyEffectiveTheme();
 
@@ -421,41 +429,70 @@ public sealed partial class MainWindow : Window
         await StartQrPairingSessionAsync();
     }
 
-    private async Task LoadTimetableAsync()
+    private async Task LoadTimetableAsync(bool showErrors = true)
     {
         try
         {
-            var (ok, data, _) = await _client.GetTimetableTodayAsync();
-            if (ok && data != null)
+            var (ok, data, msg) = await _client.GetTimetableTodayAsync();
+            if (!ok || data == null)
             {
-                if (TkbWeekText != null) TkbWeekText.Text = data.WeekNumber;
-
-                if (data.Today != null)
+                if (showErrors)
                 {
-                    if (TkbTodayTitle != null) TkbTodayTitle.Text = $"Lịch học Hôm nay ({data.Today.DisplayDay ?? data.Today.Day})";
-                    if (TkbTodayMorningUniform != null) TkbTodayMorningUniform.Text = $"Đồng phục sáng: {data.Today.DpSang}";
-                    if (TkbTodayMorningClasses != null) TkbTodayMorningClasses.Text = data.Today.MorningSummary;
-                    if (TkbTodayAfternoonUniform != null) TkbTodayAfternoonUniform.Text = $"Đồng phục chiều: {data.Today.DpChieu ?? "Không có"}";
-                    if (TkbTodayAfternoonClasses != null) TkbTodayAfternoonClasses.Text = data.Today.AfternoonSummary;
+                    ShowBanner(
+                        Strings.CurrentLanguage == "vi"
+                            ? $"Không tải được TKB: {msg}"
+                            : $"Could not load timetable: {msg}",
+                        isError: true);
                 }
-
-                if (data.Tomorrow != null)
-                {
-                    if (TkbTomorrowTitle != null) TkbTomorrowTitle.Text = $"Lịch học Ngày mai ({data.Tomorrow.DisplayDay ?? data.Tomorrow.Day})";
-                    if (TkbTomorrowMorningUniform != null) TkbTomorrowMorningUniform.Text = $"Đồng phục sáng: {data.Tomorrow.DpSang}";
-                    if (TkbTomorrowMorningClasses != null) TkbTomorrowMorningClasses.Text = data.Tomorrow.MorningSummary;
-                    if (TkbTomorrowAfternoonUniform != null) TkbTomorrowAfternoonUniform.Text = $"Đồng phục chiều: {data.Tomorrow.DpChieu ?? "Không có"}";
-                    if (TkbTomorrowAfternoonClasses != null) TkbTomorrowAfternoonClasses.Text = data.Tomorrow.AfternoonSummary;
-                }
+                return;
             }
+
+            if (TkbWeekText != null) TkbWeekText.Text = $"Tuần {data.WeekNumber}";
+
+            if (data.Today != null)
+            {
+                if (TkbTodayTitle != null) TkbTodayTitle.Text = $"Lịch học Hôm nay ({data.Today.DisplayDay ?? data.Today.Day})";
+                if (TkbTodayMorningUniform != null) TkbTodayMorningUniform.Text = $"Đồng phục sáng: {data.Today.DpSang}";
+                if (TkbTodayMorningClasses != null) TkbTodayMorningClasses.Text = data.Today.MorningSummary;
+                if (TkbTodayAfternoonUniform != null) TkbTodayAfternoonUniform.Text = $"Đồng phục chiều: {data.Today.DpChieu ?? "Không có"}";
+                if (TkbTodayAfternoonClasses != null) TkbTodayAfternoonClasses.Text = data.Today.AfternoonSummary;
+            }
+
+            if (data.Tomorrow != null)
+            {
+                if (TkbTomorrowTitle != null) TkbTomorrowTitle.Text = $"Lịch học Ngày mai ({data.Tomorrow.DisplayDay ?? data.Tomorrow.Day})";
+                if (TkbTomorrowMorningUniform != null) TkbTomorrowMorningUniform.Text = $"Đồng phục sáng: {data.Tomorrow.DpSang}";
+                if (TkbTomorrowMorningClasses != null) TkbTomorrowMorningClasses.Text = data.Tomorrow.MorningSummary;
+                if (TkbTomorrowAfternoonUniform != null) TkbTomorrowAfternoonUniform.Text = $"Đồng phục chiều: {data.Tomorrow.DpChieu ?? "Không có"}";
+                if (TkbTomorrowAfternoonClasses != null) TkbTomorrowAfternoonClasses.Text = data.Tomorrow.AfternoonSummary;
+            }
+            _lastTimetableSync = DateTime.Now;
         }
-        catch {}
+        catch (Exception ex)
+        {
+            if (showErrors) ShowBanner($"TKB error: {ex.Message}", isError: true);
+        }
+    }
+
+    private DateTime _lastTimetableSync = DateTime.MinValue;
+
+    // Keep the Windows TKB panel in sync with the backend instead of only
+    // updating when the refresh button is pressed (source of the "TKB does not
+    // sync" report).
+    private async void TkbAutoRefresh_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (TkbPanel == null || TkbPanel.Visibility != Visibility.Visible) return;
+        if ((DateTime.Now - _lastTimetableSync).TotalSeconds < 20) return;
+        await LoadTimetableAsync(showErrors: false);
     }
 
     private async void TkbSyncEsp32_Click(object sender, RoutedEventArgs e)
     {
+        await LoadTimetableAsync();
         var (ok, msg) = await _client.SwitchDisplayViewAsync("tkb");
-        ShowBanner(msg, !ok);
+        ShowBanner(ok
+            ? (Strings.CurrentLanguage == "vi" ? "Đã đồng bộ TKB và chuyển màn hình ESP32 sang TKB." : "Timetable synced and ESP32 switched to timetable.")
+            : msg, !ok);
     }
 
     private async void TkbRefresh_Click(object sender, RoutedEventArgs e)
@@ -1501,6 +1538,64 @@ public sealed partial class MainWindow : Window
         catch {}
     }
 
+    private string? _loadedCoverUrl;
+
+    private void ShowCoverPlaceholder()
+    {
+        if (SpotifyCoverImage != null)
+        {
+            SpotifyCoverImage.Source = null;
+            SpotifyCoverImage.Visibility = Visibility.Collapsed;
+        }
+        if (SpotifyCoverPlaceholder != null)
+        {
+            SpotifyCoverPlaceholder.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void UpdateSpotifyCover(string? coverUrl)
+    {
+        bool hasCover = Uri.TryCreate(coverUrl, UriKind.Absolute, out var uri) &&
+                        (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
+
+        // Avoid reloading the same artwork on every periodic refresh.
+        if (hasCover && string.Equals(coverUrl, _loadedCoverUrl, StringComparison.Ordinal) &&
+            SpotifyCoverImage?.Source != null)
+        {
+            return;
+        }
+
+        if (!hasCover || uri == null)
+        {
+            _loadedCoverUrl = null;
+            ShowCoverPlaceholder();
+            return;
+        }
+
+        try
+        {
+            _loadedCoverUrl = coverUrl;
+            SpotifyCoverImage!.Source = new BitmapImage(uri);
+        }
+        catch
+        {
+            _loadedCoverUrl = null;
+            ShowCoverPlaceholder();
+        }
+    }
+
+    private void SpotifyCoverImage_ImageOpened(object sender, RoutedEventArgs e)
+    {
+        if (SpotifyCoverImage != null) SpotifyCoverImage.Visibility = Visibility.Visible;
+        if (SpotifyCoverPlaceholder != null) SpotifyCoverPlaceholder.Visibility = Visibility.Collapsed;
+    }
+
+    private void SpotifyCoverImage_ImageFailed(object sender, RoutedEventArgs e)
+    {
+        _loadedCoverUrl = null;
+        ShowCoverPlaceholder();
+    }
+
     private void UpdateSpotifyUI(SpotifyStatusDto sp)
     {
         _isSpotifyPlaying = sp.IsPlaying;
@@ -1514,6 +1609,7 @@ public sealed partial class MainWindow : Window
         if (MiniSpotifyPlayBtn != null) MiniSpotifyPlayBtn.Content = sp.IsPlaying ? "\uE769" : "\uE768";
 
         // Full Spotify Studio
+        UpdateSpotifyCover(sp.CoverUrl);
         if (SpotifyTrackTitle != null) SpotifyTrackTitle.Text = track;
         if (SpotifyArtistName != null) SpotifyArtistName.Text = artist;
         if (SpotifyAlbumName != null) SpotifyAlbumName.Text = sp.Album ?? "";
@@ -1650,6 +1746,20 @@ public sealed partial class MainWindow : Window
             Strings.CurrentLanguage = lang;
             ApplyLanguage();
             ShowBanner(lang == "vi" ? "Đã chuyển ngôn ngữ sang Tiếng Việt" : "Language switched to English");
+        }
+    }
+
+    private bool _suppressEsp32LanguageSave;
+
+    private async void Esp32LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoaded || _client == null || _suppressEsp32LanguageSave) return;
+        if (Esp32LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
+        {
+            _client.Settings.Esp32Language = lang;
+            _client.Settings.Save();
+            var (ok, msg) = await _client.SetClockLanguageAsync(lang);
+            ShowBanner(msg, !ok);
         }
     }
 

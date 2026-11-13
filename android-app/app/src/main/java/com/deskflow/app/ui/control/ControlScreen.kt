@@ -1570,25 +1570,27 @@ fun LedControlsCard(
                 fontWeight = FontWeight.SemiBold
             )
 
+            // 7 màu có sẵn trên ESP32 (khớp preset trong firmware), 4 ô mỗi hàng.
             val presetColors = listOf(
-                "#FFC7AC" to Color(0xFFFFC7AC),
-                "#5865F2" to Color(0xFF5865F2),
-                "#FF5500" to Color(0xFFFF5500),
-                "#10B981" to Color(0xFF10B981),
-                "#38BDF8" to Color(0xFF38BDF8),
-                "#EC4899" to Color(0xFFEC4899),
-                "#F59E0B" to Color(0xFFF59E0B)
+                "#FFFFFF" to Color(0xFFFFFFFF),
+                "#FF0000" to Color(0xFFFF0000),
+                "#00FF00" to Color(0xFF00FF00),
+                "#0000FF" to Color(0xFF0000FF),
+                "#FFFF00" to Color(0xFFFFFF00),
+                "#FF00FF" to Color(0xFFFF00FF),
+                "#00FFFF" to Color(0xFF00FFFF)
             )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                presetColors.forEach { (hex, col) ->
+                presetColors.take(4).forEach { (hex, col) ->
                     val isSelected = selectedColorHex.equals(hex, ignoreCase = true)
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .weight(1f)
+                            .height(46.dp)
                             .clip(CircleShape)
                             .background(col)
                             .clickable { onColorSelect(hex) }
@@ -1603,7 +1605,39 @@ fun LedControlsCard(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = if (col == Color(0xFFFFFFFF)) Color.Black else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                presetColors.drop(4).forEach { (hex, col) ->
+                    val isSelected = selectedColorHex.equals(hex, ignoreCase = true)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp)
+                            .clip(CircleShape)
+                            .background(col)
+                            .clickable { onColorSelect(hex) }
+                            .border(
+                                width = if (isSelected) 3.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = if (col == Color(0xFFFFFFFF)) Color.Black else Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
                         }

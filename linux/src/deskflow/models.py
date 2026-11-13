@@ -368,6 +368,7 @@ class LinuxAppConfig:
     dark_mode_start: str = "20:00"
     dark_mode_end: str = "06:00"
     language: str = "vi"
+    esp32_language: str = "vi"
 
     @property
     def is_paired(self) -> bool:
@@ -410,6 +411,7 @@ class ConfigStore:
                     raw.get("dark_mode_end"), "06:00"
                 ),
                 language=str(raw.get("language") or "vi"),
+                esp32_language="en" if str(raw.get("esp32_language") or "vi").lower().startswith("en") else "vi",
             )
             if migrated:
                 self.config = cfg

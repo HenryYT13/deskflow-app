@@ -1102,10 +1102,8 @@ public sealed class DeskFlowApiClient
                     100.0);
             }
 
-            // CPU sampling is intentionally omitted here; never send a fake
-            // number. RAM is the important value for this dashboard.
-            double cpu = 0.0;
-            int battery = 100; // Windows desktops often have no battery; neutral fallback.
+            double cpu = ReadCpuPercent();
+            int battery = ReadBatteryPercent();
 
             return new LocalTelemetry(cpu, ramPct, battery);
         }
@@ -1133,15 +1131,91 @@ public sealed class DeskFlowApiClient
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx status);
 
+    private static ulong _prevIdle, _prevKernel, _prevUser;
+    private static bool _hasCpuSample;
+    private static readonly object CpuLock = new();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileTime
+    {
+        public uint Low;
+        public uint High;
+        public ulong Value => ((ulong)High << 32) | Low;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemTimes(out FileTime idle, out FileTime kernel, out FileTime user);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SystemPowerStatus
+    {
+        public byte ACLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag;
+        public uint BatteryLifeTime;
+        public uint BatteryFullLifeTime;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemPowerStatus(out SystemPowerStatus status);
+
+    /// <summary>Real machine-wide CPU usage via GetSystemTimes deltas (0-100).</summary>
+    private static double ReadCpuPercent()
+    {
+        try
+        {
+            if (!GetSystemTimes(out var idle, out var kernel, out var user)) return 0.0;
+            lock (CpuLock)
+            {
+                ulong i = idle.Value, k = kernel.Value, u = user.Value;
+                if (!_hasCpuSample)
+                {
+                    _prevIdle = i; _prevKernel = k; _prevUser = u;
+                    _hasCpuSample = true;
+                    return 0.0;
+                }
+                ulong idleDelta = i - _prevIdle;
+                ulong totalDelta = (k - _prevKernel) + (u - _prevUser);
+                _prevIdle = i; _prevKernel = k; _prevUser = u;
+                if (totalDelta == 0) return 0.0;
+                return Math.Clamp(100.0 * (totalDelta - Math.Min(idleDelta, totalDelta)) / totalDelta, 0.0, 100.0);
+            }
+        }
+        catch
+        {
+            return 0.0;
+        }
+    }
+
+    /// <summary>Battery percentage, or -1 when the machine has no battery.</summary>
+    private static int ReadBatteryPercent()
+    {
+        try
+        {
+            if (GetSystemPowerStatus(out var status) && status.BatteryLifePercent != 255)
+            {
+                return status.BatteryLifePercent;
+            }
+        }
+        catch {}
+        // Desktop without a battery: report "unknown" rather than a fake 100%.
+        return -1;
+    }
+
     public async Task ReportTelemetryAsync(double cpu, double ram, int battery)
     {
         try
         {
             using var req = CreateRequest(HttpMethod.Post, "/api/app/control/telemetry", new
             {
-                cpu = cpu,
-                ram_pct = ram,
-                battery = battery,
+                cpu = Math.Clamp(cpu, 0.0, 100.0),
+                ram_pct = Math.Clamp(ram, 0.0, 100.0),
+                // -1 means "no battery reported"; send 0 so the backend/ESP32
+                // never display an impossible negative percentage.
+                battery = Math.Clamp(battery < 0 ? 0 : battery, 0, 100),
                 device_id = Settings.DeviceId ?? "win_workstation",
                 device_name = Settings.DeviceName ?? "Windows PC",
                 timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
@@ -1185,6 +1259,25 @@ public sealed class DeskFlowApiClient
         catch
         {
             return (false, "", "");
+        }
+    }
+
+    /// <summary>Sets the ESP32 clock/OLED display language ("vi" or "en").</summary>
+    public async Task<(bool Ok, string Message)> SetClockLanguageAsync(string language)
+    {
+        try
+        {
+            string lang = string.Equals(language, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "vi";
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/clock-style",
+                new { language = lang }, authenticated: false);
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            return (resp.IsSuccessStatusCode, resp.IsSuccessStatusCode
+                ? (lang == "en" ? "ESP32 display language: English." : "ESP32 display language: Tiếng Việt.")
+                : $"HTTP {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
         }
     }
 

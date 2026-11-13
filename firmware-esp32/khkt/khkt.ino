@@ -71,11 +71,19 @@ enum MenuState {
   MENU_MAIN = 0,
   MENU_ADJUST_LED = 1,
   MENU_BUZZER_CONFIG = 2,
-  MENU_VOLUME = 3
+  MENU_VOLUME = 3,
+  MENU_LED_COLOR = 4
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 7;
+const int MENU_MAIN_ITEM_COUNT = 8;
+
+// 7 built-in lamp colours, selectable from the hardware menu (GPIO 2 NeoPixel ring).
+const char* LED_PRESETS[] = {"#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF"};
+const char* LED_PRESET_NAMES[] = {"TRANG", "DO", "XANH LA", "XANH DUONG", "VANG", "TIM", "XANH NGOC"};
+const char* LED_PRESET_NAMES_EN[] = {"WHITE", "RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN"};
+const int LED_PRESET_COUNT = 7;
+int ledPresetIndex = 0;
 int buzzerCurrentItem = 0;
 const int MENU_BUZZER_ITEM_COUNT = 4;
 
@@ -857,8 +865,9 @@ void drawSettingsMenu() {
   printCenteredText(tr("CAI DAT PHAN CUNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
 
   if (menuState == MENU_MAIN) {
+    // 8 rows (adds "MAU DEN") must stay above the footer at y=288.
     int startY = 44;
-    int cardH = 31;
+    int cardH = 28;
     int gap = 2;
 
     for (int i = 0; i < MENU_MAIN_ITEM_COUNT; i++) {
@@ -874,26 +883,32 @@ void drawSettingsMenu() {
 
       tft->setTextSize(1);
       tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
-      tft->setCursor(20, y + 6);
+      tft->setCursor(20, y + 4);
 
       if (i == 0) {
         tft->printf("%s %s: %s", selected ? ">" : " ",
                     tr("DEN LED", "LED RING"), ledState ? tr("BAT", "ON") : tr("TAT", "OFF"));
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->printf("%d%%  %s", ledBrightness, tr("PLAY: Bat/Tat", "PLAY: On/Off"));
       } else if (i == 1) {
+        tft->printf("%s %s: %s", selected ? ">" : " ", tr("MAU DEN", "LAMP COLOR"),
+                    stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]);
+        tft->setCursor(24, y + 16);
+        tft->setTextColor(COL_MUTED, COL_CARD);
+        tft->print(tr("PLAY: Chon 7 mau co san", "PLAY: Pick 1 of 7 presets"));
+      } else if (i == 2) {
         tft->printf("%s %s: %d%%", selected ? ">" : " ", tr("DO SANG LED", "LED BRIGHTNESS"), ledBrightness);
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("Chinh do sang vong LED", "Adjust ring brightness (0-100%)"));
-      } else if (i == 2) {
+      } else if (i == 3) {
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("COI CHIP", "BUZZER"),
                     buzzerEnabled ? tr("BAT", "ON") : tr("TAT (MUTE)", "OFF (MUTE)"));
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->printf(tr("Do dai beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
-      } else if (i == 3) {
+      } else if (i == 4) {
         if (spotifyVolumeKnown) {
           tft->printf("%s %s: %d%%", selected ? ">" : " ",
                       tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"), spotifyVolume);
@@ -901,26 +916,26 @@ void drawSettingsMenu() {
           tft->printf("%s %s: --", selected ? ">" : " ",
                       tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"));
         }
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY: Vao | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"));
-      } else if (i == 4) {
+      } else if (i == 5) {
         String modeStr = tr("TAT (LIGHT)", "OFF (LIGHT)");
         if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUON BAT (DARK)", "ALWAYS (DARK)");
         else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LICH (AUTO)", "SCHEDULED");
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("CHE DO TOI", "DARK MODE"), modeStr.c_str());
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->printf(tr("Lich: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
-      } else if (i == 5) {
+      } else if (i == 6) {
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("NGON NGU", "LANGUAGE"),
                     stationEnglish ? "ENGLISH" : "TIENG VIET");
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY: Doi VI <-> EN", "PLAY: Switch VI <-> EN"));
-      } else if (i == 6) {
+      } else if (i == 7) {
         tft->printf("%s %s", selected ? ">" : " ", tr("THOAT CAI DAT", "EXIT SETTINGS"));
-        tft->setCursor(24, y + 22);
+        tft->setCursor(24, y + 16);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY hoac giu >>/<<", "PLAY or hold >>/<<"));
       }
@@ -945,11 +960,51 @@ void drawSettingsMenu() {
 
     drawProgressBarSmooth(28, 175, 184, 16, ledBrightness, COL_AMBER);
 
-    printCenteredText(tr("PREV: -10% | NEXT: +10%", "PREV: -10% | NEXT: +10%"), 210, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("PREV: -5% | NEXT: +5%", "PREV: -5% | NEXT: +5%"), 210, 1, COL_WHITE, COL_CARD);
     printCenteredText(tr("Nhan PLAY de Luu & Thoat", "Press PLAY to save & exit"), 235, 1, COL_CYAN, COL_CARD);
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
     printCenteredText(tr("Giu NEXT: Quay lai menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
+
+  } else if (menuState == MENU_LED_COLOR) {
+    printCenteredText(tr("MAU DEN LED (7 MAU)", "LED LAMP COLOR (7 PRESETS)"), 50, 2, COL_CYAN, COL_BG);
+
+    // 4 cells per row (row 0 = 4, row 1 = 3) so the layout is not cramped.
+    int cellW = 50;
+    int cellH = 76;
+    int gridX = 11;
+    int gridY = 92;
+    int stepX = 55;
+    int stepY = 88;
+
+    for (int i = 0; i < LED_PRESET_COUNT; i++) {
+      int col = i % 4;
+      int row = i / 4;
+      int x = gridX + col * stepX;
+      int y = gridY + row * stepY;
+      bool selected = (i == ledPresetIndex);
+
+      uint8_t r, g, b;
+      parseHexColor(LED_PRESETS[i], r, g, b);
+
+      tft->fillRoundRect(x, y, cellW, cellH, 6, COL_CARD);
+      tft->drawRoundRect(x, y, cellW, cellH, 6, selected ? COL_AMBER : COL_BORDER);
+      if (selected) {
+        tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 7, COL_AMBER);
+      }
+
+      tft->fillCircle(x + cellW / 2, y + 28, 15, tft->color565(r, g, b));
+
+      const char* name = stationEnglish ? LED_PRESET_NAMES_EN[i] : LED_PRESET_NAMES[i];
+      tft->setTextSize(1);
+      tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
+      int nameW = (int)strlen(name) * 6;
+      tft->setCursor(x + (cellW - nameW) / 2, y + 52);
+      tft->print(name);
+    }
+
+    tft->drawFastHLine(10, 296, 220, COL_BORDER);
+    printCenteredText(tr("PREV/NEXT: Chon | PLAY: Ap dung", "PREV/NEXT: Select | PLAY: Apply"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_VOLUME) {
     printCenteredText(tr("AM LUONG SPOTIFY (%)", "SPOTIFY VOLUME (%)"), 52, 1, COL_CYAN, COL_BG);
@@ -2166,6 +2221,9 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       String hexCol = doc["hex"] | "#FFFFFF";
       srvStats.lampColor = hexCol;
       prefs.putString("lamp_col", hexCol);
+      for (int i = 0; i < LED_PRESET_COUNT; i++) {
+        if (hexCol.equalsIgnoreCase(LED_PRESETS[i])) { ledPresetIndex = i; break; }
+      }
       ledState = true;
       prefs.putBool("led_state", true);
       updateLampLed();
@@ -3058,19 +3116,24 @@ void handleMenuPlay() {
       triggerBuzz(35);
       addLog("LED", String("Menu toggle LED: ") + (ledState ? "ON" : "OFF"));
     } else if (menuCurrentItem == 1) {
-      menuState = MENU_ADJUST_LED;
+      // "MAU DEN": open the 7 preset colours.
+      menuState = MENU_LED_COLOR;
       screenNeedUpdate = true;
       triggerBuzz(35);
     } else if (menuCurrentItem == 2) {
+      menuState = MENU_ADJUST_LED;
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+    } else if (menuCurrentItem == 3) {
       menuState = MENU_BUZZER_CONFIG;
       buzzerCurrentItem = 0;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 3) {
+    } else if (menuCurrentItem == 4) {
       menuState = MENU_VOLUME;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 4) {
+    } else if (menuCurrentItem == 5) {
       // Cycle Dark Mode: off -> always_on -> scheduled -> off
       if (darkModeSetting == "off") {
         darkModeSetting = "always_on";
@@ -3084,13 +3147,13 @@ void handleMenuPlay() {
       publishHardwareSettingsUpdate();
       screenNeedUpdate = true;
       triggerBuzz(45);
-    } else if (menuCurrentItem == 5) {
+    } else if (menuCurrentItem == 6) {
       // Switch station language VI <-> EN
       setStationLanguage(!stationEnglish);
       screenNeedUpdate = true;
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
-    } else if (menuCurrentItem == 6) {
+    } else if (menuCurrentItem == 7) {
       inSettingsMenu = false;
       menuState = MENU_MAIN;
       lastRenderedView = "";
@@ -3098,6 +3161,19 @@ void handleMenuPlay() {
       triggerBuzz(35);
       addLog("MENU", "Thoat menu cai dat qua muc EXIT.");
     }
+  } else if (menuState == MENU_LED_COLOR) {
+    // Apply the highlighted preset: store it, light the ring, then go back.
+    srvStats.lampColor = LED_PRESETS[ledPresetIndex];
+    prefs.putString("lamp_col", srvStats.lampColor);
+    prefs.putInt("led_color_idx", ledPresetIndex);
+    ledState = true;
+    ledBlinkMode = false;
+    prefs.putBool("led_state", true);
+    updateLampLed();
+    menuState = MENU_MAIN;
+    screenNeedUpdate = true;
+    triggerBuzz(45);
+    addLog("LED", "Preset color: " + srvStats.lampColor);
   } else if (menuState == MENU_ADJUST_LED) {
     prefs.putInt("led_bright", ledBrightness);
     ledState = ledBrightness > 0;
@@ -3153,12 +3229,16 @@ void handleMenuNext() {
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_ADJUST_LED) {
-    ledBrightness = min(100, ledBrightness + 10);
+    ledBrightness = min(100, ledBrightness + 5);
     bool oldState = ledState;
     ledState = true;
     updateLampLed();
     ledState = oldState;
     prefs.putInt("led_bright", ledBrightness);
+    screenNeedUpdate = true;
+    triggerBuzz(20);
+  } else if (menuState == MENU_LED_COLOR) {
+    ledPresetIndex = (ledPresetIndex + 1) % LED_PRESET_COUNT;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_VOLUME) {
@@ -3180,12 +3260,16 @@ void handleMenuPrev() {
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_ADJUST_LED) {
-    ledBrightness = max(0, ledBrightness - 10);
+    ledBrightness = max(0, ledBrightness - 5);
     bool oldState = ledState;
     ledState = true;
     updateLampLed();
     ledState = oldState;
     prefs.putInt("led_bright", ledBrightness);
+    screenNeedUpdate = true;
+    triggerBuzz(20);
+  } else if (menuState == MENU_LED_COLOR) {
+    ledPresetIndex = (ledPresetIndex - 1 + LED_PRESET_COUNT) % LED_PRESET_COUNT;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_VOLUME) {
@@ -3286,10 +3370,11 @@ void handleHardwareButtons() {
       if (!inSettingsMenu) {
         inSettingsMenu = true;
         menuState = MENU_MAIN;
-        menuCurrentItem = 0;
+        // Land on "MAU DEN" so holding >> immediately offers the 7 lamp colours.
+        menuCurrentItem = 1;
         lastRenderedView = "";
         screenNeedUpdate = true;
-        addLog("MENU", "Mo menu cai dat phan cung.");
+        addLog("MENU", "Mo menu cai dat (Mau den).");
       } else {
         // Hold >> again: exit immediately from the main list or any submenu.
         inSettingsMenu = false;
@@ -3451,6 +3536,11 @@ void setup() {
   buzzerEnabled = prefs.getBool("buzz_en", true);
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
   srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
+  ledPresetIndex = prefs.getInt("led_color_idx", 0);
+  if (ledPresetIndex < 0 || ledPresetIndex >= LED_PRESET_COUNT) ledPresetIndex = 0;
+  for (int i = 0; i < LED_PRESET_COUNT; i++) {
+    if (srvStats.lampColor.equalsIgnoreCase(LED_PRESETS[i])) { ledPresetIndex = i; break; }
+  }
   ledState = prefs.getBool("led_state", true); // Default to ON so NeoPixel turns on on boot!
   updateLampLed();
 

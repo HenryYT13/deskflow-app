@@ -113,9 +113,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
     PAGES = [
         ("dashboard", "Giám sát hệ thống & Đo từ xa", "computer-symbolic"),
         ("station", "Phần cứng & Trạm ESP32", "preferences-desktop-display-symbolic"),
+        ("tkb", "Thời khóa biểu (TKB)", "x-office-calendar-symbolic"),
         ("spotify", "Spotify & Âm nhạc", "audio-x-generic-symbolic"),
         ("alarms", "Báo thức & Còi báo", "alarm-symbolic"),
-        ("tkb", "Thời khóa biểu (TKB)", "x-office-calendar-symbolic"),
         ("tools", "Công cụ & Groq AI", "document-edit-symbolic"),
         ("settings", "Cài đặt & Giao diện", "emblem-system-symbolic"),
     ]
@@ -208,10 +208,6 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         self.header_bar.set_title_widget(self.title_widget)
 
-        self.theme_badge_label = Gtk.Label(label="")
-        self.theme_badge_label.add_css_class("caption")
-        self.header_bar.pack_start(self.theme_badge_label)
-
         refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh All Station Data (Ctrl+R)")
         refresh_btn.connect("clicked", lambda *_: self.refresh_all_async())
@@ -285,6 +281,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             lbl.set_hexpand(True)
             box.append(icon)
             box.append(lbl)
+            row.title_label = lbl  # type: ignore[attr-defined]
             row.set_child(box)
             self.sidebar_list.append(row)
 
@@ -702,7 +699,6 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             is_dark = style_mgr.get_dark()
             badge = "Theme: System"
 
-        self.theme_badge_label.set_text(badge)
         if hasattr(self, "schedule_status_row"):
             self.schedule_status_row.set_subtitle(
                 f"Window {cfg.dark_mode_start} → {cfg.dark_mode_end} • Currently {'DARK' if is_dark else 'LIGHT'}"
@@ -924,6 +920,17 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         page.add(player_group)
 
+        self.sp_cover_picture = Gtk.Picture()
+        self.sp_cover_picture.set_size_request(180, 180)
+        self.sp_cover_picture.set_content_fit(Gtk.ContentFit.COVER)
+        self.sp_cover_picture.set_halign(Gtk.Align.CENTER)
+        self.sp_cover_picture.set_margin_top(6)
+        self.sp_cover_picture.set_margin_bottom(6)
+        player_group.add(self.sp_cover_picture)
+
+        self._cover_url: Optional[str] = None
+        self._cover_request_id = 0
+
         self.sp_track_row = Adw.ActionRow(
             title="Chưa phát nhạc",
             subtitle="Spotify Desktop Client",
@@ -1050,6 +1057,14 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         time_str = f"{_fmt(progress_ms)} / {_fmt(duration_ms)}"
 
         if hasattr(self, "sp_track_row"):
+            cover_url = data.get("cover_url") or data.get("album_art_url") or data.get("image_url")
+            if cover_url and cover_url != self._cover_url:
+                self._load_cover_art(str(cover_url))
+            elif not cover_url and self._cover_url:
+                self._cover_url = None
+                self.sp_track_icon.set_from_icon_name("audio-x-generic-symbolic")
+                self.sp_cover_picture.set_paintable(None)
+
             self.sp_track_row.set_title(track)
             self.sp_track_row.set_subtitle(f"{artist} • {album}" if album else artist)
             self.sp_status_badge.set_text("ĐANG PHÁT" if is_playing else "TẠM DỪNG")
@@ -1063,6 +1078,35 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self.sp_mini_row.set_title(track)
             self.sp_mini_row.set_subtitle(f"{artist} • {'Đang phát' if is_playing else 'Tạm dừng'}")
             self.sp_mini_play_btn.set_icon_name("media-playback-pause-symbolic" if is_playing else "media-playback-start-symbolic")
+
+    def _load_cover_art(self, url: str) -> None:
+        """Fetch Spotify album art off the UI thread and paint it when ready."""
+        self._cover_url = url
+        self._cover_request_id += 1
+        request_id = self._cover_request_id
+
+        def _fetch() -> None:
+            texture = None
+            try:
+                import urllib.request
+
+                request = urllib.request.Request(url, headers={"User-Agent": "DeskFlow/1.0"})
+                with urllib.request.urlopen(request, timeout=8) as response:
+                    payload = response.read(5 * 1024 * 1024 + 1)
+                if len(payload) <= 5 * 1024 * 1024:
+                    texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(payload))
+            except Exception as exc:
+                logger.debug("[Spotify] Cover art unavailable: %s", exc)
+
+            def _apply() -> bool:
+                if request_id == self._cover_request_id and texture is not None:
+                    self.sp_cover_picture.set_paintable(texture)
+                    self.sp_track_icon.set_from_paintable(texture)
+                return False
+
+            GLib.idle_add(_apply)
+
+        threading.Thread(target=_fetch, daemon=True).start()
 
     # =========================================================================
     # Page: Unified Tools & Groq AI (Notes, Countdowns, Morse, Focus)
@@ -1540,57 +1584,90 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         header_group.add(action_row)
 
-        # Today Group
-        self.tkb_today_group = Adw.PreferencesGroup(
-            title="Hôm nay",
-            description="Lịch học và quy định đồng phục hôm nay.",
-        )
-        page.add(self.tkb_today_group)
+        # Day cards, laid out like the macOS timetable view: one card per day,
+        # uniform badges on top, then morning / afternoon lesson columns.
+        self.tkb_today_card = self._build_tkb_day_card(is_today=True)
+        page.add(self.tkb_today_card["container"])
 
-        self.tkb_today_dp_row = Adw.ActionRow(
-            title="Quy định đồng phục hôm nay",
-            subtitle="Sáng: Tự do • Chiều: Tự do",
-        )
-        self.tkb_today_group.add(self.tkb_today_dp_row)
-
-        self.tkb_today_morning_row = Adw.ActionRow(
-            title="Tiết học buổi Sáng",
-            subtitle="Đang cập nhật...",
-        )
-        self.tkb_today_group.add(self.tkb_today_morning_row)
-
-        self.tkb_today_afternoon_row = Adw.ActionRow(
-            title="Tiết học buổi Chiều",
-            subtitle="Đang cập nhật...",
-        )
-        self.tkb_today_group.add(self.tkb_today_afternoon_row)
-
-        # Tomorrow Group
-        self.tkb_tomorrow_group = Adw.PreferencesGroup(
-            title="Ngày mai / Kế tiếp",
-            description="Lịch học và quy định đồng phục ngày mai / buổi học kế tiếp.",
-        )
-        page.add(self.tkb_tomorrow_group)
-
-        self.tkb_tomorrow_dp_row = Adw.ActionRow(
-            title="Quy định đồng phục kế tiếp",
-            subtitle="Sáng: Tự do • Chiều: Tự do",
-        )
-        self.tkb_tomorrow_group.add(self.tkb_tomorrow_dp_row)
-
-        self.tkb_tomorrow_morning_row = Adw.ActionRow(
-            title="Tiết học buổi Sáng",
-            subtitle="Đang cập nhật...",
-        )
-        self.tkb_tomorrow_group.add(self.tkb_tomorrow_morning_row)
-
-        self.tkb_tomorrow_afternoon_row = Adw.ActionRow(
-            title="Tiết học buổi Chiều",
-            subtitle="Đang cập nhật...",
-        )
-        self.tkb_tomorrow_group.add(self.tkb_tomorrow_afternoon_row)
+        self.tkb_tomorrow_card = self._build_tkb_day_card(is_today=False)
+        page.add(self.tkb_tomorrow_card["container"])
 
         return page
+
+    def _build_tkb_day_card(self, is_today: bool) -> Dict[str, Any]:
+        accent = "#38BDF8" if is_today else "#A78BFA"
+        container = Adw.PreferencesGroup(
+            title=("Lịch học hôm nay" if is_today else "Lịch học kế tiếp"),
+            description=("Đồng phục và tiết học của ngày hiện tại." if is_today
+                         else "Ngày học gần nhất tiếp theo có tiết."),
+        )
+
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.add_css_class("deskflow-card")
+        card.set_margin_top(4)
+        card.set_margin_bottom(4)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        title_lbl = Gtk.Label(xalign=0.0)
+        title_lbl.set_markup(f'<span weight="bold" foreground="{accent}">{("HÔM NAY" if is_today else "NGÀY KẾ TIẾP")}</span>')
+        header.append(title_lbl)
+        day_lbl = Gtk.Label(label="")
+        day_lbl.add_css_class("caption")
+        day_lbl.set_hexpand(True)
+        day_lbl.set_xalign(0.0)
+        header.append(day_lbl)
+
+        today_badge = Gtk.Label(label="HÔM NAY")
+        today_badge.add_css_class("deskflow-badge-pinned")
+        today_badge.set_visible(is_today)
+        header.append(today_badge)
+        card.append(header)
+
+        uniform_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        morning_uniform = Gtk.Label(xalign=0.0)
+        morning_uniform.add_css_class("deskflow-badge-pinned")
+        afternoon_uniform = Gtk.Label(xalign=0.0)
+        afternoon_uniform.add_css_class("deskflow-badge-online")
+        afternoon_uniform.set_visible(False)
+        uniform_row.append(morning_uniform)
+        uniform_row.append(afternoon_uniform)
+        card.append(uniform_row)
+
+        columns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        columns.set_homogeneous(True)
+
+        morning_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        morning_title = Gtk.Label(label="Tiết học sáng", xalign=0.0)
+        morning_title.add_css_class("heading")
+        morning_body = Gtk.Label(label="Đang cập nhật...", xalign=0.0)
+        morning_body.set_wrap(True)
+        morning_body.add_css_class("caption")
+        morning_col.append(morning_title)
+        morning_col.append(morning_body)
+
+        afternoon_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        afternoon_title = Gtk.Label(label="Tiết học chiều", xalign=0.0)
+        afternoon_title.add_css_class("heading")
+        afternoon_body = Gtk.Label(label="Đang cập nhật...", xalign=0.0)
+        afternoon_body.set_wrap(True)
+        afternoon_body.add_css_class("caption")
+        afternoon_col.append(afternoon_title)
+        afternoon_col.append(afternoon_body)
+
+        columns.append(morning_col)
+        columns.append(afternoon_col)
+        card.append(columns)
+
+        container.add(card)
+        return {
+            "container": container,
+            "header_title": title_lbl,
+            "day": day_lbl,
+            "uniform_morning": morning_uniform,
+            "uniform_afternoon": afternoon_uniform,
+            "morning": morning_body,
+            "afternoon": afternoon_body,
+        }
 
     def _sync_tkb_to_esp32(self) -> None:
         self._run_bg(
@@ -1599,38 +1676,37 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
 
     def _apply_tkb_ui(self, tt: Optional[DualDayTimetable]) -> None:
-        if not tt or not hasattr(self, "tkb_action_row"):
+        if not tt or not hasattr(self, "tkb_today_card"):
             return
-        self.tkb_week_badge.set_text(f"Tuần: {tt.week_number}")
+        self.tkb_week_badge.set_text(f"Tuần {tt.week_number}")
         self.tkb_action_row.set_subtitle(f"Tuần học hiện tại: {tt.week_number}")
 
-        today = tt.today
-        self.tkb_today_group.set_title(f"Hôm nay ({today.day})")
-        dp_today = f"Sáng: {today.dp_sang}" + (f" • Chiều: {today.dp_chieu}" if (today.has_afternoon and today.dp_chieu) else "")
-        self.tkb_today_dp_row.set_subtitle(dp_today)
-        m_today = " • ".join(today.morning) if today.morning else "Nghỉ học buổi sáng"
-        self.tkb_today_morning_row.set_subtitle(m_today)
-        if today.has_afternoon and today.afternoon:
-            a_today = " • ".join(today.afternoon)
-            self.tkb_today_afternoon_row.set_subtitle(a_today)
-        else:
-            self.tkb_today_afternoon_row.set_subtitle("Không có tiết học buổi chiều")
+        def _fill(card: Dict[str, Any], day, heading_prefix: str) -> None:
+            day_name = day.display_day or day.day
+            card["container"].set_title(f"{heading_prefix} • {day_name}")
+            card["day"].set_text(
+                f"{day_name} • {len(day.morning)} tiết sáng"
+                + (f" • {len(day.afternoon)} tiết chiều" if day.has_afternoon else "")
+            )
+            card["uniform_morning"].set_text(f"Đồng phục sáng: {day.dp_sang}")
+            has_pm_uniform = bool(day.dp_chieu)
+            card["uniform_afternoon"].set_visible(has_pm_uniform)
+            if has_pm_uniform:
+                card["uniform_afternoon"].set_text(f"Đồng phục chiều: {day.dp_chieu}")
+            card["morning"].set_text(
+                "\n".join(day.morning) if day.morning else "Nghỉ học buổi sáng"
+            )
+            if day.has_afternoon and day.afternoon:
+                card["afternoon"].set_text("\n".join(day.afternoon))
+            else:
+                card["afternoon"].set_text("Không có tiết học buổi chiều")
 
-        tom = tt.tomorrow
-        disp_tom = tom.display_day or tom.day
-        self.tkb_tomorrow_group.set_title(f"Ngày mai / Kế tiếp ({disp_tom})")
-        dp_tom = f"Sáng: {tom.dp_sang}" + (f" • Chiều: {tom.dp_chieu}" if (tom.has_afternoon and tom.dp_chieu) else "")
-        self.tkb_tomorrow_dp_row.set_subtitle(dp_tom)
-        m_tom = " • ".join(tom.morning) if tom.morning else "Nghỉ học buổi sáng"
-        self.tkb_tomorrow_morning_row.set_subtitle(m_tom)
-        if tom.has_afternoon and tom.afternoon:
-            a_tom = " • ".join(tom.afternoon)
-            self.tkb_tomorrow_afternoon_row.set_subtitle(a_tom)
-        else:
-            self.tkb_tomorrow_afternoon_row.set_subtitle("Không có tiết học buổi chiều")
+        _fill(self.tkb_today_card, tt.today, "Lịch học hôm nay")
+        _fill(self.tkb_tomorrow_card, tt.tomorrow, "Lịch học kế tiếp")
 
         if hasattr(self, "timetable_row"):
-            self.timetable_row.set_subtitle(f"{today.day}: {m_today} | ĐP: {today.dp_sang}")
+            m_today = " • ".join(tt.today.morning) if tt.today.morning else "Nghỉ sáng"
+            self.timetable_row.set_subtitle(f"{tt.today.day}: {m_today} | ĐP: {tt.today.dp_sang}")
 
     def refresh_tkb_async(self) -> None:
         def _done(res_and_tt: Tuple[ApiResult, Optional[DualDayTimetable]]) -> None:
@@ -1687,6 +1763,14 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             description="Generate inspiring study &amp; productivity quotes from Groq AI.",
         )
         page.add(quote_group)
+
+        self.quote_topic_entry = Gtk.Entry()
+        self.quote_topic_entry.set_placeholder_text("Chủ đề (VD: học tập, sáng tạo, kỷ luật)")
+        self.quote_topic_entry.set_text("học tập và kiên trì")
+        self.quote_topic_entry.set_hexpand(True)
+        self.quote_topic_row = Adw.ActionRow(title="Chủ đề câu danh ngôn")
+        self.quote_topic_row.add_suffix(self.quote_topic_entry)
+        quote_group.add(self.quote_topic_row)
 
         self.quote_display_row = Adw.ActionRow(
             title="Current Motivational Quote",
@@ -1802,7 +1886,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                     return
             self.show_toast(f"Quote generation failed: {res.error_message}")
             self.quote_display_row.set_subtitle("Could not generate quote.")
-        self._run_bg(lambda: self.api_client.generate_quote(), _done)
+        topic = self.quote_topic_entry.get_text().strip() or "học tập và kiên trì"
+        self._run_bg(lambda: self.api_client.generate_quote(topic=topic), _done)
 
     def _confirm_delete_note(self, note: NoteItem) -> None:
         if note.id in self._deleting_note_ids:
@@ -2659,6 +2744,17 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.esp32_theme_combo.add_suffix(esp_apply_btn)
         esp_theme_group.add(self.esp32_theme_combo)
 
+        self.esp32_language_combo = Adw.ComboRow(
+            title="Ngôn ngữ màn hình ESP32 (Device Language)",
+            subtitle="Ngôn ngữ hiển thị của đồng hồ/OLED trên trạm, tách biệt ngôn ngữ ứng dụng.",
+        )
+        self.esp32_language_combo.set_model(Gtk.StringList.new(["Tiếng Việt", "English"]))
+        self.esp32_language_combo.set_selected(
+            1 if getattr(self.config_store.config, "esp32_language", "vi") == "en" else 0
+        )
+        self.esp32_language_combo.connect("notify::selected", self._on_esp32_language_changed)
+        esp_theme_group.add(self.esp32_language_combo)
+
         self.dark_start_entry = Adw.EntryRow(title="Dark Mode Start Time (24h HH:MM)")
         self.dark_start_entry.set_text(self.config_store.config.dark_mode_start)
         theme_group.add(self.dark_start_entry)
@@ -2759,7 +2855,54 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         new_lang = "vi" if idx == 1 else "en"
         self.config_store.config.language = new_lang
         self.config_store.save()
-        self.show_toast("Đã chuyển ngôn ngữ sang Tiếng Việt" if new_lang == "vi" else "Language switched to English")
+        self._refresh_language()
+
+    def _refresh_language(self) -> None:
+        """Retranslate the parts of the shell that are safe to update in place."""
+        is_vi = self.config_store.config.language == "vi"
+        titles = {
+            "dashboard": ("Giám sát hệ thống & Đo từ xa", "System Monitoring & Telemetry"),
+            "station": ("Phần cứng & Trạm ESP32", "Hardware & ESP32 Station"),
+            "spotify": ("Spotify & Âm nhạc", "Spotify & Media"),
+            "alarms": ("Báo thức & Còi báo", "Alarms & Buzzer"),
+            "tkb": ("Thời khóa biểu (TKB)", "Timetable (TKB)"),
+            "tools": ("Công cụ & Groq AI", "Tools & Groq AI"),
+            "settings": ("Cài đặt & Giao diện", "Settings & Appearance"),
+        }
+        sidebar = getattr(self, "sidebar_list", None)
+        if sidebar is not None:
+            index = 0
+            while True:
+                row = sidebar.get_row_at_index(index)
+                if row is None:
+                    break
+                page_id = getattr(row, "page_id", None)
+                label = getattr(row, "title_label", None)
+                if page_id in titles and label is not None:
+                    vi, en = titles[page_id]
+                    label.set_text(vi if is_vi else en)
+                index += 1
+        if hasattr(self, "language_combo"):
+            self.language_combo.set_subtitle(
+                "Chọn ngôn ngữ giao diện giữa English và Tiếng Việt."
+                if is_vi else "Choose interface language between English and Tiếng Việt."
+            )
+        self.show_toast("Đã chuyển ngôn ngữ sang Tiếng Việt" if is_vi else "Language switched to English")
+
+    def _on_esp32_language_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
+        lang = "en" if combo.get_selected() == 1 else "vi"
+        if not hasattr(self.config_store.config, "esp32_language"):
+            setattr(self.config_store.config, "esp32_language", lang)
+        else:
+            self.config_store.config.esp32_language = lang
+        self.config_store.save()
+        self._run_bg(
+            lambda: self.api_client.set_clock_language(lang),
+            lambda r: self.show_toast(
+                ("Đã đổi ngôn ngữ ESP32 sang English" if lang == "en" else "Đã đổi ngôn ngữ ESP32 sang Tiếng Việt")
+                if r.ok else r.error_message
+            ),
+        )
 
     def _on_apply_esp32_theme_clicked(self, _btn: Gtk.Button) -> None:
         idx = self.esp32_theme_combo.get_selected()

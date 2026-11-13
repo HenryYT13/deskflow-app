@@ -163,6 +163,7 @@ public sealed class WindowsAppSettings
     public string? DeviceId { get; set; }
     public string DeviceName { get; set; } = "DeskFlow Windows 11 (WinUI 3)";
     public string Language { get; set; } = "vi";
+    public string Esp32Language { get; set; } = "vi";
     public string AppTheme { get; set; } = "system";
     public string DarkModeStart { get; set; } = "20:00";
     public string DarkModeEnd { get; set; } = "06:00";
