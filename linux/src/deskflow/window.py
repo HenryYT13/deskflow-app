@@ -2204,7 +2204,11 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             title="Giai điệu có sẵn",
             subtitle="Chọn bài rồi bấm Phát.",
         )
-        self.melody_preset_combo.set_model(Gtk.StringList.new(["Mario", "Nokia Tune", "Zelda", "Tetris"]))
+        self.melody_preset_combo.set_model(
+            Gtk.StringList.new(
+                ["Super Mario", "Rickroll", "Tetris Theme", "Coffin Dance", "Imperial March", "Nokia Tune"]
+            )
+        )
         melody_group.add(self.melody_preset_combo)
 
         melody_actions = Adw.ActionRow(
@@ -2231,7 +2235,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         return page
 
-    MELODY_PRESET_IDS = ["mario", "nokia", "zelda", "tetris"]
+    MELODY_PRESET_IDS = ["mario", "rickroll", "tetris", "coffin", "starwars", "nokia"]
 
     def _on_play_melody_preset(self, _btn: Gtk.Button) -> None:
         idx = self.melody_preset_combo.get_selected()

@@ -4,6 +4,24 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.1.2] - 2026-11-13
+
+### 🐛 Sửa lỗi ESP32 (Fixes)
+- **Đổi ngôn ngữ ESP32 từ app không có tác dụng.** App gửi `language` trong `clock-style` nhưng firmware chỉ lưu cho mặt đồng hồ; menu, danh sách màn hình và các trang trạng thái vẫn tiếng Việt. Giờ `language` đổi toàn bộ UI trạm (có thêm lệnh MQTT `station_language`).
+- **Menu bị nháy liên tục.** Mỗi bản tin MQTT/telemetry (~1 giây) đều set `screenNeedUpdate` và vẽ lại menu. Giờ menu chỉ vẽ lại khi trạng thái menu thực sự đổi.
+- **Các màn hình menu bị dồn cục.** Tách thành **4 dòng/trang**, vượt qua dòng thứ 4 thì tự sang trang (có chỉ số `1/2`, `2/2`):
+  - Cài đặt phần cứng: 8 mục → 2 trang.
+  - Danh sách màn hình: 9 mục → 3 trang.
+  - Chọn màu đèn: 7 màu → 2 trang, **lưới 2×2 ô lớn** cho dễ đọc.
+
+### ✨ MIDI (đã có trên cả 3 app)
+- **Android**: mục *Buzzer → MIDI Jukebox* (6 bài mẫu + chọn file `.mid`).
+- **Windows**: mục *Công cụ → Trình phát nhạc MIDI* (6 bài mẫu + chọn file `.mid`).
+- **Linux**: mục *Mã Morse → Phát nhạc MIDI trên còi ESP32* (6 bài mẫu + chọn file `.mid`).
+- Sửa danh sách preset của Linux: trước đó có `zelda` (không tồn tại trên server nên trả 404) và thiếu 3 bài; giờ khớp đúng 6 preset của backend.
+
+---
+
 ## [v1.1.1] - 2026-11-13
 
 ### 🐛 Sửa lỗi (Fixes)

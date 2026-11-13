@@ -77,6 +77,10 @@ enum MenuState {
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
 const int MENU_MAIN_ITEM_COUNT = 8;
+// 4 entries per page keeps the 240x320 panel readable; moving past the last
+// entry flips to the next page instead of squeezing all rows together.
+const int MENU_ROWS_PER_PAGE = 4;
+int menuPage = 0;
 
 // 7 built-in lamp colours, selectable from the hardware menu (GPIO 2 NeoPixel ring).
 const char* LED_PRESETS[] = {"#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF"};
@@ -84,14 +88,16 @@ const char* LED_PRESET_NAMES[] = {"TRANG", "DO", "XANH LA", "XANH DUONG", "VANG"
 const char* LED_PRESET_NAMES_EN[] = {"WHITE", "RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN"};
 const int LED_PRESET_COUNT = 7;
 int ledPresetIndex = 0;
+int colorPage = 0;
 int buzzerCurrentItem = 0;
 const int MENU_BUZZER_ITEM_COUNT = 4;
 
 // View Selector Menu State Machine
 bool inViewMenu = false;
-bool viewMenuNeedsRedraw = false;
 int viewMenuIndex = 0;
 const int VIEW_MENU_COUNT = 9;
+const int VIEW_ROWS_PER_PAGE = 4;
+int viewMenuPage = 0;
 struct ViewMenuItem {
   const char* id;
   const char* title;
@@ -866,13 +872,20 @@ void drawSettingsMenu() {
   printCenteredText(tr("CAI DAT PHAN CUNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
 
   if (menuState == MENU_MAIN) {
-    // 8 rows (adds "MAU DEN") must stay above the footer at y=288.
-    int startY = 44;
-    int cardH = 28;
-    int gap = 2;
+    // 4 rows per page, large enough to read; PREV/NEXT past the edge pages.
+    int pageCount = (MENU_MAIN_ITEM_COUNT + MENU_ROWS_PER_PAGE - 1) / MENU_ROWS_PER_PAGE;
+    if (menuPage >= pageCount) menuPage = pageCount - 1;
+    if (menuPage < 0) menuPage = 0;
+    int firstItem = menuPage * MENU_ROWS_PER_PAGE;
 
-    for (int i = 0; i < MENU_MAIN_ITEM_COUNT; i++) {
-      int y = startY + i * (cardH + gap);
+    int startY = 46;
+    int cardH = 52;
+    int gap = 7;
+
+    for (int rowIdx = 0; rowIdx < MENU_ROWS_PER_PAGE; rowIdx++) {
+      int i = firstItem + rowIdx;
+      if (i >= MENU_MAIN_ITEM_COUNT) break;
+      int y = startY + rowIdx * (cardH + gap);
       bool selected = (menuCurrentItem == i);
       uint16_t bCol = selected ? COL_AMBER : COL_BORDER;
 
@@ -884,29 +897,29 @@ void drawSettingsMenu() {
 
       tft->setTextSize(1);
       tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
-      tft->setCursor(20, y + 4);
+      tft->setCursor(20, y + 10);
 
       if (i == 0) {
         tft->printf("%s %s: %s", selected ? ">" : " ",
                     tr("DEN LED", "LED RING"), ledState ? tr("BAT", "ON") : tr("TAT", "OFF"));
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->printf("%d%%  %s", ledBrightness, tr("PLAY: Bat/Tat", "PLAY: On/Off"));
       } else if (i == 1) {
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("MAU DEN", "LAMP COLOR"),
                     stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]);
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY: Chon 7 mau co san", "PLAY: Pick 1 of 7 presets"));
       } else if (i == 2) {
         tft->printf("%s %s: %d%%", selected ? ">" : " ", tr("DO SANG LED", "LED BRIGHTNESS"), ledBrightness);
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("Chinh do sang vong LED", "Adjust ring brightness (0-100%)"));
       } else if (i == 3) {
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("COI CHIP", "BUZZER"),
                     buzzerEnabled ? tr("BAT", "ON") : tr("TAT (MUTE)", "OFF (MUTE)"));
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->printf(tr("Do dai beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
       } else if (i == 4) {
@@ -917,7 +930,7 @@ void drawSettingsMenu() {
           tft->printf("%s %s: --", selected ? ">" : " ",
                       tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"));
         }
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY: Vao | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"));
       } else if (i == 5) {
@@ -925,25 +938,27 @@ void drawSettingsMenu() {
         if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUON BAT (DARK)", "ALWAYS (DARK)");
         else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LICH (AUTO)", "SCHEDULED");
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("CHE DO TOI", "DARK MODE"), modeStr.c_str());
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->printf(tr("Lich: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
       } else if (i == 6) {
         tft->printf("%s %s: %s", selected ? ">" : " ", tr("NGON NGU", "LANGUAGE"),
                     stationEnglish ? "ENGLISH" : "TIENG VIET");
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY: Doi VI <-> EN", "PLAY: Switch VI <-> EN"));
       } else if (i == 7) {
         tft->printf("%s %s", selected ? ">" : " ", tr("THOAT CAI DAT", "EXIT SETTINGS"));
-        tft->setCursor(24, y + 16);
+        tft->setCursor(24, y + 28);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY hoac giu >>/<<", "PLAY or hold >>/<<"));
       }
     }
 
     tft->drawFastHLine(10, 288, 220, COL_BORDER);
-    printCenteredText(tr("PREV/NEXT: Chon | PLAY: Vao", "PREV/NEXT: Select | PLAY: Open"), 298, 1, COL_MUTED, COL_BG);
+    String pageStr = String(menuPage + 1) + "/" + String(pageCount) + "  " +
+                     tr("PREV/NEXT: Chon | PLAY: Vao", "PREV/NEXT: Select | PLAY: Open");
+    printCenteredText(pageStr, 298, 1, COL_MUTED, COL_BG);
     printCenteredText(tr("Giu NEXT de thoat", "Hold NEXT to exit"), 310, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_ADJUST_LED) {
@@ -968,19 +983,30 @@ void drawSettingsMenu() {
     printCenteredText(tr("Giu NEXT: Quay lai menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_LED_COLOR) {
-    printCenteredText(tr("MAU DEN LED (7 MAU)", "LED LAMP COLOR (7 PRESETS)"), 50, 2, COL_CYAN, COL_BG);
+    // 4 colours per page in a 2x2 grid: large, readable cells on the 240x320
+    // panel. Moving past the 4th cell flips to the next page.
+    const int COLOR_PER_PAGE = 4;
+    int colorPages = (LED_PRESET_COUNT + COLOR_PER_PAGE - 1) / COLOR_PER_PAGE;
+    if (colorPage >= colorPages) colorPage = colorPages - 1;
+    if (colorPage < 0) colorPage = 0;
+    int firstColor = colorPage * COLOR_PER_PAGE;
 
-    // 4 cells per row (row 0 = 4, row 1 = 3) so the layout is not cramped.
-    int cellW = 50;
-    int cellH = 76;
-    int gridX = 11;
+    String title = String(tr("MAU DEN LED", "LED LAMP COLOR")) + "  (" +
+                   String(colorPage + 1) + "/" + String(colorPages) + ")";
+    printCenteredText(title, 50, 2, COL_CYAN, COL_BG);
+
+    int cellW = 100;
+    int cellH = 86;
+    int gridX = 14;
     int gridY = 92;
-    int stepX = 55;
-    int stepY = 88;
+    int stepX = 110;
+    int stepY = 96;
 
-    for (int i = 0; i < LED_PRESET_COUNT; i++) {
-      int col = i % 4;
-      int row = i / 4;
+    for (int slot = 0; slot < COLOR_PER_PAGE; slot++) {
+      int i = firstColor + slot;
+      if (i >= LED_PRESET_COUNT) break;
+      int col = slot % 2;
+      int row = slot / 2;
       int x = gridX + col * stepX;
       int y = gridY + row * stepY;
       bool selected = (i == ledPresetIndex);
@@ -988,19 +1014,19 @@ void drawSettingsMenu() {
       uint8_t r, g, b;
       parseHexColor(LED_PRESETS[i], r, g, b);
 
-      tft->fillRoundRect(x, y, cellW, cellH, 6, COL_CARD);
-      tft->drawRoundRect(x, y, cellW, cellH, 6, selected ? COL_AMBER : COL_BORDER);
+      tft->fillRoundRect(x, y, cellW, cellH, 8, COL_CARD);
+      tft->drawRoundRect(x, y, cellW, cellH, 8, selected ? COL_AMBER : COL_BORDER);
       if (selected) {
-        tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 7, COL_AMBER);
+        tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 9, COL_AMBER);
       }
 
-      tft->fillCircle(x + cellW / 2, y + 28, 15, tft->color565(r, g, b));
+      tft->fillCircle(x + cellW / 2, y + 32, 20, tft->color565(r, g, b));
 
       const char* name = stationEnglish ? LED_PRESET_NAMES_EN[i] : LED_PRESET_NAMES[i];
       tft->setTextSize(1);
       tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
       int nameW = (int)strlen(name) * 6;
-      tft->setCursor(x + (cellW - nameW) / 2, y + 52);
+      tft->setCursor(x + (cellW - nameW) / 2, y + 60);
       tft->print(name);
     }
 
@@ -1083,30 +1109,28 @@ void drawSettingsMenu() {
 }
 
 void drawViewMenu() {
-  static bool firstDraw = true;
+  // Always repaint: the list is paginated, so stale rows from the previous page
+  // must be cleared even when only the page changed.
+  tft->fillScreen(COL_BG);
 
-  if (viewMenuNeedsRedraw || firstDraw) {
-    tft->fillScreen(COL_BG);
+  // Header Box
+  tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
+  tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
+  printCenteredText(tr("DANH SACH MAN HINH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
 
-    // Header Box
-    tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
-    tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
-    printCenteredText(tr("DANH SACH MAN HINH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
+  int pageCount = (VIEW_MENU_COUNT + VIEW_ROWS_PER_PAGE - 1) / VIEW_ROWS_PER_PAGE;
+  if (viewMenuPage >= pageCount) viewMenuPage = pageCount - 1;
+  if (viewMenuPage < 0) viewMenuPage = 0;
+  int firstItem = viewMenuPage * VIEW_ROWS_PER_PAGE;
 
-    // Footer
-    tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText(tr("[Prev/Next]: Tim   [Play]: Chon", "[Prev/Next]: Browse   [Play]: Select"), 304, 1, COL_MUTED, COL_BG);
+  int startY = 46;
+  int cardH = 52;
+  int gap = 7;
 
-    firstDraw = false;
-    viewMenuNeedsRedraw = false;
-  }
-
-  int startY = 44;
-  int cardH = 24;
-  int gap = 3;
-
-  for (int i = 0; i < VIEW_MENU_COUNT; i++) {
-    int y = startY + i * (cardH + gap);
+  for (int rowIdx = 0; rowIdx < VIEW_ROWS_PER_PAGE; rowIdx++) {
+    int i = firstItem + rowIdx;
+    if (i >= VIEW_MENU_COUNT) break;
+    int y = startY + rowIdx * (cardH + gap);
     bool selected = (viewMenuIndex == i);
     bool isCurrent = (srvStats.activeView == VIEW_MENU_ITEMS[i].id);
 
@@ -1114,12 +1138,12 @@ void drawViewMenu() {
     uint16_t border = selected ? COL_WHITE : (isCurrent ? COL_GREEN : COL_BORDER);
     uint16_t textCol = selected ? COL_BG : (isCurrent ? COL_GREEN : COL_WHITE);
 
-    tft->fillRoundRect(12, y, 216, cardH, 4, bg);
-    tft->drawRoundRect(12, y, 216, cardH, 4, border);
+    tft->fillRoundRect(12, y, 216, cardH, 6, bg);
+    tft->drawRoundRect(12, y, 216, cardH, 6, border);
 
     tft->setTextSize(1);
     tft->setTextColor(textCol, bg);
-    tft->setCursor(18, y + 8);
+    tft->setCursor(18, y + 12);
 
     if (selected) {
       tft->printf("> %s", viewMenuTitle(i));
@@ -1128,11 +1152,16 @@ void drawViewMenu() {
     }
 
     if (isCurrent) {
-      tft->setCursor(168, y + 8);
+      tft->setCursor(24, y + 30);
       tft->setTextColor(selected ? COL_BG : COL_GREEN, bg);
       tft->print(tr("[DANG MO]", "[ACTIVE]"));
     }
   }
+
+  tft->drawFastHLine(10, 288, 220, COL_BORDER);
+  String pageStr = String(viewMenuPage + 1) + "/" + String(pageCount) + "  " +
+                   tr("[Prev/Next]: Tim  [Play]: Chon", "[Prev/Next]: Browse  [Play]: Select");
+  printCenteredText(pageStr, 300, 1, COL_MUTED, COL_BG);
 }
 
 void drawNotesView() {
@@ -1420,6 +1449,12 @@ void drawFocusView() {
 
   lastFocusPhase = focusPhase;
   lastFocusSessionType = focusSessionType;
+}
+
+// Language changes must repaint every label, including an open menu.
+void screenNeedsUpdateAfterLanguage() {
+  lastRenderedView = "";
+  screenNeedUpdate = true;
 }
 
 void drawPhysicalScreen() {
@@ -1982,7 +2017,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   }
   else if (topicStr == "deskflow/clock_style") {
     handleClockConfigPayload(doc);
-    screenNeedUpdate = true;
+    screenNeedsUpdateAfterLanguage();
   }
   else if (topicStr == "deskflow/focus/status") {
     focusEnabled = doc["enabled"] | false;
@@ -2001,7 +2036,18 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 
     if (topicStr == "deskflow/display" && action == "clock_style") {
       handleClockConfigPayload(doc);
-      screenNeedUpdate = true;
+      screenNeedsUpdateAfterLanguage();
+    }
+    else if (topicStr == "deskflow/display" && action == "station_language") {
+      String lang = doc["language"] | "";
+      lang.trim();
+      lang.toLowerCase();
+      if (lang == "vi" || lang == "en") {
+        setStationLanguage(lang == "en");
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
+      }
     }
     else if (topicStr == "deskflow/display" && action == "switch_view") {
       if (doc.containsKey("view")) srvStats.activeView = doc["view"].as<String>();
@@ -2283,7 +2329,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       srvStats.lyricCurr = doc["lyric_curr"] | "";
       srvStats.lyricNext = doc["lyric_next"] | "";
       
-      if (srvStats.activeView == "lyrics") {
+      if (!inSettingsMenu && !inViewMenu && srvStats.activeView == "lyrics") {
         drawPhysicalScreen();
       } else {
         screenNeedUpdate = true;
@@ -3121,8 +3167,9 @@ void handleMenuPlay() {
       triggerBuzz(35);
       addLog("LED", String("Menu toggle LED: ") + (ledState ? "ON" : "OFF"));
     } else if (menuCurrentItem == 1) {
-      // "MAU DEN": open the 7 preset colours.
+      // "MAU DEN": open the 7 preset colours (4 per page).
       menuState = MENU_LED_COLOR;
+      colorPage = ledPresetIndex / 4;
       screenNeedUpdate = true;
       triggerBuzz(35);
     } else if (menuCurrentItem == 2) {
@@ -3155,7 +3202,7 @@ void handleMenuPlay() {
     } else if (menuCurrentItem == 6) {
       // Switch station language VI <-> EN
       setStationLanguage(!stationEnglish);
-      screenNeedUpdate = true;
+      screenNeedsUpdateAfterLanguage();
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
     } else if (menuCurrentItem == 7) {
@@ -3231,6 +3278,8 @@ void handleMenuPlay() {
 void handleMenuNext() {
   if (menuState == MENU_MAIN) {
     menuCurrentItem = (menuCurrentItem + 1) % MENU_MAIN_ITEM_COUNT;
+    // Moving past the last row of a page flips to the next page.
+    menuPage = menuCurrentItem / MENU_ROWS_PER_PAGE;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_ADJUST_LED) {
@@ -3244,6 +3293,7 @@ void handleMenuNext() {
     triggerBuzz(20);
   } else if (menuState == MENU_LED_COLOR) {
     ledPresetIndex = (ledPresetIndex + 1) % LED_PRESET_COUNT;
+    colorPage = ledPresetIndex / 4;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_VOLUME) {
@@ -3262,6 +3312,7 @@ void handleMenuNext() {
 void handleMenuPrev() {
   if (menuState == MENU_MAIN) {
     menuCurrentItem = (menuCurrentItem - 1 + MENU_MAIN_ITEM_COUNT) % MENU_MAIN_ITEM_COUNT;
+    menuPage = menuCurrentItem / MENU_ROWS_PER_PAGE;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_ADJUST_LED) {
@@ -3275,6 +3326,7 @@ void handleMenuPrev() {
     triggerBuzz(20);
   } else if (menuState == MENU_LED_COLOR) {
     ledPresetIndex = (ledPresetIndex - 1 + LED_PRESET_COUNT) % LED_PRESET_COUNT;
+    colorPage = ledPresetIndex / 4;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_VOLUME) {
@@ -3377,6 +3429,7 @@ void handleHardwareButtons() {
         menuState = MENU_MAIN;
         // Land on "MAU DEN" so holding >> immediately offers the 7 lamp colours.
         menuCurrentItem = 1;
+        menuPage = menuCurrentItem / MENU_ROWS_PER_PAGE;
         lastRenderedView = "";
         screenNeedUpdate = true;
         addLog("MENU", "Mo menu cai dat (Mau den).");
@@ -3396,6 +3449,7 @@ void handleHardwareButtons() {
         handleMenuNext();
       } else if (inViewMenu) {
         viewMenuIndex = (viewMenuIndex + 1) % VIEW_MENU_COUNT;
+        viewMenuPage = viewMenuIndex / VIEW_ROWS_PER_PAGE;
         triggerBuzz(20);
         screenNeedUpdate = true;
       } else {
@@ -3429,13 +3483,13 @@ void handleHardwareButtons() {
         addLog("MENU", "Giu <<: thoat menu cai dat.");
       } else if (!inViewMenu) {
         inViewMenu = true;
-        viewMenuNeedsRedraw = true;
         for (int i = 0; i < VIEW_MENU_COUNT; i++) {
           if (srvStats.activeView == VIEW_MENU_ITEMS[i].id) {
             viewMenuIndex = i;
             break;
           }
         }
+        viewMenuPage = viewMenuIndex / VIEW_ROWS_PER_PAGE;
         lastRenderedView = "";
         screenNeedUpdate = true;
         addLog("MENU", "Mo menu danh sach man hinh.");
@@ -3453,6 +3507,7 @@ void handleHardwareButtons() {
         handleMenuPrev();
       } else if (inViewMenu) {
         viewMenuIndex = (viewMenuIndex - 1 + VIEW_MENU_COUNT) % VIEW_MENU_COUNT;
+        viewMenuPage = viewMenuIndex / VIEW_ROWS_PER_PAGE;
         triggerBuzz(20);
         screenNeedUpdate = true;
       } else {
@@ -3473,6 +3528,7 @@ unsigned long lastStatusPub = 0;
 unsigned long lastWatchdogCheck = 0;
 unsigned long lastScreenDraw = 0;
 unsigned long lastMqttRetry = 0;
+String lastMenuSignature = "";
 
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -3668,9 +3724,30 @@ void loop() {
   }
 
   unsigned long refreshThreshold = isClockAnimationActive() ? 50 : 1000;
-  if (screenNeedUpdate || (millis() - lastScreenDraw >= refreshThreshold)) {
+
+  if (inSettingsMenu || inViewMenu) {
+    // While a menu is open, ignore background repaint requests and only redraw
+    // when the menu state itself changed. Telemetry/MQTT updates arrive about
+    // once a second and used to repaint the menu each time (visible flicker).
+    screenNeedUpdate = false;
+    String menuSignature = String(inSettingsMenu ? "S" : "V") + "|" +
+                           String((int)menuState) + "|" + String(menuCurrentItem) + "|" +
+                           String(menuPage) + "|" + String(buzzerCurrentItem) + "|" +
+                           String(ledPresetIndex) + "|" + String(colorPage) + "|" + String(viewMenuIndex) + "|" +
+                           String(viewMenuPage) + "|" + String(ledState ? 1 : 0) + "|" +
+                           String(ledBrightness) + "|" + String(stationEnglish ? 1 : 0) + "|" +
+                           String(buzzerEnabled ? 1 : 0) + "|" + String(buzzerDurationSetting) + "|" +
+                           darkModeSetting + "|" + String(spotifyVolumeKnown ? spotifyVolume : -1) + "|" +
+                           srvStats.activeView;
+    if (menuSignature != lastMenuSignature) {
+      lastMenuSignature = menuSignature;
+      lastScreenDraw = millis();
+      drawPhysicalScreen();
+    }
+  } else if (screenNeedUpdate || (millis() - lastScreenDraw >= refreshThreshold)) {
     lastScreenDraw = millis();
     screenNeedUpdate = false;
+    lastMenuSignature = "";   // force a full repaint next time a menu opens
     drawPhysicalScreen();
   }
 

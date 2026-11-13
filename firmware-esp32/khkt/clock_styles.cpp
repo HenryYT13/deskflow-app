@@ -1,4 +1,5 @@
 #include "clock_styles.h"
+#include "i18n.h"
 
 // Global instances
 ClockConfig clockCfg;
@@ -166,7 +167,17 @@ void handleClockConfigPayload(DynamicJsonDocument& doc) {
   if (doc.containsKey("show_seconds")) clockCfg.showSeconds = doc["show_seconds"].as<bool>();
   if (doc.containsKey("show_date")) clockCfg.showDate = doc["show_date"].as<bool>();
   if (doc.containsKey("show_ampm")) clockCfg.showAmPm = doc["show_ampm"].as<bool>();
-  if (doc.containsKey("language")) clockCfg.language = doc["language"].as<String>();
+  if (doc.containsKey("language")) {
+    clockCfg.language = doc["language"].as<String>();
+    // The apps send the device language through /api/app/control/clock-style.
+    // Store it for the clock face AND switch the whole station UI, otherwise the
+    // menus, view list and status screens stayed Vietnamese after choosing EN.
+    String lang = clockCfg.language;
+    lang.trim();
+    lang.toLowerCase();
+    setStationLanguage(lang == "en");
+    addLog("I18N", String("Station language from app: ") + (stationEnglish ? "EN" : "VI"));
+  }
   if (doc.containsKey("animation_enabled")) clockCfg.animationEnabled = doc["animation_enabled"].as<bool>();
   if (doc.containsKey("animation_speed")) clockCfg.animationSpeed = doc["animation_speed"].as<float>();
   if (doc.containsKey("accent_color")) {
