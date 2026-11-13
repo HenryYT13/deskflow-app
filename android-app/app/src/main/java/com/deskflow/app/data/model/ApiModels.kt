@@ -420,7 +420,8 @@ data class ExamCountdownRequest(
 @Serializable
 data class QuoteGenerateRequest(
     @SerialName("topic") val topic: String = "học tập và kiên trì",
-    @SerialName("limit") val limit: Int = 75
+    @SerialName("limit") val limit: Int = 75,
+    @SerialName("pin") val pin: Boolean = false
 )
 
 @Serializable

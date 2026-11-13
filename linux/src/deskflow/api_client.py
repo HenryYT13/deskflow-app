@@ -882,11 +882,11 @@ class DeskFlowApiClient:
             authenticated=bool(cfg.device_token),
         )
 
-    def generate_quote(self, topic: str = "học tập và kiên trì", limit: int = 75) -> ApiResult:
+    def generate_quote(self, topic: str = "học tập và kiên trì", limit: int = 75, pin: bool = False) -> ApiResult:
         return self.request(
             "POST",
             "/api/app/control/quote/generate",
-            payload={"topic": topic, "limit": limit},
+            payload={"topic": topic, "limit": limit, "pin": pin},
         )
 
     def set_esp32_theme(self, mode: str, start: str = "22:00", end: str = "06:00") -> ApiResult:

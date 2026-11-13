@@ -245,27 +245,6 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- 4. Danh ngôn tạo động lực (Groq AI Quotes) -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
-                            <StackPanel Spacing="12">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE735;" FontSize="16" Foreground="#EC4899" />
-                                    <TextBlock x:Name="QuoteSectionTitle" Text="Danh ngôn tạo động lực (Groq AI Quotes)" FontWeight="Bold" FontSize="15" />
-                                </StackPanel>
-                                <Border Background="#160E2A" BorderBrush="#30EC4899" BorderThickness="1" CornerRadius="8" Padding="14">
-                                    <StackPanel Spacing="6">
-                                        <TextBlock x:Name="AiQuoteText" Text="“Kiên trì hôm nay, thành công ngày mai!”" FontStyle="Italic" FontSize="15" FontWeight="SemiBold" Foreground="#E0E7FF" TextWrapping="Wrap" />
-                                        <TextBlock x:Name="AiQuoteAuthor" Text="— Groq AI" FontSize="12" Foreground="#94A3B8" />
-                                    </StackPanel>
-                                </Border>
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <TextBox x:Name="QuoteTopicBox" Text="học tập và kiên trì" PlaceholderText="Chủ đề (ví dụ: học tập, sáng tạo)" Width="280" />
-                                    <Button x:Name="GenerateQuoteBtn" Content="Sinh câu danh ngôn AI" Click="GenerateQuote_Click" Style="{StaticResource AccentButtonStyle}" />
-                                    <Button x:Name="PinQuoteBtn" Content="Ghim lên ESP32" Click="PinQuote_Click" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
                         <!-- 5. Dự báo thời tiết 48h (Weather Forecast Gallery) -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="10">
@@ -423,6 +402,11 @@
                                     <TextBlock Text="Bấm vào bất kỳ mặt đồng hồ hoặc màn hình bên dưới để xem trước. Bấm Áp dụng để gửi sang ESP32." Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
                                     <Button Content="Áp dụng lên trạm OLED" Click="ApplyOledPreview_Click" HorizontalAlignment="Right" Style="{StaticResource AccentButtonStyle}" />
                                 </Grid>
+
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <TextBlock Text="Đang hiển thị trên trạm:" Foreground="#64748B" FontSize="10" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="OledMonitorLiveViewText" Text="MAIN" Foreground="#22C55E" FontFamily="Consolas" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -705,6 +689,27 @@
                                     <Button Content="Thêm đếm ngược" Click="AddCountdownButton_Click" Style="{StaticResource AccentButtonStyle}" />
                                 </StackPanel>
                                 <ListView x:Name="CountdownsListView" MaxHeight="220" SelectionMode="None" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Group 3b: Danh ngôn Groq AI (AI Quote Generator) -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="12">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE735;" FontSize="16" Foreground="#EC4899" />
+                                    <TextBlock x:Name="QuoteSectionTitle" Text="Danh ngôn tạo động lực (Groq AI Quotes)" FontWeight="Bold" FontSize="15" />
+                                </StackPanel>
+                                <Border Background="#160E2A" BorderBrush="#30EC4899" BorderThickness="1" CornerRadius="8" Padding="14">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock x:Name="AiQuoteText" Text="“Kiên trì hôm nay, thành công ngày mai!”" FontStyle="Italic" FontSize="15" FontWeight="SemiBold" Foreground="#E0E7FF" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="AiQuoteAuthor" Text="— Groq AI" FontSize="12" Foreground="#94A3B8" />
+                                    </StackPanel>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBox x:Name="QuoteTopicBox" Text="học tập và kiên trì" PlaceholderText="Chủ đề (ví dụ: học tập, sáng tạo)" Width="280" />
+                                    <Button x:Name="GenerateQuoteBtn" Content="Sinh câu danh ngôn AI" Click="GenerateQuote_Click" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Name="PinQuoteBtn" Content="Ghim lên ESP32" Click="PinQuote_Click" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 

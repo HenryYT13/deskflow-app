@@ -344,7 +344,7 @@ public sealed class DeskFlowApiClient
         }
     }
 
-    public async Task<(bool Ok, string Message)> CreateNoteAsync(string text, string color = "#FDE047")
+    public async Task<(bool Ok, string Message)> CreateNoteAsync(string text, string color = "#FDE047", bool pinToStation = false)
     {
         var clean = (text ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(clean))
@@ -355,7 +355,7 @@ public sealed class DeskFlowApiClient
             using var req = CreateRequest(
                 HttpMethod.Post,
                 "/api/app/control/notes",
-                new { text = clean, content = clean, color });
+                new { text = clean, content = clean, color, pin_to_station = pinToStation });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
             var body = await resp.Content.ReadAsStringAsync();
             if (!resp.IsSuccessStatusCode)
@@ -632,11 +632,13 @@ public sealed class DeskFlowApiClient
     {
         try
         {
-            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/display/switch-view", new { view }, authenticated: false);
+            // Canonical route first. The legacy /switch-view route answers 405 on
+            // production, and retrying only on 404 surfaced "HTTP 405" to the user.
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/display/view", new { view }, authenticated: false);
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode && resp.StatusCode == HttpStatusCode.NotFound)
+            if (!resp.IsSuccessStatusCode && ((int)resp.StatusCode == 404 || (int)resp.StatusCode == 405))
             {
-                using var reqFallback = CreateRequest(HttpMethod.Post, "/api/app/control/display/view", new { view }, authenticated: false);
+                using var reqFallback = CreateRequest(HttpMethod.Post, "/api/app/control/display/switch-view", new { view }, authenticated: false);
                 using var respFallback = await _http.SendAsync(reqFallback).ConfigureAwait(false);
                 return (respFallback.IsSuccessStatusCode, respFallback.IsSuccessStatusCode ? $"Switched display view to '{view}'." : $"HTTP {(int)respFallback.StatusCode}");
             }
@@ -1243,11 +1245,11 @@ public sealed class DeskFlowApiClient
         return null;
     }
 
-    public async Task<(bool Ok, string Quote, string Author)> GenerateQuoteAsync(string topic = "học tập và kiên trì", int limit = 75)
+    public async Task<(bool Ok, string Quote, string Author)> GenerateQuoteAsync(string topic = "học tập và kiên trì", int limit = 75, bool pin = false)
     {
         try
         {
-            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/quote/generate", new { topic = topic, limit = limit });
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/control/quote/generate", new { topic = topic, limit = limit, pin = pin });
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return (false, "", "");
             var body = await resp.Content.ReadAsStringAsync();

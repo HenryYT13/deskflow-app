@@ -139,6 +139,19 @@ public sealed partial class MainWindow : Window
                         EspWifiValueText.Text = $"{status.Station.WifiRssi} dBm";
                         EspWifiQualityText.Text = status.Station.WifiRssi > -65 ? (Strings.CurrentLanguage == "vi" ? "Mạnh" : "Strong") : (Strings.CurrentLanguage == "vi" ? "Trung bình" : "Fair");
                         EspViewValueText.Text = status.Station.CurrentView?.ToUpper() ?? "MAIN";
+                        if (OledMonitorLiveViewText != null && !string.IsNullOrEmpty(_liveStationView))
+                        {
+                            OledMonitorLiveViewText.Text = (_liveStationView ?? "").ToUpper();
+                        }
+
+                        // Mirror the station's real screen into a separate field:
+                        // overwriting _previewOledView reset the preview every
+                        // second, which made "click to preview" look broken.
+                        var liveView = status.Station.CurrentView?.Trim().ToLowerInvariant();
+                        if (!string.IsNullOrEmpty(liveView))
+                        {
+                            _liveStationView = liveView;
+                        }
                     }
                     if (status.Server != null)
                     {
@@ -191,12 +204,31 @@ public sealed partial class MainWindow : Window
         };
         telTimer.Start();
 
-        // Spotify progress is interpolated locally between 1-second polls, so the
-        // bar and clock move smoothly instead of jumping once per second.
+        // Spotify progress is interpolated locally between polls, so the bar and
+        // clock move smoothly instead of jumping once per second.
         var spTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         spTimer.Interval = TimeSpan.FromMilliseconds(250);
         spTimer.Tick += (_, _) => InterpolateSpotifyProgress();
         spTimer.Start();
+
+        // Dedicated 1-second Spotify poll: the dashboard timer refreshes every
+        // second but its status call was shared, so lyrics visibly lagged.
+        var spPoll = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        spPoll.Interval = TimeSpan.FromSeconds(1);
+        spPoll.Tick += async (_, _) =>
+        {
+            try
+            {
+                var sp = await _client.GetSpotifyStatusAsync();
+                if (sp != null)
+                {
+                    _lastSpotify = sp;
+                    UpdateSpotifyUI(sp);
+                }
+            }
+            catch {}
+        };
+        spPoll.Start();
 
         var tkbTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         tkbTimer.Interval = TimeSpan.FromSeconds(20);
@@ -1224,7 +1256,6 @@ public sealed partial class MainWindow : Window
         ShowBanner(msg, !ok);
     }
 
-    private string _previewOledView = "clock";
     private int _previewClockStyle = 1;
 
     private async void SelectClockStyle_Click(object sender, RoutedEventArgs e)
@@ -1331,6 +1362,8 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _suppressThemeComboSave;
+    private string _previewOledView = "clock";
+    private string _liveStationView = "";
 
     private void ThemeModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -1794,16 +1827,18 @@ public sealed partial class MainWindow : Window
     {
         var text = (AiQuoteText.Text ?? string.Empty).Trim(' ', '“', '”', '"');
         if (string.IsNullOrWhiteSpace(text)) return;
-        var (ok, msg) = await _client.CreateNoteAsync(text);
-        if (ok)
+
+        // Create AND pin in one call: creating a note alone left the station
+        // screen unchanged, which looked like "pin does not work".
+        var (created, createMsg) = await _client.CreateNoteAsync(text, pinToStation: true);
+        if (!created)
         {
-            ShowBanner(Strings.CurrentLanguage == "vi" ? "Đã ghim danh ngôn lên màn hình ESP32!" : "Quote pinned to ESP32 Station!", false);
-            RenderNotesList();
+            ShowBanner(createMsg, true);
+            return;
         }
-        else
-        {
-            ShowBanner(msg, true);
-        }
+
+        ShowBanner(Strings.CurrentLanguage == "vi" ? "Đã ghim danh ngôn lên màn hình ESP32!" : "Quote pinned to ESP32 Station!", false);
+        RenderNotesList();
     }
 
     private void LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -1048,7 +1048,8 @@ fun ControlScreen(
                                     onQuoteTopicChange = { quoteTopicText = it },
                                     onGenerateQuote = {
                                         coroutineScope.launch {
-                                            val res = repository.generateQuote(quoteTopicText.trim(), 75)
+                                            // pin=true so the quote also appears on the station screen.
+                                            val res = repository.generateQuote(quoteTopicText.trim(), 75, pin = true)
                                             if (res is ApiResult.Success) {
                                                 showFeedback(AppStrings.t("Danh ngôn: ") + "\"${res.data.quote}\"")
                                             } else if (res is ApiResult.Error) {

@@ -1208,9 +1208,9 @@ class FocusRepository(
         }
     }
 
-    suspend fun generateQuote(topic: String, limit: Int = 75): ApiResult<QuoteResponse> {
+    suspend fun generateQuote(topic: String, limit: Int = 75, pin: Boolean = false): ApiResult<QuoteResponse> {
         return try {
-            val response = apiService.generateQuote(QuoteGenerateRequest(topic = topic, limit = limit))
+            val response = apiService.generateQuote(QuoteGenerateRequest(topic = topic, limit = limit, pin = pin))
             if (response.isSuccessful && response.body() != null) {
                 ApiResult.Success(response.body()!!)
             } else {

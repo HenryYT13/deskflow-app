@@ -4,6 +4,20 @@ Toàn bộ lịch sử các bản phát hành và cập nhật quan trọng củ
 
 ---
 
+## [v1.1.4] - 2026-11-13
+
+### 🐛 Sửa lỗi (Fixes)
+- **Chọn thiết bị hiển thị spec bị revert:** backend tự ghi đè `selected_display_device_id` sang máy đang báo gần nhất. Giờ lựa chọn của bạn được giữ nguyên.
+- **RAM server báo 441%:** clamp `cpu`/`ram_pct` về 0–100 ngay tại nguồn nên không giá trị lạ nào tới được app.
+- **Windows đổi trang báo HTTP 405:** client gọi `/display/switch-view` (route cũ trả 405) trước. Giờ gọi `/display/view` trước và retry cả 404 lẫn 405.
+- **Windows: lời bài hát không realtime:** cache Spotify phía server giảm 4s → 1s, và Windows có timer poll Spotify riêng mỗi 1s.
+- **Windows: không có phần gen quotes:** thẻ Groq AI Quote đã được chuyển vào tab *Công cụ* (trước bị chôn ở Dashboard).
+- **Gen quote rồi ghim không lên màn:** nút "Ghim lên ESP32" chỉ tạo note mà không pin. Giờ tạo + pin trong một lần gọi (`pin_to_station`), và API `/quote/generate` nhận `pin=true`; cả 3 app dùng chế độ này.
+- **Preview màn hình bị nhảy về màn thật:** poll 1 giây ghi đè lựa chọn xem trước. Giờ preview do bạn chọn, còn màn thật hiện ở dòng "Đang hiển thị trên trạm" riêng.
+- **Linux: thừa 1 album cover:** ảnh bìa bị vẽ 2 lần (Picture 180×180 + icon hàng track). Đã bỏ bản trùng, giữ ảnh ở hàng track (96px).
+
+---
+
 ## [v1.1.3] - 2026-11-13
 
 ### 🐛 ESP32

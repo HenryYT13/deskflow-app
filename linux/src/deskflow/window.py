@@ -172,6 +172,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self._deleting_note_ids: set[str] = set()
         self._deleting_countdown_ids: set[str] = set()
         self.preview_oled_view: str = "clock"
+        self.live_station_view: str = ""
         self.preview_clock_style: int = 1
         self.clock_accent_color: str = "#38BDF8"
         self._qr_session_id: Optional[str] = None
@@ -353,12 +354,11 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                         self.esp_status_row.set_subtitle(esp_sub)
                         self.server_status_row.set_subtitle(srv_sub)
                         self.computer_status_row.set_subtitle(comp_sub)
-                        # Follow the screen the station is actually showing so the
-                        # OLED preview never drifts from the ESP32 (all apps sync).
-                        if station_view and station_view != self.preview_oled_view:
-                            self.preview_oled_view = station_view
-                            self._update_oled_preview()
-                            self._update_active_view_badge()
+                        # Show which screen the station is really on, but never
+                        # overwrite the preview the user picked: doing that made
+                        # the preview snap back every second.
+                        self.live_station_view = station_view
+                        self._update_active_view_badge()
                         return False
 
                     GLib.idle_add(_update_ui)
@@ -936,14 +936,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         page.add(player_group)
 
-        self.sp_cover_picture = Gtk.Picture()
-        self.sp_cover_picture.set_size_request(180, 180)
-        self.sp_cover_picture.set_content_fit(Gtk.ContentFit.COVER)
-        self.sp_cover_picture.set_halign(Gtk.Align.CENTER)
-        self.sp_cover_picture.set_margin_top(6)
-        self.sp_cover_picture.set_margin_bottom(6)
-        player_group.add(self.sp_cover_picture)
-
+        # The album art is drawn as the prefix of the track row, so a separate
+        # 180x180 picture duplicated the same cover further down the page.
         self._cover_url: Optional[str] = None
         self._cover_request_id = 0
 
@@ -952,7 +946,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             subtitle="Spotify Desktop Client",
         )
         self.sp_track_icon = Gtk.Image.new_from_icon_name("audio-x-generic-symbolic")
-        self.sp_track_icon.set_pixel_size(48)
+        self.sp_track_icon.set_pixel_size(96)
         self.sp_track_row.add_prefix(self.sp_track_icon)
 
         self.sp_status_badge = Gtk.Label(label="TẠM DỪNG")
@@ -1079,7 +1073,6 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             elif not cover_url and self._cover_url:
                 self._cover_url = None
                 self.sp_track_icon.set_from_icon_name("audio-x-generic-symbolic")
-                self.sp_cover_picture.set_paintable(None)
 
             self.sp_track_row.set_title(track)
             self.sp_track_row.set_subtitle(f"{artist} • {album}" if album else artist)
@@ -1116,7 +1109,6 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
             def _apply() -> bool:
                 if request_id == self._cover_request_id and texture is not None:
-                    self.sp_cover_picture.set_paintable(texture)
                     self.sp_track_icon.set_from_paintable(texture)
                 return False
 
@@ -1927,7 +1919,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self.show_toast(f"Quote generation failed: {res.error_message}")
             self.quote_display_row.set_subtitle("Could not generate quote.")
         topic = self.quote_topic_entry.get_text().strip() or "học tập và kiên trì"
-        self._run_bg(lambda: self.api_client.generate_quote(topic=topic), _done)
+        # pin=True makes the backend create + pin the sticky note in one call, so
+        # the generated quote really shows up on the station screen.
+        self._run_bg(lambda: self.api_client.generate_quote(topic=topic, pin=True), _done)
 
     def _confirm_delete_note(self, note: NoteItem) -> None:
         if note.id in self._deleting_note_ids:
@@ -2562,6 +2556,15 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         )
         view_group.add(self.active_view_row)
 
+        self.preview_hint_row = Adw.ActionRow(
+            title=self._tr("Bản xem trước bên trên", "Preview above"),
+            subtitle=self._tr(
+                "Bấm một thẻ bên dưới để xem trước, rồi bấm Áp dụng để gửi lên trạm.",
+                "Tap a card below to preview it, then Apply to send it to the station.",
+            ),
+        )
+        view_group.add(self.preview_hint_row)
+
         # Initialize OLED preview
         self._update_oled_preview()
 
@@ -2730,7 +2733,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         """Highlight which station screen is currently live."""
         if not hasattr(self, "active_view_row"):
             return
-        view_key_now = self.preview_oled_view or "main"
+        view_key_now = getattr(self, "live_station_view", "") or self.preview_oled_view or "main"
         label = view_key_now
         for key, vi_title, en_title, _vi_desc, _en_desc in self.DISPLAY_VIEWS:
             if key == view_key_now:
