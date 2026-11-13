@@ -75,7 +75,7 @@ enum MenuState {
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 6;
+const int MENU_MAIN_ITEM_COUNT = 7;
 int buzzerCurrentItem = 0;
 const int MENU_BUZZER_ITEM_COUNT = 4;
 
@@ -858,8 +858,8 @@ void drawSettingsMenu() {
 
   if (menuState == MENU_MAIN) {
     int startY = 44;
-    int cardH = 36;
-    int gap = 3;
+    int cardH = 31;
+    int gap = 2;
 
     for (int i = 0; i < MENU_MAIN_ITEM_COUNT; i++) {
       int y = startY + i * (cardH + gap);
@@ -918,6 +918,11 @@ void drawSettingsMenu() {
         tft->setCursor(24, y + 22);
         tft->setTextColor(COL_MUTED, COL_CARD);
         tft->print(tr("PLAY: Doi VI <-> EN", "PLAY: Switch VI <-> EN"));
+      } else if (i == 6) {
+        tft->printf("%s %s", selected ? ">" : " ", tr("THOAT CAI DAT", "EXIT SETTINGS"));
+        tft->setCursor(24, y + 22);
+        tft->setTextColor(COL_MUTED, COL_CARD);
+        tft->print(tr("PLAY hoac giu >>/<<", "PLAY or hold >>/<<"));
       }
     }
 
@@ -3085,6 +3090,13 @@ void handleMenuPlay() {
       screenNeedUpdate = true;
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
+    } else if (menuCurrentItem == 6) {
+      inSettingsMenu = false;
+      menuState = MENU_MAIN;
+      lastRenderedView = "";
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+      addLog("MENU", "Thoat menu cai dat qua muc EXIT.");
     }
   } else if (menuState == MENU_ADJUST_LED) {
     prefs.putInt("led_bright", ledBrightness);
@@ -3273,15 +3285,12 @@ void handleHardwareButtons() {
         screenNeedUpdate = true;
         addLog("MENU", "Mo menu cai dat phan cung.");
       } else {
-        if (menuState != MENU_MAIN) {
-          menuState = MENU_MAIN;
-          screenNeedUpdate = true;
-        } else {
-          inSettingsMenu = false;
-          lastRenderedView = "";
-          screenNeedUpdate = true;
-          addLog("MENU", "Thoat menu cai dat.");
-        }
+        // Hold >> again: exit immediately from the main list or any submenu.
+        inSettingsMenu = false;
+        menuState = MENU_MAIN;
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        addLog("MENU", "Giu >>: thoat menu cai dat.");
       }
     }
   } else if (curNext == HIGH && nextPressed) {
@@ -3315,25 +3324,30 @@ void handleHardwareButtons() {
     if (!prevLongTriggered && (millis() - prevPressTime >= 700)) {
       prevLongTriggered = true;
       triggerBuzz(80);
-      if (!inSettingsMenu) {
-        if (!inViewMenu) {
-          inViewMenu = true;
-          viewMenuNeedsRedraw = true;
-          for (int i = 0; i < VIEW_MENU_COUNT; i++) {
-            if (srvStats.activeView == VIEW_MENU_ITEMS[i].id) {
-              viewMenuIndex = i;
-              break;
-            }
+      if (inSettingsMenu) {
+        // Hold <<: exit immediately from the main list or any submenu.
+        inSettingsMenu = false;
+        menuState = MENU_MAIN;
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        addLog("MENU", "Giu <<: thoat menu cai dat.");
+      } else if (!inViewMenu) {
+        inViewMenu = true;
+        viewMenuNeedsRedraw = true;
+        for (int i = 0; i < VIEW_MENU_COUNT; i++) {
+          if (srvStats.activeView == VIEW_MENU_ITEMS[i].id) {
+            viewMenuIndex = i;
+            break;
           }
-          lastRenderedView = "";
-          screenNeedUpdate = true;
-          addLog("MENU", "Mo menu danh sach man hinh.");
-        } else {
-          inViewMenu = false;
-          lastRenderedView = "";
-          screenNeedUpdate = true;
-          addLog("MENU", "Thoat menu danh sach man hinh.");
         }
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        addLog("MENU", "Mo menu danh sach man hinh.");
+      } else {
+        inViewMenu = false;
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+        addLog("MENU", "Thoat menu danh sach man hinh.");
       }
     }
   } else if (curPrev == HIGH && prevPressed) {
