@@ -17,7 +17,7 @@ jobs:
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
-            VERSION="1.0.9"
+            VERSION="1.1.0"
           fi
           cp android-app/app/build/outputs/apk/debug/*.apk "DeskFlow-${VERSION}-android.apk"
           cp "DeskFlow-${VERSION}-android.apk" DeskFlow-android.apk
@@ -33,7 +33,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
-            VERSION="1.0.9"
+            VERSION="1.1.0"
           fi
           chmod +x linux/packaging/build_packages.sh
           ./linux/packaging/build_packages.sh "$VERSION"
@@ -84,7 +84,7 @@ jobs:
           }
 
           $tag = $env:GITHUB_REF_NAME
-          if (-not $tag) { $tag = "1.0.9" }
+          if (-not $tag) { $tag = "1.1.0" }
           $ver = $tag -replace '^v', ''
 
           Compress-Archive -Path "$appOut\*" -DestinationPath (Join-Path $dist "DeskFlow-$ver-win-x64.zip")
@@ -119,7 +119,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
-            VERSION="1.0.9"
+            VERSION="1.1.0"
           fi
           chmod +x macos/scripts/build_macos_dmg.sh
           ./macos/scripts/build_macos_dmg.sh "$VERSION"
@@ -134,8 +134,30 @@ jobs:
             macos/dist/*.dmg
             macos/dist/*.zip
             macos/dist/SHA256SUMS-macOS.txt
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install arduino-cli and ESP32 core
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s -- --dest-dir /usr/local/bin
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "Adafruit GFX Library" "Adafruit ST7735 and ST7789 Library" "Adafruit NeoPixel" "PubSubClient" "ArduinoJson"
+      - name: Compile ESP32 station firmware
+        run: |
+          mkdir -p artifacts/firmware
+          arduino-cli compile --fqbn esp32:esp32:esp32 firmware-esp32/khkt --output-dir artifacts/firmware
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            artifacts/firmware/*.bin
+            artifacts/firmware/*.elf
   release:
-    needs: [android, linux, windows, macos]
+    needs: [android, linux, windows, macos, firmware]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
