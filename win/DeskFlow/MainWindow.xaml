@@ -69,7 +69,7 @@
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
                         <FontIcon Glyph="&#xE774;" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center" />
-                        <TextBlock x:Name="GateServerUrlText" Text="Máy chủ: https://api.10th012013.duckdns.org" FontSize="12" Foreground="#94A3B8" FontFamily="Consolas" />
+                        <TextBlock x:Name="GateServerUrlText" Text="Máy chủ: https://df.api.thetechdude.io.vn" FontSize="12" Foreground="#94A3B8" FontFamily="Consolas" />
                     </StackPanel>
                 </StackPanel>
             </Border>

@@ -6,7 +6,7 @@
 #define MyAppVersion "1.0.9"
 #endif
 #define MyAppPublisher "Deskflow Engineering"
-#define MyAppURL "https://api.10th012013.duckdns.org"
+#define MyAppURL "https://df.api.thetechdude.io.vn"
 #define MyAppExeName "DeskFlow.exe"
 
 [Setup]

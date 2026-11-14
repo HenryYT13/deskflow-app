@@ -59,14 +59,14 @@ open class SecurePreferences(context: Context) {
     open var apiUrl: String
         get() {
             val stored = prefs.getString(KEY_API_URL, null)
-            if (stored.isNullOrBlank() || stored.contains("focus-api.10th012013.duckdns.org")) {
+            if (stored.isNullOrBlank() || stored.contains("10th012013.duckdns.org")) {
                 prefs.edit().putString(KEY_API_URL, DEFAULT_API_URL).apply()
                 return DEFAULT_API_URL
             }
             return stored.trimEnd('/')
         }
         set(value) {
-            val normalized = if (value.isBlank() || value.contains("focus-api.10th012013.duckdns.org")) {
+            val normalized = if (value.isBlank() || value.contains("10th012013.duckdns.org")) {
                 DEFAULT_API_URL
             } else {
                 value.trimEnd('/')
@@ -187,7 +187,7 @@ open class SecurePreferences(context: Context) {
         private const val KEY_DARK_MODE_END = "dark_mode_end"
         private const val KEY_DYNAMIC_COLOR = "dynamic_color"
 
-        const val DEFAULT_API_URL = "https://api.10th012013.duckdns.org"
+        const val DEFAULT_API_URL = "https://df.api.thetechdude.io.vn"
 
         fun normalizeTheme(raw: String?): String {
             return when (raw?.trim()?.lowercase()) {

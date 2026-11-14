@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-DEFAULT_API_URL = "https://api.10th012013.duckdns.org"
+DEFAULT_API_URL = "https://df.api.thetechdude.io.vn"
 
 
 @dataclass
@@ -393,7 +393,7 @@ class ConfigStore:
             raw = json.loads(self.config_path.read_text(encoding="utf-8"))
             api_url = str(raw.get("api_url") or DEFAULT_API_URL).rstrip("/")
             migrated = False
-            if not api_url or "focus-api.10th012013.duckdns.org" in api_url:
+            if not api_url or "10th012013.duckdns.org" in api_url:
                 api_url = DEFAULT_API_URL
                 migrated = True
 

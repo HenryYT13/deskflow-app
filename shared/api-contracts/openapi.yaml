@@ -4,10 +4,8 @@ info:
   version: 1.0.0
   description: Shared REST API contract for Android, Linux, macOS, Windows, and Browser Extension clients.
 servers:
-  - url: https://api.10th012013.duckdns.org
+  - url: https://df.api.thetechdude.io.vn
     description: Production Server (Canonical)
-  - url: https://focus-api.10th012013.duckdns.org
-    description: Production Server (Legacy Alias)
   - url: http://127.0.0.1:8787
     description: Local Development Server
 components:

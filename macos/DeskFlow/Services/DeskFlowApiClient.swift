@@ -5,7 +5,7 @@ import Darwin
 
 @MainActor
 public final class DeskFlowApiClient: ObservableObject {
-    public static let defaultBaseURL = "https://api.10th012013.duckdns.org"
+    public static let defaultBaseURL = "https://df.api.thetechdude.io.vn"
 
     private static let errorMessages: [String: String] = [
         "pair_code_invalid": "Invalid, expired, or already-used pairing code. Generate a new code in Discord (/pair).",
@@ -106,7 +106,7 @@ public final class DeskFlowApiClient: ObservableObject {
         self.session = session
         self.defaults = defaults
         let storedUrl = defaults.string(forKey: "deskflow.apiUrl")
-        if storedUrl == nil || storedUrl!.isEmpty || storedUrl!.contains("focus-api.10th012013.duckdns.org") {
+        if storedUrl == nil || storedUrl!.isEmpty || storedUrl!.contains("10th012013.duckdns.org") {
             self.apiUrl = Self.defaultBaseURL
             defaults.set(Self.defaultBaseURL, forKey: "deskflow.apiUrl")
         } else {

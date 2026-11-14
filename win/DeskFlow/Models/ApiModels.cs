@@ -158,7 +158,7 @@ public static class MorseCodeConverter
 
 public sealed class WindowsAppSettings
 {
-    public string ApiUrl { get; set; } = "https://api.10th012013.duckdns.org";
+    public string ApiUrl { get; set; } = "https://df.api.thetechdude.io.vn";
     public string? DeviceToken { get; set; }
     public string? DeviceId { get; set; }
     public string DeviceName { get; set; } = "DeskFlow Windows 11 (WinUI 3)";
@@ -188,9 +188,9 @@ public sealed class WindowsAppSettings
             if (!File.Exists(path)) return new WindowsAppSettings();
             var raw = File.ReadAllText(path, Encoding.UTF8);
             var settings = JsonSerializer.Deserialize<WindowsAppSettings>(raw) ?? new WindowsAppSettings();
-            if (string.IsNullOrWhiteSpace(settings.ApiUrl) || settings.ApiUrl.Contains("focus-api.10th012013.duckdns.org") || settings.ApiUrl.Contains("mock.deskflow.local"))
+            if (string.IsNullOrWhiteSpace(settings.ApiUrl) || settings.ApiUrl.Contains("10th012013.duckdns.org") || settings.ApiUrl.Contains("mock.deskflow.local"))
             {
-                settings.ApiUrl = "https://api.10th012013.duckdns.org";
+                settings.ApiUrl = "https://df.api.thetechdude.io.vn";
                 settings.Save();
             }
             return settings;
@@ -206,7 +206,7 @@ public sealed class WindowsAppSettings
         AppTheme = ScheduledDarkModeEvaluator.NormalizeTheme(AppTheme);
         DarkModeStart = ScheduledDarkModeEvaluator.NormalizeTimeStr(DarkModeStart, "20:00");
         DarkModeEnd = ScheduledDarkModeEvaluator.NormalizeTimeStr(DarkModeEnd, "06:00");
-        ApiUrl = (ApiUrl ?? "https://api.10th012013.duckdns.org").TrimEnd('/');
+        ApiUrl = (ApiUrl ?? "https://df.api.thetechdude.io.vn").TrimEnd('/');
         try
         {
             var path = GetSettingsPath();
