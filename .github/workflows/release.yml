@@ -6,7 +6,18 @@ on:
 permissions:
   contents: write
 jobs:
+  prepare_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create or update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
   android:
+    needs: [prepare_release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,9 +32,21 @@ jobs:
           fi
           cp android-app/app/build/outputs/apk/debug/*.apk "DeskFlow-${VERSION}-android.apk"
           cp "DeskFlow-${VERSION}-android.apk" DeskFlow-android.apk
+      - name: Upload Android APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3; do
+            gh release upload "$GITHUB_REF_NAME" DeskFlow-*.apk --clobber && break || sleep 5
+          done
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
         with: { name: android, path: DeskFlow-*.apk }
+
   linux:
+    needs: [prepare_release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,11 +60,23 @@ jobs:
           fi
           chmod +x linux/packaging/build_packages.sh
           ./linux/packaging/build_packages.sh "$VERSION"
+      - name: Upload Linux packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3; do
+            gh release upload "$GITHUB_REF_NAME" artifacts/linux/* --clobber && break || sleep 5
+          done
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
         with:
           name: linux
           path: artifacts/linux/*
+
   windows:
+    needs: [prepare_release]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,13 +130,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
 
           Get-ChildItem -Path $dist
+      - name: Upload Windows binaries to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = @(Get-ChildItem "win\dist\*.exe","win\dist\*.zip" | ForEach-Object { $_.FullName })
+          for ($i = 0; $i -lt 3; $i++) {
+              gh release upload $env:GITHUB_REF_NAME @files --clobber
+              if ($LASTEXITCODE -eq 0) { break }
+              Start-Sleep -Seconds 5
+          }
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
         with:
           name: windows
           path: |
             win/dist/*.exe
             win/dist/*.zip
+
   macos:
+    needs: [prepare_release]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,14 +179,26 @@ jobs:
         run: |
           chmod +x macos/scripts/verify_macos_bundle.sh
           ./macos/scripts/verify_macos_bundle.sh
+      - name: Upload macOS DMG/ZIP to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3; do
+            gh release upload "$GITHUB_REF_NAME" macos/dist/*.dmg macos/dist/*.zip macos/dist/SHA256SUMS-macOS.txt --clobber && break || sleep 5
+          done
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
         with:
           name: macos
           path: |
             macos/dist/*.dmg
             macos/dist/*.zip
             macos/dist/SHA256SUMS-macOS.txt
+
   firmware:
+    needs: [prepare_release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -150,20 +214,19 @@ jobs:
         run: |
           mkdir -p artifacts/firmware
           arduino-cli compile --fqbn esp32:esp32:esp32 firmware-esp32/khkt --output-dir artifacts/firmware
+      - name: Upload ESP32 Firmware to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3; do
+            gh release upload "$GITHUB_REF_NAME" artifacts/firmware/*.bin artifacts/firmware/*.elf --clobber && break || sleep 5
+          done
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
         with:
           name: firmware
           path: |
             artifacts/firmware/*.bin
             artifacts/firmware/*.elf
-  release:
-    needs: [android, linux, windows, macos, firmware]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
