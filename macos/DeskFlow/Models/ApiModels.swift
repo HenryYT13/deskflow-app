@@ -703,3 +703,105 @@ public struct TimetableResponse: Codable {
     }
 }
 
+public struct GoogleCalendarSummaryDto: Codable, Equatable, Identifiable {
+    public let id: String
+    public let summary: String
+    public let primary: Bool?
+    public let accessRole: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, summary, primary
+        case accessRole = "access_role"
+    }
+}
+
+public struct CalendarEventDto: Codable, Equatable, Identifiable {
+    public let id: String
+    public let title: String
+    public let date: String
+    public let startTime: String
+    public let endTime: String
+    public let allDay: Bool
+    public let isToday: Bool
+    public let isOngoing: Bool
+    public let location: String
+    public let source: String
+    public let canDelete: Bool
+    public let calendarId: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, date, location, source
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case allDay = "all_day"
+        case isToday = "is_today"
+        case isOngoing = "is_ongoing"
+        case canDelete = "can_delete"
+        case calendarId = "calendar_id"
+    }
+}
+
+public struct CalendarStatusDto: Codable, Equatable {
+    public let connected: Bool
+    public let oauthConnected: Bool
+    public let icalConnected: Bool
+    public let icalUrl: String
+    public let googleClientId: String
+    public let hasGoogleClientSecret: Bool
+    public let googleRedirectUri: String
+    public let connectedEmail: String
+    public let selectedCalendarId: String
+    public let selectedCalendarName: String
+    public let calendars: [GoogleCalendarSummaryDto]
+    public let lastError: String?
+    public let events: [CalendarEventDto]
+    public let todayCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case connected, calendars, events
+        case oauthConnected = "oauth_connected"
+        case icalConnected = "ical_connected"
+        case icalUrl = "ical_url"
+        case googleClientId = "google_client_id"
+        case hasGoogleClientSecret = "has_google_client_secret"
+        case googleRedirectUri = "google_redirect_uri"
+        case connectedEmail = "connected_email"
+        case selectedCalendarId = "selected_calendar_id"
+        case selectedCalendarName = "selected_calendar_name"
+        case lastError = "last_error"
+        case todayCount = "today_count"
+    }
+
+    public init(
+        connected: Bool = false,
+        oauthConnected: Bool = false,
+        icalConnected: Bool = false,
+        icalUrl: String = "",
+        googleClientId: String = "",
+        hasGoogleClientSecret: Bool = false,
+        googleRedirectUri: String = "https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+        connectedEmail: String = "",
+        selectedCalendarId: String = "primary",
+        selectedCalendarName: String = "Primary",
+        calendars: [GoogleCalendarSummaryDto] = [],
+        lastError: String? = nil,
+        events: [CalendarEventDto] = [],
+        todayCount: Int = 0
+    ) {
+        self.connected = connected
+        self.oauthConnected = oauthConnected
+        self.icalConnected = icalConnected
+        self.icalUrl = icalUrl
+        self.googleClientId = googleClientId
+        self.hasGoogleClientSecret = hasGoogleClientSecret
+        self.googleRedirectUri = googleRedirectUri
+        self.connectedEmail = connectedEmail
+        self.selectedCalendarId = selectedCalendarId
+        self.selectedCalendarName = selectedCalendarName
+        self.calendars = calendars
+        self.lastError = lastError
+        self.events = events
+        self.todayCount = todayCount
+    }
+}
+

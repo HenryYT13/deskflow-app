@@ -897,13 +897,25 @@ fun SettingsScreen(
                     ) {
                         FilterChip(
                             selected = currentLanguage == "vi",
-                            onClick = { securePreferences.language = "vi" },
+                            onClick = {
+                                securePreferences.language = "vi"
+                                coroutineScope.launch {
+                                    val cfg = (repository.getClockConfig() as? ApiResult.Success)?.data ?: com.deskflow.app.data.model.ClockConfigDto()
+                                    repository.updateClockConfig(cfg.copy(language = "vi"))
+                                }
+                            },
                             label = { Text("Tiếng Việt") },
                             modifier = Modifier.weight(1f)
                         )
                         FilterChip(
                             selected = currentLanguage == "en",
-                            onClick = { securePreferences.language = "en" },
+                            onClick = {
+                                securePreferences.language = "en"
+                                coroutineScope.launch {
+                                    val cfg = (repository.getClockConfig() as? ApiResult.Success)?.data ?: com.deskflow.app.data.model.ClockConfigDto()
+                                    repository.updateClockConfig(cfg.copy(language = "en"))
+                                }
+                            },
                             label = { Text("English") },
                             modifier = Modifier.weight(1f)
                         )

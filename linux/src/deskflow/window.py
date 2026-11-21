@@ -17,6 +17,8 @@ from .api_client import ApiResult, DeskFlowApiClient, logger
 from .i18n import apply_to_widget_tree
 from .models import (
     AlarmItem,
+    CalendarEventItem,
+    CalendarStatus,
     ConfigStore,
     CountdownItem,
     DualDayTimetable,
@@ -115,6 +117,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         ("dashboard", "Giám sát hệ thống & Đo từ xa", "computer-symbolic"),
         ("station", "Phần cứng & Trạm ESP32", "preferences-desktop-display-symbolic"),
         ("tkb", "Thời khóa biểu (TKB)", "x-office-calendar-symbolic"),
+        ("calendar", "Lịch Google (Calendar)", "x-office-calendar-symbolic"),
         ("spotify", "Spotify & Âm nhạc", "audio-x-generic-symbolic"),
         ("alarms", "Báo thức & Còi báo", "alarm-symbolic"),
         ("tools", "Công cụ & Groq AI", "document-edit-symbolic"),
@@ -140,6 +143,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
          "CPU & RAM của máy chủ", "Host CPU & RAM utilization"),
         ("tkb", "Thời khóa biểu", "Timetable",
          "Lịch học và đồng phục", "Class schedule & uniform"),
+        ("calendar", "Lịch Google", "Google Calendar",
+         "Sự kiện sắp tới từ Google Calendar", "Upcoming Google Calendar events"),
         ("lyrics", "Lời bài hát", "Spotify Lyrics",
          "Lời bài hát và đang phát", "Live lyrics & now playing"),
     ]
@@ -175,6 +180,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.live_station_view: str = ""
         self.preview_clock_style: int = 1
         self.clock_accent_color: str = "#38BDF8"
+        self._suppress_lang_sync: bool = False
+        self._last_server_language: Optional[str] = None
         self._qr_session_id: Optional[str] = None
         self._qr_poll_source_id: Optional[int] = None
         self._is_polling_qr: bool = False
@@ -272,6 +279,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.content_stack.add_named(self._build_spotify_page(), "spotify")
         self.content_stack.add_named(self._build_alarms_page(), "alarms")
         self.content_stack.add_named(self._build_tkb_page(), "tkb")
+        self.content_stack.add_named(self._build_calendar_page(), "calendar")
         self.content_stack.add_named(self._build_tools_page(), "tools")
         self.content_stack.add_named(self._build_settings_page(), "settings")
         # Direct alias used by the dashboard "weather" shortcut button.
@@ -349,6 +357,17 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                     comp_sub = f"Thiết bị: {comp_name} • CPU: {comp_cpu}% • RAM: {comp_ram}% • Pin: {comp_bat}% • Trạng thái: {comp_on}"
 
                     station_view = str(station.get("current_view") or "").strip().lower()
+                    srv_lang_raw = str(station.get("language") or "").strip().lower()
+                    if srv_lang_raw not in ("vi", "en"):
+                        try:
+                            clk_res = self.api_client.get_clock_config()
+                            if clk_res.ok and isinstance(clk_res.data, dict):
+                                clk_data = clk_res.data.get("data") if isinstance(clk_res.data.get("data"), dict) else clk_res.data
+                                cand = str(clk_data.get("language") or "").strip().lower()
+                                if cand in ("vi", "en"):
+                                    srv_lang_raw = cand
+                        except Exception:
+                            pass
 
                     def _update_ui():
                         self.esp_status_row.set_subtitle(esp_sub)
@@ -359,6 +378,9 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
                         # the preview snap back every second.
                         self.live_station_view = station_view
                         self._update_active_view_badge()
+                        if srv_lang_raw in ("vi", "en") and srv_lang_raw != self._last_server_language:
+                            self._last_server_language = srv_lang_raw
+                            self._apply_server_language(srv_lang_raw)
                         return False
 
                     GLib.idle_add(_update_ui)
@@ -1626,6 +1648,370 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
 
         return page
 
+    # =========================================================================
+    # Page: Lịch Google (Google Calendar)
+    # =========================================================================
+    def _build_calendar_page(self) -> Gtk.Widget:
+        page = Adw.PreferencesPage()
+
+        # 1. Status & Quick Actions
+        header_group = Adw.PreferencesGroup(
+            title=self._tr("Lịch Google (Google Calendar)", "Google Calendar"),
+            description=self._tr(
+                "Kết nối qua Google OAuth 2.0 (2 chiều) hoặc link Private iCal (.ics) để đồng bộ lịch lên trạm ESP32.",
+                "Connect via Google OAuth 2.0 (2-way sync) or Private iCal (.ics) URL and push events to your ESP32 station.",
+            ),
+        )
+        page.add(header_group)
+
+        self.cal_status_row = Adw.ActionRow(
+            title=self._tr("Trạng thái kết nối", "Connection Status"),
+            subtitle=self._tr("Chưa kết nối Google Calendar", "Not connected to Google Calendar"),
+        )
+        self.cal_status_badge = Gtk.Label(label="--")
+        self.cal_status_badge.add_css_class("deskflow-badge-offline")
+        self.cal_status_badge.set_valign(Gtk.Align.CENTER)
+        self.cal_status_row.add_suffix(self.cal_status_badge)
+
+        btn_esp = Gtk.Button(label=self._tr("Hiện lên ESP32", "Show on ESP32"), valign=Gtk.Align.CENTER)
+        btn_esp.add_css_class("suggested-action")
+        btn_esp.connect("clicked", lambda *_: self._run_bg(
+            lambda: self.api_client.switch_display_view("calendar"),
+            lambda r: self.show_toast("ESP32 -> Google Calendar" if r.ok else r.error_message),
+        ))
+        self.cal_status_row.add_suffix(btn_esp)
+
+        btn_sync = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER)
+        btn_sync.set_tooltip_text(self._tr("Đồng bộ ngay", "Sync now"))
+        btn_sync.connect("clicked", lambda *_: self._on_calendar_sync_clicked())
+        self.cal_status_row.add_suffix(btn_sync)
+        header_group.add(self.cal_status_row)
+
+        # 2. Google OAuth 2.0 (2-way)
+        oauth_group = Adw.PreferencesGroup(
+            title=self._tr("Kết nối Google OAuth 2.0 (Đọc + Thêm/Xóa)", "Google OAuth 2.0 (Read & Write)"),
+            description=self._tr(
+                "Dùng Google Cloud OAuth Client để đăng nhập 1 chạm, chọn lịch và tạo/xóa sự kiện.",
+                "Use Google Cloud OAuth Client for 1-click sign-in, calendar selection, and creating/deleting events.",
+            ),
+        )
+        page.add(oauth_group)
+
+        self.cal_oauth_row = Adw.ActionRow(
+            title=self._tr("Tài khoản Google", "Google Account"),
+            subtitle=self._tr("Chưa đăng nhập OAuth", "Not signed in"),
+        )
+        self.cal_oauth_connect_btn = Gtk.Button(label=self._tr("Đăng nhập Google", "Connect Google"), valign=Gtk.Align.CENTER)
+        self.cal_oauth_connect_btn.add_css_class("suggested-action")
+        self.cal_oauth_connect_btn.connect("clicked", lambda *_: self._on_calendar_oauth_start())
+        self.cal_oauth_row.add_suffix(self.cal_oauth_connect_btn)
+
+        self.cal_oauth_disconnect_btn = Gtk.Button(label=self._tr("Ngắt OAuth", "Disconnect"), valign=Gtk.Align.CENTER)
+        self.cal_oauth_disconnect_btn.add_css_class("destructive-action")
+        self.cal_oauth_disconnect_btn.set_visible(False)
+        self.cal_oauth_disconnect_btn.connect("clicked", lambda *_: self._on_calendar_oauth_disconnect())
+        self.cal_oauth_row.add_suffix(self.cal_oauth_disconnect_btn)
+        oauth_group.add(self.cal_oauth_row)
+
+        self.cal_picker_model = Gtk.StringList()
+        self.cal_picker_ids: List[str] = []
+        self.cal_picker_row = Adw.ComboRow(
+            title=self._tr("Lịch đang chọn", "Selected Calendar"),
+            subtitle=self._tr("Primary", "Primary"),
+            model=self.cal_picker_model,
+        )
+        self.cal_picker_row.set_visible(False)
+        self._suppress_cal_picker = False
+        self.cal_picker_row.connect("notify::selected", self._on_calendar_picker_changed)
+        oauth_group.add(self.cal_picker_row)
+
+        cred_expander = Adw.ExpanderRow(
+            title=self._tr("Cấu hình Google OAuth Credentials", "Google OAuth Credentials Setup"),
+            subtitle=self._tr(
+                "Redirect URI: https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+                "Redirect URI: https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+            ),
+        )
+        self.cal_client_id_entry = Adw.EntryRow(title="Google Client ID")
+        self.cal_client_secret_entry = Adw.PasswordEntryRow(title="Google Client Secret (để trống nếu giữ nguyên)")
+        self.cal_redirect_uri_entry = Adw.EntryRow(title="Redirect URI")
+        self.cal_redirect_uri_entry.set_text("https://10th012013.duckdns.org/api/app/calendar/oauth/callback")
+        cred_save_row = Adw.ActionRow(
+            title=self._tr("Lưu thông tin OAuth", "Save OAuth Credentials"),
+        )
+        save_oauth_btn = Gtk.Button(label=self._tr("Lưu", "Save"), valign=Gtk.Align.CENTER)
+        save_oauth_btn.add_css_class("suggested-action")
+        save_oauth_btn.connect("clicked", lambda *_: self._on_save_calendar_oauth_creds())
+        cred_save_row.add_suffix(save_oauth_btn)
+        cred_expander.add_row(self.cal_client_id_entry)
+        cred_expander.add_row(self.cal_client_secret_entry)
+        cred_expander.add_row(self.cal_redirect_uri_entry)
+        cred_expander.add_row(cred_save_row)
+        oauth_group.add(cred_expander)
+
+        # 3. Private iCal (.ics) Quick Link
+        ical_group = Adw.PreferencesGroup(
+            title=self._tr("Kết nối nhanh qua Private iCal (.ics)", "Quick Link via Private iCal (.ics)"),
+            description=self._tr(
+                "Dán link 'Địa chỉ bí mật ở định dạng iCal' trong Google Calendar Settings (chỉ xem, không cần OAuth).",
+                "Paste 'Secret address in iCal format' from Google Calendar Settings (read-only, zero OAuth needed).",
+            ),
+        )
+        page.add(ical_group)
+
+        self.cal_ical_entry = Adw.EntryRow(title="Secret iCal (.ics) URL")
+        save_ical_btn = Gtk.Button(label=self._tr("Lưu & Đồng bộ", "Save & Sync"), valign=Gtk.Align.CENTER)
+        save_ical_btn.add_css_class("suggested-action")
+        save_ical_btn.connect("clicked", lambda *_: self._on_save_calendar_ical())
+        self.cal_ical_entry.add_suffix(save_ical_btn)
+        ical_group.add(self.cal_ical_entry)
+
+        # 4. Create Event (requires OAuth)
+        create_group = Adw.PreferencesGroup(
+            title=self._tr("Thêm sự kiện lên Google Calendar", "Create Google Calendar Event"),
+            description=self._tr("Khả dụng khi đã đăng nhập Google OAuth.", "Available when Google OAuth is connected."),
+        )
+        page.add(create_group)
+        self.cal_new_title = Adw.EntryRow(title=self._tr("Tên sự kiện", "Event Title"))
+        self.cal_new_date = Adw.EntryRow(title=self._tr("Ngày (YYYY-MM-DD)", "Date (YYYY-MM-DD)"))
+        self.cal_new_date.set_text(datetime.now().strftime("%Y-%m-%d"))
+        self.cal_new_start = Adw.EntryRow(title=self._tr("Giờ bắt đầu (HH:MM)", "Start Time (HH:MM)"))
+        self.cal_new_start.set_text("09:00")
+        self.cal_new_end = Adw.EntryRow(title=self._tr("Giờ kết thúc (HH:MM)", "End Time (HH:MM)"))
+        self.cal_new_end.set_text("10:00")
+        self.cal_new_location = Adw.EntryRow(title=self._tr("Địa điểm (tuỳ chọn)", "Location (optional)"))
+        self.cal_new_allday = Adw.SwitchRow(title=self._tr("Sự kiện cả ngày", "All-day event"))
+
+        create_btn_row = Adw.ActionRow(title=self._tr("Tạo trên Google Calendar", "Create Event"))
+        create_btn = Gtk.Button(label=self._tr("Thêm sự kiện", "Add Event"), valign=Gtk.Align.CENTER)
+        create_btn.add_css_class("suggested-action")
+        create_btn.connect("clicked", lambda *_: self._on_create_calendar_event())
+        create_btn_row.add_suffix(create_btn)
+
+        create_group.add(self.cal_new_title)
+        create_group.add(self.cal_new_date)
+        create_group.add(self.cal_new_start)
+        create_group.add(self.cal_new_end)
+        create_group.add(self.cal_new_location)
+        create_group.add(self.cal_new_allday)
+        create_group.add(create_btn_row)
+
+        # 5. Upcoming Events List
+        self.cal_events_group = Adw.PreferencesGroup(
+            title=self._tr("Sự kiện sắp tới (30 ngày)", "Upcoming Events (30 days)"),
+            description=self._tr("Đồng bộ tự động mỗi 5 phút lên trạm ESP32.", "Auto-syncs every 5 mins to ESP32 station."),
+        )
+        page.add(self.cal_events_group)
+        self._cal_event_rows: List[Gtk.Widget] = []
+        self._apply_calendar_ui(self.api_client.calendar_status)
+
+        return page
+
+    def refresh_calendar_async(self) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._apply_calendar_ui(self.api_client.calendar_status)
+        self._run_bg(self.api_client.get_calendar_status, _done)
+
+    def _on_calendar_sync_clicked(self) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._apply_calendar_ui(self.api_client.calendar_status)
+                self.show_toast(self._tr("Đã đồng bộ Google Calendar!", "Google Calendar synced!"))
+            else:
+                self.show_toast(res.error_message)
+        self._run_bg(self.api_client.sync_calendar, _done)
+
+    def _on_save_calendar_ical(self) -> None:
+        url = self.cal_ical_entry.get_text().strip()
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._apply_calendar_ui(self.api_client.calendar_status)
+                self.show_toast(self._tr("Đã lưu & đồng bộ iCal!", "Saved & synced iCal URL!"))
+            else:
+                self.show_toast(res.error_message)
+        self._run_bg(lambda: self.api_client.update_calendar_config(ical_url=url), _done)
+
+    def _on_save_calendar_oauth_creds(self) -> None:
+        cid = self.cal_client_id_entry.get_text().strip()
+        csec = self.cal_client_secret_entry.get_text().strip()
+        ruri = self.cal_redirect_uri_entry.get_text().strip()
+        kwargs: Dict[str, Any] = {"google_client_id": cid, "google_redirect_uri": ruri}
+        if csec:
+            kwargs["google_client_secret"] = csec
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.cal_client_secret_entry.set_text("")
+                self._apply_calendar_ui(self.api_client.calendar_status)
+                self.show_toast(self._tr("Đã lưu OAuth Credentials!", "OAuth credentials saved!"))
+            else:
+                self.show_toast(res.error_message)
+        self._run_bg(lambda: self.api_client.update_calendar_config(**kwargs), _done)
+
+    def _on_calendar_oauth_start(self) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok and isinstance(res.data, dict) and res.data.get("auth_url"):
+                try:
+                    Gio.AppInfo.launch_default_for_uri(res.data["auth_url"], None)
+                    self.show_toast(self._tr(
+                        "Đã mở trình duyệt đăng nhập Google. Xong hãy bấm Làm mới!",
+                        "Opened Google sign-in in browser. Click Sync after completing!",
+                    ))
+                except Exception as exc:
+                    self.show_toast(f"Open browser failed: {exc}")
+            else:
+                msg = res.error_message
+                if "google_oauth_credentials_missing" in msg:
+                    msg = self._tr(
+                        "Hãy nhập Google Client ID & Client Secret ở mục Cấu hình OAuth bên dưới trước!",
+                        "Please enter Google Client ID & Secret in OAuth Credentials below first!",
+                    )
+                self.show_toast(msg)
+        self._run_bg(self.api_client.start_calendar_oauth, _done)
+
+    def _on_calendar_oauth_disconnect(self) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._apply_calendar_ui(self.api_client.calendar_status)
+                self.show_toast(self._tr("Đã ngắt Google OAuth.", "Disconnected Google OAuth."))
+            else:
+                self.show_toast(res.error_message)
+        self._run_bg(self.api_client.disconnect_calendar_oauth, _done)
+
+    def _on_calendar_picker_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
+        if self._suppress_cal_picker:
+            return
+        idx = combo.get_selected()
+        if idx < 0 or idx >= len(self.cal_picker_ids):
+            return
+        cal_id = self.cal_picker_ids[idx]
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._apply_calendar_ui(self.api_client.calendar_status)
+        self._run_bg(lambda: self.api_client.update_calendar_config(selected_calendar_id=cal_id), _done)
+
+    def _on_create_calendar_event(self) -> None:
+        title = self.cal_new_title.get_text().strip()
+        d_str = self.cal_new_date.get_text().strip()
+        st = self.cal_new_start.get_text().strip()
+        et = self.cal_new_end.get_text().strip()
+        loc = self.cal_new_location.get_text().strip()
+        all_day = self.cal_new_allday.get_active()
+        if not title or not d_str:
+            self.show_toast(self._tr("Nhập tên sự kiện và ngày (YYYY-MM-DD).", "Enter title and date (YYYY-MM-DD)."))
+            return
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self.cal_new_title.set_text("")
+                self.cal_new_location.set_text("")
+                self._apply_calendar_ui(self.api_client.calendar_status)
+                self.show_toast(self._tr("Đã thêm vào Google Calendar!", "Event created on Google Calendar!"))
+            else:
+                self.show_toast(res.error_message)
+        self._run_bg(
+            lambda: self.api_client.create_calendar_event(title, d_str, st, et, all_day, loc),
+            _done,
+        )
+
+    def _on_delete_calendar_event(self, ev: CalendarEventItem) -> None:
+        def _done(res: ApiResult) -> None:
+            if res.ok:
+                self._apply_calendar_ui(self.api_client.calendar_status)
+                self.show_toast(self._tr("Đã xóa sự kiện.", "Event deleted."))
+            else:
+                self.show_toast(res.error_message)
+        self._run_bg(lambda: self.api_client.delete_calendar_event(ev.id, ev.calendar_id), _done)
+
+    def _apply_calendar_ui(self, st: CalendarStatus) -> None:
+        if not hasattr(self, "cal_status_row"):
+            return
+        if st.connected:
+            self.cal_status_badge.set_text(f"{st.today_count} hôm nay / {len(st.events)} sắp tới")
+            self.cal_status_badge.remove_css_class("deskflow-badge-offline")
+            self.cal_status_badge.add_css_class("deskflow-badge-online")
+            modes = []
+            if st.oauth_connected:
+                modes.append(f"OAuth ({st.connected_email or 'Google'})")
+            if st.ical_connected:
+                modes.append("Private iCal")
+            sub = " • ".join(modes)
+            if st.last_error:
+                sub += f" • ⚠ {st.last_error}"
+            self.cal_status_row.set_subtitle(sub)
+        else:
+            self.cal_status_badge.set_text("OFFLINE")
+            self.cal_status_badge.remove_css_class("deskflow-badge-online")
+            self.cal_status_badge.add_css_class("deskflow-badge-offline")
+            self.cal_status_row.set_subtitle(
+                self._tr("Chưa kết nối OAuth hoặc link iCal (.ics)", "Connect Google OAuth or Private iCal (.ics) below")
+            )
+
+        self.cal_oauth_disconnect_btn.set_visible(st.oauth_connected)
+        self.cal_oauth_row.set_subtitle(
+            f"{st.connected_email} ({st.selected_calendar_name})" if st.oauth_connected
+            else self._tr("Chưa đăng nhập Google OAuth", "Not signed in with Google OAuth")
+        )
+        if st.google_client_id and not self.cal_client_id_entry.get_text():
+            self.cal_client_id_entry.set_text(st.google_client_id)
+        if st.google_redirect_uri:
+            self.cal_redirect_uri_entry.set_text(st.google_redirect_uri)
+        if st.ical_url and not self.cal_ical_entry.get_text():
+            self.cal_ical_entry.set_text(st.ical_url)
+
+        # Populate calendars dropdown cleanly
+        if st.oauth_connected and st.calendars:
+            self._suppress_cal_picker = True
+            while self.cal_picker_model.get_n_items() > 0:
+                self.cal_picker_model.remove(0)
+            self.cal_picker_ids = []
+            sel_idx = 0
+            for idx, c in enumerate(st.calendars):
+                self.cal_picker_model.append(str(c.get("summary") or c.get("id") or "Calendar"))
+                self.cal_picker_ids.append(str(c.get("id") or "primary"))
+                if c.get("id") == st.selected_calendar_id:
+                    sel_idx = idx
+            self.cal_picker_row.set_selected(sel_idx)
+            self.cal_picker_row.set_visible(True)
+            self._suppress_cal_picker = False
+        else:
+            self.cal_picker_row.set_visible(False)
+
+        # Events list
+        for row in self._cal_event_rows:
+            self.cal_events_group.remove(row)
+        self._cal_event_rows.clear()
+
+        if not st.events:
+            empty = Adw.ActionRow(
+                title=self._tr("Không có sự kiện sắp tới", "No upcoming events"),
+                subtitle=self._tr(
+                    "Kết nối Google Calendar ở trên rồi bấm Làm mới.",
+                    "Link your Google Calendar above and click Sync.",
+                ),
+            )
+            self.cal_events_group.add(empty)
+            self._cal_event_rows.append(empty)
+            return
+
+        for ev in st.events:
+            t_str = self._tr("Cả ngày", "All day") if ev.all_day else (f"{ev.start_time}–{ev.end_time}" if ev.end_time else ev.start_time)
+            sub = f"{ev.date} • {t_str}"
+            if ev.location:
+                sub += f" • @ {ev.location}"
+            row = Adw.ActionRow(title=ev.title, subtitle=sub)
+            if ev.is_today:
+                badge = Gtk.Label(label=self._tr("HÔM NAY", "TODAY"))
+                badge.add_css_class("deskflow-badge-online")
+                badge.set_valign(Gtk.Align.CENTER)
+                row.add_suffix(badge)
+            if ev.can_delete:
+                del_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+                del_btn.add_css_class("destructive-action")
+                del_btn.connect("clicked", lambda _b, item=ev: self._on_delete_calendar_event(item))
+                row.add_suffix(del_btn)
+            self.cal_events_group.add(row)
+            self._cal_event_rows.append(row)
+
     def _build_tkb_day_card(self, is_today: bool) -> Dict[str, Any]:
         accent = "#38BDF8" if is_today else "#A78BFA"
         container = Adw.PreferencesGroup(
@@ -2851,6 +3237,12 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self.oled_screen_title.set_text("TKB — SANG THU 2")
             self.oled_screen_main.set_text("Toan • Ly • Hoa")
             self.oled_screen_sub.set_text("Anh • Sinh Hoc")
+        elif self.preview_oled_view == "calendar":
+            self.oled_screen_main.remove_css_class("oled-accent-text")
+            self.oled_mode_badge.set_text("GOOGLE CALENDAR")
+            self.oled_screen_title.set_text("TODAY • 09:00-10:30")
+            self.oled_screen_main.set_text("Project Sync Meeting")
+            self.oled_screen_sub.set_text("@ Google Meet • 2 more today")
         elif self.preview_oled_view == "lyrics":
             self.oled_screen_main.remove_css_class("oled-accent-text")
             self.oled_mode_badge.set_text("SPOTIFY LYRICS")
@@ -3051,12 +3443,48 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.apply_theme_preference()
         self.show_toast(f"Scheduled Dark Mode set to {start_str}–{end_str}")
 
+    def _apply_server_language(self, lang: str) -> None:
+        if lang not in ("vi", "en"):
+            return
+        changed = (
+            self.config_store.config.language != lang
+            or getattr(self.config_store.config, "esp32_language", "vi") != lang
+        )
+        if not changed:
+            return
+        self._suppress_lang_sync = True
+        try:
+            self.config_store.config.language = lang
+            self.config_store.config.esp32_language = lang
+            self.config_store.save()
+            if hasattr(self, "language_combo"):
+                self.language_combo.set_selected(1 if lang == "vi" else 0)
+            if hasattr(self, "esp32_language_combo"):
+                self.esp32_language_combo.set_selected(1 if lang == "en" else 0)
+            self._refresh_language()
+        finally:
+            self._suppress_lang_sync = False
+
     def _on_language_combo_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
         idx = combo.get_selected()
         new_lang = "vi" if idx == 1 else "en"
         self.config_store.config.language = new_lang
+        self.config_store.config.esp32_language = new_lang
         self.config_store.save()
         self._refresh_language()
+        if self._suppress_lang_sync:
+            return
+        self._suppress_lang_sync = True
+        try:
+            if hasattr(self, "esp32_language_combo"):
+                self.esp32_language_combo.set_selected(1 if new_lang == "en" else 0)
+        finally:
+            self._suppress_lang_sync = False
+        self._last_server_language = new_lang
+        self._run_bg(
+            lambda: self.api_client.set_clock_language(new_lang),
+            lambda r: None if r.ok else self.show_toast(r.error_message),
+        )
 
     def _refresh_language(self) -> None:
         """Retranslate the parts of the shell that are safe to update in place."""
@@ -3067,6 +3495,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             "spotify": ("Spotify & Âm nhạc", "Spotify & Media"),
             "alarms": ("Báo thức & Còi báo", "Alarms & Buzzer"),
             "tkb": ("Thời khóa biểu (TKB)", "Timetable (TKB)"),
+            "calendar": ("Lịch Google (Calendar)", "Google Calendar"),
             "tools": ("Công cụ & Groq AI", "Tools & Groq AI"),
             "focus": ("Chế độ tập trung", "Focus Mode"),
             "settings": ("Cài đặt & Giao diện", "Settings & Appearance"),
@@ -3121,16 +3550,24 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.show_toast("Đã chuyển ngôn ngữ sang Tiếng Việt" if is_vi else "Language switched to English")
 
     def _on_esp32_language_changed(self, combo: Adw.ComboRow, _pspec: Any) -> None:
+        if self._suppress_lang_sync:
+            return
         lang = "en" if combo.get_selected() == 1 else "vi"
-        if not hasattr(self.config_store.config, "esp32_language"):
-            setattr(self.config_store.config, "esp32_language", lang)
-        else:
-            self.config_store.config.esp32_language = lang
+        self.config_store.config.esp32_language = lang
+        self.config_store.config.language = lang
         self.config_store.save()
+        self._suppress_lang_sync = True
+        try:
+            if hasattr(self, "language_combo"):
+                self.language_combo.set_selected(1 if lang == "vi" else 0)
+        finally:
+            self._suppress_lang_sync = False
+        self._refresh_language()
+        self._last_server_language = lang
         self._run_bg(
             lambda: self.api_client.set_clock_language(lang),
             lambda r: self.show_toast(
-                ("Đã đổi ngôn ngữ ESP32 sang English" if lang == "en" else "Đã đổi ngôn ngữ ESP32 sang Tiếng Việt")
+                ("Đã đổi ngôn ngữ sang English" if lang == "en" else "Đã đổi ngôn ngữ sang Tiếng Việt")
                 if r.ok else r.error_message
             ),
         )
@@ -3198,6 +3635,7 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self.refresh_alarms_async()
         self.refresh_devices_async()
         self.refresh_tkb_async()
+        self.refresh_calendar_async()
 
         def _fetch_all() -> Dict[str, Any]:
             return {

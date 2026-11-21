@@ -283,4 +283,33 @@ interface FocusApiService {
     suspend fun setSpotifyVolume(
         @Body request: SpotifyVolumeRequest
     ): Response<ActionSuccessResponse>
+
+    // --- Google Calendar ---
+    @GET("api/app/calendar/status")
+    suspend fun getCalendarStatus(): Response<CalendarStatusDto>
+
+    @POST("api/app/calendar/sync")
+    suspend fun syncCalendar(): Response<CalendarStatusDto>
+
+    @POST("api/app/calendar/config")
+    suspend fun updateCalendarConfig(
+        @Body request: CalendarConfigRequest
+    ): Response<CalendarStatusDto>
+
+    @POST("api/app/calendar/oauth/start")
+    suspend fun startCalendarOAuth(): Response<CalendarOAuthStartResponse>
+
+    @POST("api/app/calendar/oauth/disconnect")
+    suspend fun disconnectCalendarOAuth(): Response<CalendarStatusDto>
+
+    @POST("api/app/calendar/events")
+    suspend fun createCalendarEvent(
+        @Body request: CreateCalendarEventRequest
+    ): Response<CalendarStatusDto>
+
+    @DELETE("api/app/calendar/events/{id}")
+    suspend fun deleteCalendarEvent(
+        @Path("id") id: String,
+        @Query("calendar_id") calendarId: String? = null
+    ): Response<CalendarStatusDto>
 }

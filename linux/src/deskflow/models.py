@@ -358,6 +358,86 @@ class SpotifyStatus:
 
 
 @dataclass
+class CalendarEventItem:
+    id: str = ""
+    title: str = ""
+    date: str = ""
+    start_time: str = ""
+    end_time: str = ""
+    all_day: bool = False
+    is_today: bool = False
+    is_ongoing: bool = False
+    is_upcoming: bool = True
+    location: str = ""
+    description: str = ""
+    source: str = "ical"
+    can_delete: bool = False
+    calendar_id: str = "primary"
+
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "CalendarEventItem":
+        return cls(
+            id=str(raw.get("id") or ""),
+            title=str(raw.get("title") or "(Không có tiêu đề)"),
+            date=str(raw.get("date") or ""),
+            start_time=str(raw.get("start_time") or ""),
+            end_time=str(raw.get("end_time") or ""),
+            all_day=bool(raw.get("all_day", False)),
+            is_today=bool(raw.get("is_today", False)),
+            is_ongoing=bool(raw.get("is_ongoing", False)),
+            is_upcoming=bool(raw.get("is_upcoming", True)),
+            location=str(raw.get("location") or ""),
+            description=str(raw.get("description") or ""),
+            source=str(raw.get("source") or "ical"),
+            can_delete=bool(raw.get("can_delete", False)),
+            calendar_id=str(raw.get("calendar_id") or "primary"),
+        )
+
+
+@dataclass
+class CalendarStatus:
+    connected: bool = False
+    oauth_connected: bool = False
+    ical_connected: bool = False
+    ical_url: str = ""
+    google_client_id: str = ""
+    has_google_client_secret: bool = False
+    oauth_configured: bool = False
+    google_redirect_uri: str = ""
+    connected_email: str = ""
+    selected_calendar_id: str = "primary"
+    selected_calendar_name: str = "Primary"
+    calendars: List[Dict[str, Any]] = field(default_factory=list)
+    last_sync_at: Optional[str] = None
+    last_error: Optional[str] = None
+    events: List[CalendarEventItem] = field(default_factory=list)
+    today_count: int = 0
+
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "CalendarStatus":
+        data = raw.get("data") if isinstance(raw.get("data"), dict) and "events" in raw.get("data", {}) else raw
+        ev_raw = data.get("events") if isinstance(data.get("events"), list) else []
+        return cls(
+            connected=bool(data.get("connected", False)),
+            oauth_connected=bool(data.get("oauth_connected", False)),
+            ical_connected=bool(data.get("ical_connected", False)),
+            ical_url=str(data.get("ical_url") or ""),
+            google_client_id=str(data.get("google_client_id") or ""),
+            has_google_client_secret=bool(data.get("has_google_client_secret", False)),
+            oauth_configured=bool(data.get("oauth_configured", False)),
+            google_redirect_uri=str(data.get("google_redirect_uri") or ""),
+            connected_email=str(data.get("connected_email") or ""),
+            selected_calendar_id=str(data.get("selected_calendar_id") or "primary"),
+            selected_calendar_name=str(data.get("selected_calendar_name") or "Primary"),
+            calendars=list(data.get("calendars") or []),
+            last_sync_at=data.get("last_sync_at"),
+            last_error=data.get("last_error"),
+            events=[CalendarEventItem.from_dict(e) for e in ev_raw if isinstance(e, dict)],
+            today_count=int(data.get("today_count") or 0),
+        )
+
+
+@dataclass
 class LinuxAppConfig:
     api_url: str = DEFAULT_API_URL
     device_token: Optional[str] = None
@@ -455,6 +535,7 @@ STRINGS = {
         "tools": "Tools & AI Studio",
         "weather": "Weather Forecast",
         "timetable": "Class Timetable",
+        "calendar": "Google Calendar",
         "settings": "Settings & Devices",
         "categories_title": "Available Feature Categories",
         "categories_desc": "Quickly access and manage all Deskflow ecosystem capabilities.",
@@ -498,6 +579,7 @@ STRINGS = {
         "tools": "Công cụ & Studio AI",
         "weather": "Dự báo thời tiết",
         "timetable": "Thời khóa biểu",
+        "calendar": "Lịch Google",
         "settings": "Cài đặt & Thiết bị",
         "categories_title": "Danh mục tính năng khả dụng",
         "categories_desc": "Truy cập và điều khiển nhanh các phân hệ trong hệ sinh thái Deskflow.",

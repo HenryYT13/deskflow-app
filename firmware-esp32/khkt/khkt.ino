@@ -14,6 +14,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <Adafruit_NeoPixel.h>
+#include "vn_font.h"
 #include "clock_styles.h"
 #include "melody.h"
 #include "i18n.h"
@@ -84,7 +85,7 @@ int menuPage = 0;
 
 // 7 built-in lamp colours, selectable from the hardware menu (GPIO 2 NeoPixel ring).
 const char* LED_PRESETS[] = {"#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF"};
-const char* LED_PRESET_NAMES[] = {"TRANG", "DO", "XANH LA", "XANH DUONG", "VANG", "TIM", "XANH NGOC"};
+const char* LED_PRESET_NAMES[] = {"TRẮNG", "ĐỎ", "XANH LÁ", "XANH DƯƠNG", "VÀNG", "TÍM", "XANH NGỌC"};
 const char* LED_PRESET_NAMES_EN[] = {"WHITE", "RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN"};
 const int LED_PRESET_COUNT = 7;
 int ledPresetIndex = 0;
@@ -95,7 +96,7 @@ const int MENU_BUZZER_ITEM_COUNT = 4;
 // View Selector Menu State Machine
 bool inViewMenu = false;
 int viewMenuIndex = 0;
-const int VIEW_MENU_COUNT = 9;
+const int VIEW_MENU_COUNT = 10;
 const int VIEW_ROWS_PER_PAGE = 4;
 int viewMenuPage = 0;
 struct ViewMenuItem {
@@ -103,15 +104,16 @@ struct ViewMenuItem {
   const char* title;
 };
 const ViewMenuItem VIEW_MENU_ITEMS[VIEW_MENU_COUNT] = {
-  { "main",      "1. Tong quan" },
-  { "stats",     "2. Thong so may" },
-  { "tkb",       "3. Thoi khoa bieu" },
-  { "weather",   "4. Thoi tiet" },
-  { "lyrics",    "5. Loi bai hat" },
-  { "notes",     "6. Ghi chu" },
-  { "countdown", "7. Dem nguoc" },
-  { "focus",     "8. Tap trung" },
-  { "clock",     "9. Dong ho" }
+  { "main",      "1. Tổng quan" },
+  { "stats",     "2. Thông số máy" },
+  { "tkb",       "3. Thời khóa biểu" },
+  { "calendar",  "4. Lịch Google" },
+  { "weather",   "5. Thời tiết" },
+  { "lyrics",    "6. Lời bài hát" },
+  { "notes",     "7. Ghi chú" },
+  { "countdown", "8. Đếm ngược" },
+  { "focus",     "9. Tập trung" },
+  { "clock",     "10. Đồng hồ" }
 };
 
 // English mirror used when the station language is EN.
@@ -119,12 +121,13 @@ const char* const VIEW_MENU_TITLES_EN[VIEW_MENU_COUNT] = {
   "1. Dashboard",
   "2. System stats",
   "3. Timetable",
-  "4. Weather",
-  "5. Lyrics",
-  "6. Notes",
-  "7. Countdown",
-  "8. Focus",
-  "9. Clock"
+  "4. Google Calendar",
+  "5. Weather",
+  "6. Lyrics",
+  "7. Notes",
+  "8. Countdown",
+  "9. Focus",
+  "10. Clock"
 };
 
 const char* viewMenuTitle(int index) {
@@ -157,6 +160,23 @@ const int MAX_STATION_COUNTDOWNS = 10;
 CountdownItem stationCountdowns[MAX_STATION_COUNTDOWNS];
 int stationCountdownsCount = 0;
 int activeCountdownIndex = 0;
+
+// Google Calendar Event Storage
+struct CalendarEventItem {
+  String id;
+  String title;
+  String dateLabel;
+  String timeLabel;
+  String location;
+  bool allDay = false;
+  bool isToday = false;
+  bool isOngoing = false;
+};
+const int MAX_STATION_CALENDAR = 8;
+CalendarEventItem stationCalEvents[MAX_STATION_CALENDAR];
+int stationCalCount = 0;
+bool stationCalConnected = false;
+int activeCalIndex = 0;
 
 Preferences prefs;
 WebServer server(80);
@@ -362,18 +382,135 @@ String removeAccents(String str) {
   return out;
 }
 
+bool hasNonAscii(const String& str) {
+  for (size_t i = 0; i < str.length(); i++) {
+    if ((uint8_t)str[i] >= 0x80) return true;
+  }
+  return false;
+}
+
+String truncateUtf8ToWidth(const String& text, int maxWidthPx, const VnFont& font) {
+  if (vnTextWidth(font, text.c_str()) <= maxWidthPx) return text;
+  const char* s = text.c_str();
+  size_t len = text.length();
+  size_t bestLen = 0;
+  size_t i = 0;
+  while (i < len) {
+    uint8_t b = (uint8_t)s[i];
+    size_t charLen = 1;
+    if ((b & 0xE0) == 0xC0) charLen = 2;
+    else if ((b & 0xF0) == 0xE0) charLen = 3;
+    else if ((b & 0xF8) == 0xF0) charLen = 4;
+    if (i + charLen > len) break;
+    String candidate = text.substring(0, i + charLen) + "...";
+    if (vnTextWidth(font, candidate.c_str()) > maxWidthPx) break;
+    bestLen = i + charLen;
+    i += charLen;
+  }
+  return text.substring(0, bestLen) + "...";
+}
+
+void drawUtf8Text(int x, int y, const String& text, int size, uint16_t color, uint16_t bg, int maxWidthPx = 0) {
+  if (!tft) return;
+  if (size >= 3 && !hasNonAscii(text)) {
+    String out = text;
+    if (maxWidthPx > 0) {
+      int maxChars = maxWidthPx / (6 * size);
+      if ((int)out.length() > maxChars && maxChars > 3) {
+        out = out.substring(0, maxChars - 3) + "...";
+      } else if ((int)out.length() > maxChars) {
+        out = out.substring(0, maxChars);
+      }
+    }
+    tft->setTextSize(size);
+    tft->setTextColor(color, bg);
+    tft->setCursor(x, y);
+    tft->print(out);
+    return;
+  }
+  const VnFont& font = (size >= 2) ? vnFont17 : vnFont12;
+  String out = (maxWidthPx > 0) ? truncateUtf8ToWidth(text, maxWidthPx, font) : text;
+  // Align Google Sans cap-height with existing GFX coordinates
+  int yAdj = max(0, y - 5);
+  vnDrawText(tft, font, x, yAdj, out.c_str(), color, bg);
+}
+
+void printVietnameseCentered(String text, int y, uint16_t color, const VnFont& font = vnFont12, int maxWidthPx = 230) {
+  if (!tft) return;
+  String out = truncateUtf8ToWidth(text, maxWidthPx, font);
+  int w = vnTextWidth(font, out.c_str());
+  int x = (240 - w) / 2;
+  if (x < 0) x = 0;
+  int yAdj = max(0, y - 5);
+  vnDrawText(tft, font, x, yAdj, out.c_str(), color, themeBg);
+}
+
+void printVietnameseWrappedCentered(String text, int centerY, uint16_t color, int maxWidth = 224, int lineSpacing = 22) {
+  if (!tft) return;
+  text.trim();
+
+  int wordCount = 0;
+  String words[50];
+  int lastIdx = 0;
+  for (size_t i = 0; i <= text.length(); i++) {
+    if (i == text.length() || text[i] == ' ') {
+      if (i > lastIdx && wordCount < 50) {
+        words[wordCount++] = text.substring(lastIdx, i);
+      }
+      lastIdx = i + 1;
+    }
+  }
+
+  String lines[6];
+  int lineCount = 0;
+  String curLine = "";
+
+  for (int i = 0; i < wordCount; i++) {
+    String testLine = (curLine.length() == 0) ? words[i] : (curLine + " " + words[i]);
+    if (vnTextWidth(vnFont17, testLine.c_str()) <= maxWidth) {
+      curLine = testLine;
+    } else {
+      if (curLine.length() > 0 && lineCount < 6) {
+        lines[lineCount++] = curLine;
+      }
+      curLine = words[i];
+    }
+  }
+  if (curLine.length() > 0 && lineCount < 6) {
+    lines[lineCount++] = curLine;
+  }
+
+  int totalH = (lineCount > 0) ? ((lineCount - 1) * lineSpacing + vnFont17.lineHeight) : 0;
+  int startY = centerY - (totalH / 2);
+
+  for (int i = 0; i < lineCount; i++) {
+    int w = vnTextWidth(vnFont17, lines[i].c_str());
+    int x = (240 - w) / 2;
+    if (x < 0) x = 0;
+    vnDrawText(tft, vnFont17, x, startY + (i * lineSpacing), lines[i].c_str(), color, themeBg);
+  }
+}
+
 void printCenteredText(String text, int y, int size, uint16_t color, uint16_t bg) {
   if (!tft) return;
-  text = removeAccents(text);
-  int charW = 6 * size;
-  int textW = (int)text.length() * charW;
-  int x = (240 - textW) / 2;
-  if (x < 0) x = 0;
+  if (size >= 3 && !hasNonAscii(text)) {
+    int charW = 6 * size;
+    int textW = (int)text.length() * charW;
+    int x = (240 - textW) / 2;
+    if (x < 0) x = 0;
 
-  tft->setTextSize(size);
-  tft->setTextColor(color, bg);
-  tft->setCursor(x, y);
-  tft->print(text);
+    tft->setTextSize(size);
+    tft->setTextColor(color, bg);
+    tft->setCursor(x, y);
+    tft->print(text);
+    return;
+  }
+  const VnFont& font = (size >= 2) ? vnFont17 : vnFont12;
+  int w = vnTextWidth(font, text.c_str());
+  int x = (240 - w) / 2;
+  if (x < 0) x = 0;
+  int yAdj = max(0, y - 5);
+  vnDrawText(tft, font, x, yAdj, text.c_str(), color, bg);
 }
 
 void printCenteredText(String text, int y, int size, uint16_t color) {
@@ -382,8 +519,10 @@ void printCenteredText(String text, int y, int size, uint16_t color) {
 
 void printBigWrappedCenteredText(String text, int centerY, int size, uint16_t color, int maxCharsPerLine, int lineSpacing, uint16_t bg) {
   if (!tft) return;
-  text = removeAccents(text);
   text.trim();
+  bool useVnFont = (size <= 2) || hasNonAscii(text);
+  const VnFont& font = (size >= 2) ? vnFont17 : vnFont12;
+  int maxWidthPx = min(224, maxCharsPerLine * (size >= 2 ? 10 : 7));
 
   int wordCount = 0;
   String words[45];
@@ -403,7 +542,8 @@ void printBigWrappedCenteredText(String text, int centerY, int size, uint16_t co
 
   for (int i = 0; i < wordCount; i++) {
     String testLine = (curLine.length() == 0) ? words[i] : (curLine + " " + words[i]);
-    if (testLine.length() <= maxCharsPerLine) {
+    bool fits = useVnFont ? (vnTextWidth(font, testLine.c_str()) <= maxWidthPx) : ((int)testLine.length() <= maxCharsPerLine);
+    if (fits) {
       curLine = testLine;
     } else {
       if (curLine.length() > 0 && lineCount < 6) {
@@ -416,7 +556,7 @@ void printBigWrappedCenteredText(String text, int centerY, int size, uint16_t co
     lines[lineCount++] = curLine;
   }
 
-  int charH = (size == 1) ? 8 : (size * 8);
+  int charH = useVnFont ? font.lineHeight : (size * 8);
   int totalH = (lineCount > 0) ? ((lineCount - 1) * lineSpacing + charH) : 0;
   int startY = centerY - (totalH / 2);
 
@@ -431,8 +571,10 @@ void printBigWrappedCenteredText(String text, int centerY, int size, uint16_t co
 
 void printBigWrappedTopCenteredText(String text, int startY, int size, uint16_t color, int maxCharsPerLine, int lineSpacing, uint16_t bg) {
   if (!tft) return;
-  text = removeAccents(text);
   text.trim();
+  bool useVnFont = (size <= 2) || hasNonAscii(text);
+  const VnFont& font = (size >= 2) ? vnFont17 : vnFont12;
+  int maxWidthPx = min(224, maxCharsPerLine * (size >= 2 ? 10 : 7));
 
   int wordCount = 0;
   String words[45];
@@ -452,7 +594,8 @@ void printBigWrappedTopCenteredText(String text, int startY, int size, uint16_t 
 
   for (int i = 0; i < wordCount; i++) {
     String testLine = (curLine.length() == 0) ? words[i] : (curLine + " " + words[i]);
-    if (testLine.length() <= maxCharsPerLine) {
+    bool fits = useVnFont ? (vnTextWidth(font, testLine.c_str()) <= maxWidthPx) : ((int)testLine.length() <= maxCharsPerLine);
+    if (fits) {
       curLine = testLine;
     } else {
       if (curLine.length() > 0 && lineCount < 6) {
@@ -696,6 +839,38 @@ void updateThemePalette() {
   }
 }
 
+void publishDeviceStatus();
+void screenNeedsUpdateAfterLanguage();
+
+void publishStationLanguageUpdate() {
+  if (!mqtt.connected()) return;
+  DynamicJsonDocument doc(256);
+  doc["action"] = "station_language_update";
+  doc["device_id"] = "DeskFlow-ESP32";
+  doc["language"] = stationEnglish ? "en" : "vi";
+  String out;
+  serializeJson(doc, out);
+  mqtt.publish("deskflow/status_update", out.c_str());
+  addLog("I18N", "Synced station language to server: " + String(stationEnglish ? "en" : "vi"));
+}
+
+void applyStationLanguage(bool english, bool syncToServer) {
+  setStationLanguage(english);
+  clockCfg.language = english ? "en" : "vi";
+  saveClockConfigNVS();
+  if (syncToServer) {
+    setPendingLocalLangSync(true);
+    if (mqtt.connected()) {
+      sendClockStyleAck("applied", "");
+      publishStationLanguageUpdate();
+      publishDeviceStatus();
+    }
+  } else {
+    setPendingLocalLangSync(false);
+  }
+  screenNeedsUpdateAfterLanguage();
+}
+
 void sendHardwareSettingsAck(int version, const String& status, const String& err = "") {
   DynamicJsonDocument doc(256);
   doc["action"] = "hardware_settings_ack";
@@ -772,6 +947,22 @@ void cyclePrevCountdown() {
   screenNeedUpdate = true;
   triggerBuzz(25);
   addLog("COUNTDOWN", "Xem dem nguoc truoc: " + String(activeCountdownIndex + 1) + "/" + String(stationCountdownsCount));
+}
+
+void cycleNextCalendar() {
+  if (stationCalCount <= 0) return;
+  activeCalIndex = (activeCalIndex + 1) % stationCalCount;
+  screenNeedUpdate = true;
+  triggerBuzz(25);
+  addLog("CAL", "Su kien tiep theo: " + String(activeCalIndex + 1) + "/" + String(stationCalCount));
+}
+
+void cyclePrevCalendar() {
+  if (stationCalCount <= 0) return;
+  activeCalIndex = (activeCalIndex - 1 + stationCalCount) % stationCalCount;
+  screenNeedUpdate = true;
+  triggerBuzz(25);
+  addLog("CAL", "Su kien truoc: " + String(activeCalIndex + 1) + "/" + String(stationCalCount));
 }
 
 float readBatteryVoltage() {
@@ -869,7 +1060,7 @@ void drawSettingsMenu() {
   // Header Box
   tft->fillRoundRect(10, 8, 220, 32, 6, COL_CARD);
   tft->drawRoundRect(10, 8, 220, 32, 6, COL_CYAN);
-  printCenteredText(tr("CAI DAT PHAN CUNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
+  printCenteredText(tr("CÀI ĐẶT PHẦN CỨNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
 
   if (menuState == MENU_MAIN) {
     // 4 rows per page, large enough to read; PREV/NEXT past the edge pages.
@@ -895,74 +1086,69 @@ void drawSettingsMenu() {
         tft->drawRoundRect(11, y - 1, 218, cardH + 2, 7, COL_AMBER);
       }
 
-      tft->setTextSize(1);
-      tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
-      tft->setCursor(20, y + 10);
+      uint16_t titleCol = selected ? COL_AMBER : COL_WHITE;
+      String pfx = selected ? "> " : "  ";
+      char buf[96];
 
       if (i == 0) {
-        tft->printf("%s %s: %s", selected ? ">" : " ",
-                    tr("DEN LED", "LED RING"), ledState ? tr("BAT", "ON") : tr("TAT", "OFF"));
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->printf("%d%%  %s", ledBrightness, tr("PLAY: Bat/Tat", "PLAY: On/Off"));
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(),
+                 tr("ĐÈN LED", "LED RING"), ledState ? tr("BẬT", "ON") : tr("TẮT", "OFF"));
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        snprintf(buf, sizeof(buf), "%d%%  %s", ledBrightness, tr("PLAY: Bật/Tắt", "PLAY: On/Off"));
+        drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 1) {
-        tft->printf("%s %s: %s", selected ? ">" : " ", tr("MAU DEN", "LAMP COLOR"),
-                    stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]);
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("PLAY: Chon 7 mau co san", "PLAY: Pick 1 of 7 presets"));
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("MÀU ĐÈN", "LAMP COLOR"),
+                 stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]);
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("PLAY: Chọn 7 màu có sẵn", "PLAY: Pick 1 of 7 presets"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 2) {
-        tft->printf("%s %s: %d%%", selected ? ">" : " ", tr("DO SANG LED", "LED BRIGHTNESS"), ledBrightness);
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("Chinh do sang vong LED", "Adjust ring brightness (0-100%)"));
+        snprintf(buf, sizeof(buf), "%s%s: %d%%", pfx.c_str(), tr("ĐỘ SÁNG LED", "LED BRIGHTNESS"), ledBrightness);
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("Chỉnh độ sáng vòng LED", "Adjust ring brightness (0-100%)"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 3) {
-        tft->printf("%s %s: %s", selected ? ">" : " ", tr("COI CHIP", "BUZZER"),
-                    buzzerEnabled ? tr("BAT", "ON") : tr("TAT (MUTE)", "OFF (MUTE)"));
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->printf(tr("Do dai beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CÒI CHÍP", "BUZZER"),
+                 buzzerEnabled ? tr("BẬT", "ON") : tr("TẮT (MUTE)", "OFF (MUTE)"));
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        snprintf(buf, sizeof(buf), tr("Độ dài beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
+        drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 4) {
         if (spotifyVolumeKnown) {
-          tft->printf("%s %s: %d%%", selected ? ">" : " ",
-                      tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"), spotifyVolume);
+          snprintf(buf, sizeof(buf), "%s%s: %d%%", pfx.c_str(),
+                   tr("ÂM LƯỢNG SPOTIFY", "SPOTIFY VOLUME"), spotifyVolume);
         } else {
-          tft->printf("%s %s: --", selected ? ">" : " ",
-                      tr("AM LUONG SPOTIFY", "SPOTIFY VOLUME"));
+          snprintf(buf, sizeof(buf), "%s%s: --", pfx.c_str(),
+                   tr("ÂM LƯỢNG SPOTIFY", "SPOTIFY VOLUME"));
         }
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("PLAY: Vao | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"));
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("PLAY: Vào | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 5) {
-        String modeStr = tr("TAT (LIGHT)", "OFF (LIGHT)");
-        if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUON BAT (DARK)", "ALWAYS (DARK)");
-        else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LICH (AUTO)", "SCHEDULED");
-        tft->printf("%s %s: %s", selected ? ">" : " ", tr("CHE DO TOI", "DARK MODE"), modeStr.c_str());
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->printf(tr("Lich: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
+        String modeStr = tr("TẮT (LIGHT)", "OFF (LIGHT)");
+        if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUÔN BẬT (DARK)", "ALWAYS (DARK)");
+        else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LỊCH (AUTO)", "SCHEDULED");
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CHẾ ĐỘ TỐI", "DARK MODE"), modeStr.c_str());
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        snprintf(buf, sizeof(buf), tr("Lịch: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
+        drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 6) {
-        tft->printf("%s %s: %s", selected ? ">" : " ", tr("NGON NGU", "LANGUAGE"),
-                    stationEnglish ? "ENGLISH" : "TIENG VIET");
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("PLAY: Doi VI <-> EN", "PLAY: Switch VI <-> EN"));
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("NGÔN NGỮ", "LANGUAGE"),
+                 stationEnglish ? "ENGLISH" : "TIẾNG VIỆT");
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("PLAY: Đổi VI <-> EN", "PLAY: Switch VI <-> EN"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 7) {
-        tft->printf("%s %s", selected ? ">" : " ", tr("THOAT CAI DAT", "EXIT SETTINGS"));
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("PLAY hoac giu >>/<<", "PLAY or hold >>/<<"));
+        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THOÁT CÀI ĐẶT", "EXIT SETTINGS"));
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("PLAY hoặc giữ >>/<<", "PLAY or hold >>/<<"), 1, COL_MUTED, COL_CARD, 196);
       }
     }
 
     tft->drawFastHLine(10, 288, 220, COL_BORDER);
     String pageStr = String(menuPage + 1) + "/" + String(pageCount) + "  " +
-                     tr("PREV/NEXT: Chon | PLAY: Vao", "PREV/NEXT: Select | PLAY: Open");
+                     tr("PREV/NEXT: Chọn | PLAY: Vào", "PREV/NEXT: Select | PLAY: Open");
     printCenteredText(pageStr, 298, 1, COL_MUTED, COL_BG);
-    printCenteredText(tr("Giu NEXT de thoat", "Hold NEXT to exit"), 310, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("Giữ NEXT để thoát", "Hold NEXT to exit"), 310, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_ADJUST_LED) {
-    printCenteredText(tr("CHINH DO SANG LED (%)", "LED BRIGHTNESS (%)"), 52, 1, COL_CYAN, COL_BG);
+    printCenteredText(tr("CHỈNH ĐỘ SÁNG LED (%)", "LED BRIGHTNESS (%)"), 52, 1, COL_CYAN, COL_BG);
 
     tft->fillRoundRect(16, 75, 208, 195, 8, COL_CARD);
     tft->drawRoundRect(16, 75, 208, 195, 8, COL_BORDER);
@@ -977,10 +1163,10 @@ void drawSettingsMenu() {
     drawProgressBarSmooth(28, 175, 184, 16, ledBrightness, COL_AMBER);
 
     printCenteredText(tr("PREV: -5% | NEXT: +5%", "PREV: -5% | NEXT: +5%"), 210, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Nhan PLAY de Luu & Thoat", "Press PLAY to save & exit"), 235, 1, COL_CYAN, COL_CARD);
+    printCenteredText(tr("Nhấn PLAY để Lưu & Thoát", "Press PLAY to save & exit"), 235, 1, COL_CYAN, COL_CARD);
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText(tr("Giu NEXT: Quay lai menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("Giữ NEXT: Quay lại menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_LED_COLOR) {
     // 4 colours per page in a 2x2 grid: large, readable cells on the 240x320
@@ -991,7 +1177,7 @@ void drawSettingsMenu() {
     if (colorPage < 0) colorPage = 0;
     int firstColor = colorPage * COLOR_PER_PAGE;
 
-    String title = String(tr("MAU DEN LED", "LED LAMP COLOR")) + "  (" +
+    String title = String(tr("MÀU ĐÈN LED", "LED LAMP COLOR")) + " (" +
                    String(colorPage + 1) + "/" + String(colorPages) + ")";
     printCenteredText(title, 50, 2, COL_CYAN, COL_BG);
 
@@ -1023,18 +1209,16 @@ void drawSettingsMenu() {
       tft->fillCircle(x + cellW / 2, y + 32, 20, tft->color565(r, g, b));
 
       const char* name = stationEnglish ? LED_PRESET_NAMES_EN[i] : LED_PRESET_NAMES[i];
-      tft->setTextSize(1);
-      tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
-      int nameW = (int)strlen(name) * 6;
-      tft->setCursor(x + (cellW - nameW) / 2, y + 60);
-      tft->print(name);
+      uint16_t nameCol = selected ? COL_AMBER : COL_WHITE;
+      int nameW = vnTextWidth(vnFont12, name);
+      drawUtf8Text(x + max(4, (cellW - nameW) / 2), y + 60, String(name), 1, nameCol, COL_CARD, cellW - 8);
     }
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText(tr("PREV/NEXT: Chon | PLAY: Ap dung", "PREV/NEXT: Select | PLAY: Apply"), 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("PREV/NEXT: Chọn | PLAY: Áp dụng", "PREV/NEXT: Select | PLAY: Apply"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_VOLUME) {
-    printCenteredText(tr("AM LUONG SPOTIFY (%)", "SPOTIFY VOLUME (%)"), 52, 1, COL_CYAN, COL_BG);
+    printCenteredText(tr("ÂM LƯỢNG SPOTIFY (%)", "SPOTIFY VOLUME (%)"), 52, 1, COL_CYAN, COL_BG);
 
     tft->fillRoundRect(16, 75, 208, 195, 8, COL_CARD);
     tft->drawRoundRect(16, 75, 208, 195, 8, COL_BORDER);
@@ -1049,16 +1233,16 @@ void drawSettingsMenu() {
     drawProgressBarSmooth(28, 175, 184, 16, spotifyVolume, COL_GREEN);
 
     printCenteredText(tr("PREV: -5% | NEXT: +5%", "PREV: -5% | NEXT: +5%"), 210, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Nhan PLAY de Thoat", "Press PLAY to exit"), 235, 1, COL_CYAN, COL_CARD);
+    printCenteredText(tr("Nhấn PLAY để Thoát", "Press PLAY to exit"), 235, 1, COL_CYAN, COL_CARD);
     if (!spotifyVolumeKnown) {
-      printCenteredText(tr("Chua co du lieu Spotify", "No Spotify data yet"), 258, 1, COL_MUTED, COL_CARD);
+      printCenteredText(tr("Chưa có dữ liệu Spotify", "No Spotify data yet"), 258, 1, COL_MUTED, COL_CARD);
     }
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText(tr("Giu NEXT: Quay lai menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("Giữ NEXT: Quay lại menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_BUZZER_CONFIG) {
-    printCenteredText(tr("CAU HINH COI CHIP", "BUZZER CONFIG"), 48, 1, COL_CYAN, COL_BG);
+    printCenteredText(tr("CẤU HÌNH CÒI CHÍP", "BUZZER CONFIG"), 48, 1, COL_CYAN, COL_BG);
 
     int startY = 68;
     int cardH = 48;
@@ -1075,36 +1259,33 @@ void drawSettingsMenu() {
         tft->drawRoundRect(13, y - 1, 214, cardH + 2, 7, COL_AMBER);
       }
 
-      tft->setTextSize(1);
-      tft->setTextColor(selected ? COL_AMBER : COL_WHITE, COL_CARD);
-      tft->setCursor(22, y + 10);
+      uint16_t titleCol = selected ? COL_AMBER : COL_WHITE;
+      String pfx = selected ? "> " : "  ";
+      char buf[96];
 
       if (i == 0) {
-        tft->printf("%s %s: %s", selected ? ">" : " ", tr("COI BIP", "BUZZER"),
-                    buzzerEnabled ? tr("[BAT]", "[ON]") : tr("[TAT / MUTE]", "[OFF / MUTE]"));
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("PLAY: Bat / tat am thanh", "PLAY: On / off sound"));
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CÒI BÍP", "BUZZER"),
+                 buzzerEnabled ? tr("[BẬT]", "[ON]") : tr("[TẮT / MUTE]", "[OFF / MUTE]"));
+        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 28, tr("PLAY: Bật / tắt âm thanh", "PLAY: On / off sound"), 1, COL_MUTED, COL_CARD, 194);
       } else if (i == 1) {
-        tft->printf("%s %s: %d ms", selected ? ">" : " ", tr("DO DAI BEEP", "BEEP LENGTH"), buzzerDurationSetting);
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("PLAY: Thay doi do dai bip", "PLAY: Cycle beep length"));
+        snprintf(buf, sizeof(buf), "%s%s: %d ms", pfx.c_str(), tr("ĐỘ DÀI BEEP", "BEEP LENGTH"), buzzerDurationSetting);
+        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 28, tr("PLAY: Thay đổi độ dài bíp", "PLAY: Cycle beep length"), 1, COL_MUTED, COL_CARD, 194);
       } else if (i == 2) {
-        tft->printf("%s %s", selected ? ">" : " ", tr("THU TIENG COI (TEST)", "TEST BUZZER"));
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->printf(tr("PLAY: Phat am thu %dHz", "PLAY: Test tone %dHz"), MORSE_TEST_FREQ);
+        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THỬ TIẾNG CÒI (TEST)", "TEST BUZZER"));
+        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
+        snprintf(buf, sizeof(buf), tr("PLAY: Phát âm thử %dHz", "PLAY: Test tone %dHz"), MORSE_TEST_FREQ);
+        drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 194);
       } else if (i == 3) {
-        tft->printf("%s %s", selected ? ">" : " ", tr("QUAY LAI MENU CHINH", "BACK TO MAIN MENU"));
-        tft->setCursor(24, y + 28);
-        tft->setTextColor(COL_MUTED, COL_CARD);
-        tft->print(tr("Tro ve danh sach cai dat", "Return to the settings list"));
+        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("QUAY LẠI MENU CHÍNH", "BACK TO MAIN MENU"));
+        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 28, tr("Trở về danh sách cài đặt", "Return to the settings list"), 1, COL_MUTED, COL_CARD, 194);
       }
     }
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
-    printCenteredText(tr("PREV/NEXT: Chon | PLAY: Chon", "PREV/NEXT: Select | PLAY: Activate"), 304, 1, COL_MUTED, COL_BG);
+    printCenteredText(tr("PREV/NEXT: Chọn | PLAY: Chọn", "PREV/NEXT: Select | PLAY: Activate"), 304, 1, COL_MUTED, COL_BG);
   }
 }
 
@@ -1116,7 +1297,7 @@ void drawViewMenu() {
   // Header Box
   tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
   tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
-  printCenteredText(tr("DANH SACH MAN HINH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
+  printCenteredText(tr("DANH SÁCH MÀN HÌNH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
 
   int pageCount = (VIEW_MENU_COUNT + VIEW_ROWS_PER_PAGE - 1) / VIEW_ROWS_PER_PAGE;
   if (viewMenuPage >= pageCount) viewMenuPage = pageCount - 1;
@@ -1141,43 +1322,34 @@ void drawViewMenu() {
     tft->fillRoundRect(12, y, 216, cardH, 6, bg);
     tft->drawRoundRect(12, y, 216, cardH, 6, border);
 
-    tft->setTextSize(1);
-    tft->setTextColor(textCol, bg);
-    tft->setCursor(18, y + 12);
-
-    if (selected) {
-      tft->printf("> %s", viewMenuTitle(i));
-    } else {
-      tft->printf("  %s", viewMenuTitle(i));
-    }
+    String rowTitle = String(selected ? "> " : "  ") + viewMenuTitle(i);
+    drawUtf8Text(18, y + 12, rowTitle, 1, textCol, bg, 204);
 
     if (isCurrent) {
-      tft->setCursor(24, y + 30);
-      tft->setTextColor(selected ? COL_BG : COL_GREEN, bg);
-      tft->print(tr("[DANG MO]", "[ACTIVE]"));
+      drawUtf8Text(24, y + 30, tr("[ĐANG MỞ]", "[ACTIVE]"), 1, selected ? COL_BG : COL_GREEN, bg, 196);
     }
   }
 
   tft->drawFastHLine(10, 288, 220, COL_BORDER);
   String pageStr = String(viewMenuPage + 1) + "/" + String(pageCount) + "  " +
-                   tr("[Prev/Next]: Tim  [Play]: Chon", "[Prev/Next]: Browse  [Play]: Select");
+                   tr("[Prev/Next]: Tìm  [Play]: Chọn", "[Prev/Next]: Browse  [Play]: Select");
   printCenteredText(pageStr, 300, 1, COL_MUTED, COL_BG);
 }
 
 void drawNotesView() {
-  printCenteredText(tr("GHI CHU DANG GHIM", "PINNED NOTES"), 36, 2, COL_CYAN, COL_BG);
+  printCenteredText(tr("GHI CHÚ ĐANG GHIM", "PINNED NOTES"), 36, 2, COL_CYAN, COL_BG);
 
   if (stationNotesCount == 0) {
     tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
     tft->drawRoundRect(14, 75, 212, 195, 8, COL_BORDER);
-    printCenteredText(tr("Chua co ghi chu nao", "No notes yet"), 120, 1, COL_MUTED, COL_CARD);
-    printCenteredText(tr("Them ghi chu tu app DeskFlow", "Add notes in the DeskFlow app"), 150, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Ghi chu se tu dong dong bo!", "Notes sync automatically!"), 175, 1, COL_AMBER, COL_CARD);
+    printCenteredText(tr("Chưa có ghi chú nào", "No notes yet"), 120, 1, COL_MUTED, COL_CARD);
+    printCenteredText(tr("Thêm ghi chú từ app DeskFlow", "Add notes in the DeskFlow app"), 150, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Ghi chú sẽ tự động đồng bộ!", "Notes sync automatically!"), 175, 1, COL_AMBER, COL_CARD);
   } else {
     if (activeNoteIndex >= stationNotesCount) activeNoteIndex = 0;
     auto& note = stationNotes[activeNoteIndex];
 
-    String pageStr = String("Ghi chu: ") + (activeNoteIndex + 1) + "/" + stationNotesCount;
+    String pageStr = String(tr("Ghi chú: ", "Note: ")) + (activeNoteIndex + 1) + "/" + stationNotesCount;
     printCenteredText(pageStr, 58, 1, COL_MUTED, COL_BG);
 
     tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
@@ -1185,21 +1357,12 @@ void drawNotesView() {
 
     if (note.isPinned) {
       tft->fillRoundRect(22, 85, 100, 18, 4, COL_CYAN);
-      tft->setTextSize(1);
-      tft->setTextColor(COL_BG, COL_CYAN);
-      tft->setCursor(28, 90);
-      tft->print("* DANG GHIM *");
+      drawUtf8Text(28, 90, tr("* ĐANG GHIM *", "* PINNED *"), 1, COL_BG, COL_CYAN, 90);
     } else {
-      tft->setTextSize(1);
-      tft->setTextColor(COL_MUTED, COL_CARD);
-      tft->setCursor(24, 90);
-      tft->print("Ghi chu ca nhan");
+      drawUtf8Text(24, 90, tr("Ghi chú cá nhân", "Personal note"), 1, COL_MUTED, COL_CARD, 192);
     }
 
-    tft->setTextSize(1);
-    tft->setTextColor(COL_AMBER, COL_CARD);
-    tft->setCursor(24, 112);
-    tft->print(removeAccents(note.title).substring(0, 26));
+    drawUtf8Text(24, 112, note.title, 1, COL_AMBER, COL_CARD, 192);
 
     tft->drawFastHLine(24, 126, 192, COL_BORDER);
 
@@ -1210,19 +1373,19 @@ void drawNotesView() {
 }
 
 void drawCountdownView() {
-  printCenteredText(tr("SU KIEN DEM NGUOC", "EVENT COUNTDOWN"), 36, 2, COL_AMBER, COL_BG);
+  printCenteredText(tr("SỰ KIỆN ĐẾM NGƯỢC", "EVENT COUNTDOWN"), 36, 2, COL_AMBER, COL_BG);
 
   if (stationCountdownsCount == 0) {
     tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
     tft->drawRoundRect(14, 75, 212, 195, 8, COL_BORDER);
-    printCenteredText(tr("Chua co su kien dem nguoc", "No countdown events yet"), 120, 1, COL_MUTED, COL_CARD);
-    printCenteredText(tr("Tao su kien tu app DeskFlow", "Create one in the DeskFlow app"), 150, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Ho tro dem nguoc ngay thi", "Day-accurate countdown"), 175, 1, COL_CYAN, COL_CARD);
+    printCenteredText(tr("Chưa có sự kiện đếm ngược", "No countdown events yet"), 120, 1, COL_MUTED, COL_CARD);
+    printCenteredText(tr("Tạo sự kiện từ app DeskFlow", "Create one in the DeskFlow app"), 150, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Hỗ trợ đếm ngược ngày thi", "Day-accurate countdown"), 175, 1, COL_CYAN, COL_CARD);
   } else {
     if (activeCountdownIndex >= stationCountdownsCount) activeCountdownIndex = 0;
     auto& cd = stationCountdowns[activeCountdownIndex];
 
-    String pageStr = String("Su kien: ") + (activeCountdownIndex + 1) + "/" + stationCountdownsCount;
+    String pageStr = String(tr("Sự kiện: ", "Event: ")) + (activeCountdownIndex + 1) + "/" + stationCountdownsCount;
     printCenteredText(pageStr, 58, 1, COL_MUTED, COL_BG);
 
     tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
@@ -1230,32 +1393,117 @@ void drawCountdownView() {
 
     if (cd.isPinned) {
       tft->fillRoundRect(22, 85, 120, 18, 4, COL_AMBER);
-      tft->setTextSize(1);
-      tft->setTextColor(COL_BG, COL_AMBER);
-      tft->setCursor(28, 90);
-      tft->print("* DANG GHIM TRAM *");
+      drawUtf8Text(28, 90, tr("* ĐANG GHIM TRẠM *", "* PINNED *"), 1, COL_BG, COL_AMBER, 110);
     } else {
-      tft->setTextSize(1);
-      tft->setTextColor(COL_MUTED, COL_CARD);
-      tft->setCursor(24, 90);
-      tft->print("Su kien quan trong");
+      drawUtf8Text(24, 90, tr("Sự kiện quan trọng", "Important event"), 1, COL_MUTED, COL_CARD, 192);
     }
 
-    printCenteredText(removeAccents(cd.title).substring(0, 22), 115, 2, COL_WHITE, COL_CARD);
+    printCenteredText(cd.title, 115, 2, COL_WHITE, COL_CARD);
 
-    String dStr = String("Ngay dich: ") + cd.targetDate.substring(0, 10);
+    String dStr = String(tr("Ngày đích: ", "Target date: ")) + cd.targetDate.substring(0, 10);
     printCenteredText(dStr, 142, 1, COL_MUTED, COL_CARD);
 
     if (cd.isExpired || cd.daysLeft <= 0) {
       tft->fillRoundRect(24, 162, 192, 52, 6, 0x6000);
       tft->drawRoundRect(24, 162, 192, 52, 6, 0xF800);
-      printCenteredText("DA KET THUC", 182, 2, 0xF800, 0x6000);
+      printCenteredText(tr("ĐÃ KẾT THÚC", "FINISHED"), 182, 2, 0xF800, 0x6000);
     } else {
       tft->fillRoundRect(24, 162, 192, 52, 6, COL_BG);
       tft->drawRoundRect(24, 162, 192, 52, 6, COL_AMBER);
-      String daysStr = String("CON ") + cd.daysLeft + " NGAY";
+      String daysStr = String(tr("CÒN ", "IN ")) + cd.daysLeft + tr(" NGÀY", " DAYS");
       printCenteredText(daysStr, 180, 2, COL_AMBER, COL_BG);
     }
+  }
+
+  printCenteredText("< PREV               NEXT >", 280, 1, COL_MUTED, COL_BG);
+}
+
+String translateCalLabel(const String& raw) {
+  if (!stationEnglish) return raw;
+  if (raw == "Hôm nay") return "Today";
+  if (raw == "Ngày mai") return "Tomorrow";
+  if (raw == "Cả ngày") return "All day";
+  return raw;
+}
+
+void drawCalendarView() {
+  printCenteredText(tr("LỊCH GOOGLE", "GOOGLE CALENDAR"), 34, 2, COL_CYAN, COL_BG);
+
+  if (stationCalCount == 0) {
+    tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
+    tft->drawRoundRect(14, 75, 212, 195, 8, COL_BORDER);
+    if (!stationCalConnected) {
+      printCenteredText(tr("Chưa kết nối Google Calendar", "Google Calendar not linked"), 122, 1, COL_AMBER, COL_CARD);
+      printCenteredText(tr("Mở app DeskFlow -> mục Calendar", "Open DeskFlow app -> Calendar"), 154, 1, COL_WHITE, COL_CARD);
+      printCenteredText(tr("Đăng nhập Google hoặc dán link .ics", "Sign in with Google or paste .ics"), 180, 1, COL_MUTED, COL_CARD);
+    } else {
+      printCenteredText(tr("Không có sự kiện sắp tới", "No upcoming events"), 148, 1, COL_WHITE, COL_CARD);
+      printCenteredText(tr("Tự đồng bộ mỗi 5 phút", "Auto-syncs every 5 mins"), 176, 1, COL_MUTED, COL_CARD);
+    }
+    printCenteredText("< PREV               NEXT >", 280, 1, COL_MUTED, COL_BG);
+    return;
+  }
+
+  if (activeCalIndex >= stationCalCount) activeCalIndex = 0;
+  String pageStr = String(tr("Sự kiện: ", "Event: ")) + (activeCalIndex + 1) + "/" + stationCalCount;
+  printCenteredText(pageStr, 56, 1, COL_MUTED, COL_BG);
+
+  // Focused Card (Top: Y=74..174)
+  auto& ev = stationCalEvents[activeCalIndex];
+  uint16_t borderCol = ev.isOngoing ? COL_GREEN : (ev.isToday ? COL_CYAN : COL_BORDER);
+  tft->fillRoundRect(12, 74, 216, 102, 8, COL_CARD);
+  tft->drawRoundRect(12, 74, 216, 102, 8, borderCol);
+
+  uint16_t badgeCol = ev.isOngoing ? COL_GREEN : (ev.isToday ? COL_CYAN : COL_AMBER);
+  String badgeText = ev.isOngoing ? tr("ĐANG DIỄN RA", "ONGOING") : translateCalLabel(ev.dateLabel);
+  tft->fillRoundRect(20, 82, 92, 16, 4, badgeCol);
+  drawUtf8Text(26, 86, badgeText, 1, COL_BG, badgeCol, 80);
+
+  String tLbl = translateCalLabel(ev.timeLabel);
+  drawUtf8Text(118, 86, tLbl, 1, COL_WHITE, COL_CARD, 102);
+
+  // Event title (up to 2 wrapped lines inside card)
+  String title = ev.title;
+  title.trim();
+  int maxW = 196;
+  if (vnTextWidth(vnFont17, title.c_str()) <= maxW) {
+    drawUtf8Text(20, 110, title, 2, COL_WHITE, COL_CARD, maxW);
+  } else {
+    // Wrap nicely using vnFont12 if long
+    int splitPos = -1;
+    for (size_t i = 0; i < title.length(); i++) {
+      if (title[i] == ' ' && vnTextWidth(vnFont12, title.substring(0, i).c_str()) <= maxW) {
+        splitPos = (int)i;
+      }
+    }
+    if (splitPos > 0) {
+      drawUtf8Text(20, 108, title.substring(0, splitPos), 1, COL_WHITE, COL_CARD, maxW);
+      drawUtf8Text(20, 126, title.substring(splitPos + 1), 1, COL_WHITE, COL_CARD, maxW);
+    } else {
+      drawUtf8Text(20, 112, title, 1, COL_WHITE, COL_CARD, maxW);
+    }
+  }
+
+  if (ev.location.length() > 0) {
+    drawUtf8Text(20, 152, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, maxW);
+  } else {
+    drawUtf8Text(20, 152, ev.isToday ? tr("Lịch hôm nay", "Today's schedule") : tr("Sự kiện sắp tới", "Upcoming event"), 1, COL_MUTED, COL_CARD, maxW);
+  }
+
+  // Secondary Preview Card (Next event: Y=184..264)
+  if (stationCalCount > 1) {
+    int nextIdx = (activeCalIndex + 1) % stationCalCount;
+    auto& nxt = stationCalEvents[nextIdx];
+    tft->fillRoundRect(12, 184, 216, 80, 8, COL_CARD);
+    tft->drawRoundRect(12, 184, 216, 80, 8, COL_BORDER);
+    drawUtf8Text(20, 192, tr("TIẾP THEO:", "UP NEXT:"), 1, COL_MUTED, COL_CARD, 85);
+    String nxtMeta = translateCalLabel(nxt.dateLabel) + " • " + translateCalLabel(nxt.timeLabel);
+    drawUtf8Text(20, 212, nxtMeta, 1, COL_AMBER, COL_CARD, 196);
+    drawUtf8Text(20, 232, nxt.title, 1, COL_WHITE, COL_CARD, 196);
+  } else {
+    tft->fillRoundRect(12, 184, 216, 80, 8, COL_CARD);
+    tft->drawRoundRect(12, 184, 216, 80, 8, COL_BORDER);
+    printCenteredText(tr("Chỉ có 1 sự kiện sắp tới", "Only 1 upcoming event"), 218, 1, COL_MUTED, COL_CARD);
   }
 
   printCenteredText("< PREV               NEXT >", 280, 1, COL_MUTED, COL_BG);
@@ -1323,7 +1571,7 @@ void drawFocusView() {
   uint16_t cardBorderCol = COL_BORDER;
   uint16_t badgeBg = COL_BORDER;
   uint16_t badgeFg = COL_WHITE;
-  String badgeText = tr("CHUA KICH HOAT", "NOT ACTIVE");
+  String badgeText = tr("CHƯA KÍCH HOẠT", "NOT ACTIVE");
   uint16_t timeCol = COL_MUTED;
   uint16_t barCol = COL_MUTED;
 
@@ -1331,28 +1579,28 @@ void drawFocusView() {
     cardBorderCol = 0xF800; // Red
     badgeBg = 0xF800;
     badgeFg = 0xFFFF;
-    badgeText = tr("HET GIO - DA KHOA", "TIME UP - LOCKED");
+    badgeText = tr("HẾT GIỜ - ĐÃ KHÓA", "TIME UP - LOCKED");
     timeCol = 0xF800;
     barCol = 0xF800;
   } else if (focusPhase == "BREAK") {
     cardBorderCol = COL_CYAN;
     badgeBg = COL_CYAN;
     badgeFg = COL_BG;
-    badgeText = tr("GIO GIAI LAO", "BREAK TIME");
+    badgeText = tr("GIỜ GIẢI LAO", "BREAK TIME");
     timeCol = COL_CYAN;
     barCol = COL_CYAN;
   } else if (focusEnabled && (focusPhase == "WORK" || focusPhase == "FOCUS")) {
     cardBorderCol = COL_AMBER;
     badgeBg = COL_AMBER;
     badgeFg = COL_BG;
-    badgeText = (focusSessionType == "pomodoro") ? "POMODORO WORK" : tr("DANG TAP TRUNG", "FOCUSING");
+    badgeText = (focusSessionType == "pomodoro") ? "POMODORO WORK" : tr("ĐANG TẬP TRUNG", "FOCUSING");
     timeCol = COL_WHITE;
     barCol = COL_GREEN;
   }
 
   // Draw static elements on first entry or state change
   if (firstEntry) {
-    printCenteredText(tr("CHEDO TAP TRUNG", "FOCUS MODE"), 34, 2, COL_AMBER, COL_BG);
+    printCenteredText(tr("CHẾ ĐỘ TẬP TRUNG", "FOCUS MODE"), 34, 2, COL_AMBER, COL_BG);
 
     tft->fillRoundRect(14, 56, 212, 222, 8, COL_CARD);
     tft->drawRoundRect(14, 56, 212, 222, 8, cardBorderCol);
@@ -1396,27 +1644,27 @@ void drawFocusView() {
 
     String s1 = "";
     if (focusSessionType == "pomodoro") {
-      s1 = String(tr("Chu ky: ", "Cycle: ")) + String(focusCycleCount) + " (Pomodoro)";
+      s1 = String(tr("Chu kỳ: ", "Cycle: ")) + String(focusCycleCount) + " (Pomodoro)";
     } else if (focusEnabled) {
-      s1 = tr("Phien tap trung co dinh", "Fixed focus session");
+      s1 = tr("Phiên tập trung cố định", "Fixed focus session");
     } else {
-      s1 = tr("Chua co phien tap trung", "No focus session");
+      s1 = tr("Chưa có phiên tập trung", "No focus session");
     }
     printCenteredText(s1, 168, 1, COL_WHITE, COL_CARD);
 
     String s2 = "";
     uint16_t s2Col = COL_MUTED;
     if (focusPhase == "EXPIRED_LOCKED") {
-      s2 = tr("Dang khoa thiet bi & web!", "Devices & web locked!");
+      s2 = tr("Đang khóa thiết bị & web!", "Devices & web locked!");
       s2Col = 0xF800; // Red
     } else if (focusActive) {
-      s2 = tr("Dang chan cac web giai tri", "Blocking distracting sites");
+      s2 = tr("Đang chặn các web giải trí", "Blocking distracting sites");
       s2Col = COL_GREEN;
     } else if (focusEnabled && !focusActive) {
-      s2 = tr("Tam dung chan web (Nghi)", "Blocking paused (break)");
+      s2 = tr("Tạm dừng chặn web (Nghỉ)", "Blocking paused (break)");
       s2Col = COL_CYAN;
     } else {
-      s2 = tr("Web giai tri duoc phep", "Distracting sites allowed");
+      s2 = tr("Web giải trí được phép", "Distracting sites allowed");
       s2Col = COL_MUTED;
     }
     printCenteredText(s2, 186, 1, s2Col, COL_CARD);
@@ -1424,13 +1672,13 @@ void drawFocusView() {
     String s3 = "";
     uint16_t s3Col = COL_MUTED;
     if (focusPhase == "EXPIRED_LOCKED") {
-      s3 = tr("Giai toan tren PC/App de mo", "Solve on PC/app to unlock");
+      s3 = tr("Giải toán trên PC/App để mở", "Solve on PC/app to unlock");
       s3Col = COL_AMBER;
     } else if (focusEnabled) {
-      s3 = tr("Dong bo tu Python Backend", "Synced from Python backend");
+      s3 = tr("Đồng bộ từ Python Backend", "Synced from Python backend");
       s3Col = COL_MUTED;
     } else {
-      s3 = tr("Bat tap trung tu PC hoac App", "Start focus from PC or app");
+      s3 = tr("Bật tập trung từ PC hoặc App", "Start focus from PC or app");
       s3Col = COL_MUTED;
     }
     printCenteredText(s3, 204, 1, s3Col, COL_CARD);
@@ -1440,9 +1688,9 @@ void drawFocusView() {
   if (firstEntry || isStale != lastFocusStale) {
     tft->fillRect(20, 240, 200, 18, COL_CARD);
     if (isStale) {
-      printCenteredText(tr("! Mat dong bo Backend !", "! Backend sync lost !"), 244, 1, 0xF800, COL_CARD);
+      printCenteredText(tr("! Mất đồng bộ Backend !", "! Backend sync lost !"), 244, 1, 0xF800, COL_CARD);
     } else {
-      printCenteredText(tr("* Dong bo Backend: Tot *", "* Backend sync: OK *"), 244, 1, COL_MUTED, COL_CARD);
+      printCenteredText(tr("* Đồng bộ Backend: Tốt *", "* Backend sync: OK *"), 244, 1, COL_MUTED, COL_CARD);
     }
     lastFocusStale = isStale;
   }
@@ -1493,14 +1741,11 @@ void drawPhysicalScreen() {
   }
 
   if (viewChanged || srvStats.internet != lastHeaderNet) {
-    tft->setTextSize(1);
-    tft->setCursor(14, 8);
+    tft->fillRect(12, 3, 14, 16, COL_BG);
     if (srvStats.internet) {
-      tft->setTextColor(COL_GREEN, COL_BG);
-      tft->print("v ");
+      drawUtf8Text(14, 8, "v", 1, COL_GREEN, COL_BG);
     } else {
-      tft->setTextColor(0xF800, COL_BG);
-      tft->print("x ");
+      drawUtf8Text(14, 8, "x", 1, 0xF800, COL_BG);
     }
     lastHeaderNet = srvStats.internet;
   }
@@ -1515,20 +1760,15 @@ void drawPhysicalScreen() {
   }
 
   if (viewChanged || wCompact != lastHeaderWeather) {
-    tft->setTextSize(1);
-    tft->setTextColor(COL_CYAN, COL_BG);
-    tft->setCursor(28, 8);
-    tft->print(wCompact + "  ");
+    tft->fillRect(26, 3, 52, 16, COL_BG);
+    drawUtf8Text(28, 8, wCompact, 1, COL_CYAN, COL_BG, 50);
     lastHeaderWeather = wCompact;
   }
 
   String curTimeStr = getFormattedRealTime(true);
   if (viewChanged || curTimeStr != lastHeaderTime) {
-    tft->fillRect(80, 5, 50, 12, COL_BG);
-    tft->setTextSize(1);
-    tft->setTextColor(COL_MUTED, COL_BG);
-    tft->setCursor(84, 8);
-    tft->print(curTimeStr);
+    tft->fillRect(79, 3, 56, 16, COL_BG);
+    drawUtf8Text(82, 8, curTimeStr, 1, COL_MUTED, COL_BG);
     lastHeaderTime = curTimeStr;
   }
 
@@ -1551,31 +1791,23 @@ void drawPhysicalScreen() {
     }
   }
   if (viewChanged || curFocusIndicator != lastHeaderFocus) {
-    tft->fillRect(135, 5, 48, 12, COL_BG);
+    tft->fillRect(136, 3, 50, 16, COL_BG);
     if (curFocusIndicator.length() > 0) {
-      tft->setTextSize(1);
-      if (focusPhase == "BREAK") {
-        tft->setTextColor(COL_GREEN, COL_BG);
-      } else if (focusPhase == "EXPIRED_LOCKED") {
-        tft->setTextColor(0xF800, COL_BG); // Red
-      } else {
-        tft->setTextColor(COL_AMBER, COL_BG);
-      }
-      tft->setCursor(137, 8);
-      tft->print(curFocusIndicator);
+      uint16_t fCol = COL_AMBER;
+      if (focusPhase == "BREAK") fCol = COL_GREEN;
+      else if (focusPhase == "EXPIRED_LOCKED") fCol = 0xF800; // Red
+      drawUtf8Text(138, 8, curFocusIndicator, 1, fCol, COL_BG, 48);
     }
     lastHeaderFocus = curFocusIndicator;
   }
 
   int curBatPct = calculateBatteryPct(readBatteryVoltage());
   if (viewChanged || curBatPct != lastHeaderBat) {
-    tft->setTextSize(1);
-    tft->setTextColor(COL_AMBER, COL_BG);
-    tft->setCursor(188, 8);
-    tft->print("Z ");
-    tft->setTextColor(COL_MUTED, COL_BG);
-    tft->setCursor(200, 8);
-    tft->printf("%2d%", curBatPct);
+    tft->fillRect(188, 3, 44, 16, COL_BG);
+    drawUtf8Text(188, 8, "Z", 1, COL_AMBER, COL_BG);
+    char batBuf[8];
+    snprintf(batBuf, sizeof(batBuf), "%d%%", curBatPct);
+    drawUtf8Text(199, 8, String(batBuf), 1, COL_MUTED, COL_BG);
     lastHeaderBat = curBatPct;
   }
 
@@ -1608,21 +1840,14 @@ void drawPhysicalScreen() {
       tft->fillRoundRect(15, 142, 210, 48, 8, COL_CARD);
       tft->drawRoundRect(15, 142, 210, 48, 8, COL_BORDER);
 
-      tft->setTextSize(1);
-      tft->setTextColor(COL_GREEN, COL_CARD);
-      tft->setCursor(24, 154);
-      tft->print("SP ");
+      drawUtf8Text(24, 154, "SP", 1, COL_GREEN, COL_CARD);
 
-      tft->setTextColor(COL_WHITE, COL_CARD);
-      tft->setCursor(46, 154);
-      tft->print(removeAccents(srvStats.currentTrack).substring(0, 24));
+      drawUtf8Text(46, 154, srvStats.currentTrack, 1, COL_WHITE, COL_CARD, 170);
 
-      tft->setTextColor(COL_MUTED, COL_CARD);
-      tft->setCursor(46, 168);
       if (srvStats.currentArtist.length() > 0 && srvStats.currentArtist != "N/A") {
-        tft->print(removeAccents(srvStats.currentArtist).substring(0, 24));
+        drawUtf8Text(46, 168, srvStats.currentArtist, 1, COL_MUTED, COL_CARD, 170);
       } else {
-        tft->print("Spotify Desktop");
+        drawUtf8Text(46, 168, "Spotify Desktop", 1, COL_MUTED, COL_CARD, 170);
       }
 
       lastMainTrack = srvStats.currentTrack;
@@ -1636,11 +1861,11 @@ void drawPhysicalScreen() {
       tft->fillRect(10, 196, 220, 92, COL_BG);
 
       if (srvStats.hasCountdown && srvStats.countdownName.length() > 0) {
-        String cdTxt = removeAccents(srvStats.countdownName) + ": " + String(srvStats.countdownDays) + tr(" ngay", " days");
+        String cdTxt = srvStats.countdownName + ": " + String(srvStats.countdownDays) + tr(" ngày", " days");
         printCenteredText(cdTxt, 198, 1, COL_AMBER, COL_BG);
 
         if (srvStats.stickyNote.length() > 0) {
-          printCenteredText(tr("~ GHI CHU GHIM ~", "~ PINNED NOTE ~"), 212, 1, COL_CYAN, COL_BG);
+          printCenteredText(tr("~ GHI CHÚ GHIM ~", "~ PINNED NOTE ~"), 212, 1, COL_CYAN, COL_BG);
           printBigWrappedTopCenteredText(srvStats.stickyNote, 226, 1, COL_WHITE, 28, 13, COL_BG);
         } else {
           printCenteredText(tr("~ DAILY MOTIVATION ~", "~ DAILY MOTIVATION ~"), 212, 1, COL_MUTED, COL_BG);
@@ -1648,7 +1873,7 @@ void drawPhysicalScreen() {
         }
       } else {
         if (srvStats.stickyNote.length() > 0) {
-          printCenteredText(tr("~ GHI CHU GHIM ~", "~ PINNED NOTE ~"), 202, 1, COL_CYAN, COL_BG);
+          printCenteredText(tr("~ GHI CHÚ GHIM ~", "~ PINNED NOTE ~"), 202, 1, COL_CYAN, COL_BG);
           printBigWrappedTopCenteredText(srvStats.stickyNote, 218, 1, COL_WHITE, 28, 13, COL_BG);
         } else {
           printCenteredText(tr("~ DAILY MOTIVATION ~", "~ DAILY MOTIVATION ~"), 202, 1, COL_AMBER, COL_BG);
@@ -1671,7 +1896,7 @@ void drawPhysicalScreen() {
     static int lastEspBatPct = -999;
 
     if (viewChanged) {
-      printCenteredText(tr("THONG SO MAY", "HARDWARE STATS"), 38, 2, COL_PURPLE, COL_BG);
+      printCenteredText(tr("THÔNG SỐ MÁY", "HARDWARE STATS"), 38, 2, COL_PURPLE, COL_BG);
       tft->drawFastHLine(16, 150, 208, COL_BORDER);
       lastLpCpu = -999.0;
       lastLpRam = -999.0;
@@ -1684,13 +1909,12 @@ void drawPhysicalScreen() {
 
     // Dynamic Laptop stats - live 1-second refresh
     if (viewChanged || srvStats.lp_cpu != lastLpCpu || srvStats.lp_ram != lastLpRam || srvStats.lp_bat != lastLpBat) {
-      tft->fillRect(16, 68, 208, 14, COL_BG);
-      tft->setTextSize(1);
-      tft->setTextColor(COL_WHITE, COL_BG);
-      tft->setCursor(16, 70);
-      tft->print(tr("Laptop: ", "Laptop: "));
-      tft->setTextColor(COL_CYAN, COL_BG);
-      tft->printf("%d%% | %.1f%% | %.1f%%", srvStats.lp_bat, srvStats.lp_ram, srvStats.lp_cpu);
+      tft->fillRect(16, 65, 208, 16, COL_BG);
+      const char* lpLbl = tr("Laptop: ", "Laptop: ");
+      drawUtf8Text(16, 70, lpLbl, 1, COL_WHITE, COL_BG);
+      char lpBuf[48];
+      snprintf(lpBuf, sizeof(lpBuf), "%d%% | %.1f%% | %.1f%%", srvStats.lp_bat, srvStats.lp_ram, srvStats.lp_cpu);
+      drawUtf8Text(16 + vnTextWidth(vnFont12, lpLbl), 70, String(lpBuf), 1, COL_CYAN, COL_BG);
       drawProgressBarSmooth(16, 84, 208, 8, constrain((int)srvStats.lp_cpu, 0, 100), COL_CYAN);
       lastLpCpu = srvStats.lp_cpu;
       lastLpRam = srvStats.lp_ram;
@@ -1699,13 +1923,12 @@ void drawPhysicalScreen() {
 
     // Dynamic Server stats - live 1-second refresh
     if (viewChanged || srvStats.cpu != lastSrvCpu || srvStats.ram_pct != lastSrvRam || srvStats.uptime != lastSrvUptime) {
-      tft->fillRect(16, 108, 208, 14, COL_BG);
-      tft->setTextSize(1);
-      tft->setTextColor(COL_WHITE, COL_BG);
-      tft->setCursor(16, 110);
-      tft->print(tr("Server: ", "Server: "));
-      tft->setTextColor(COL_GREEN, COL_BG);
-      tft->printf("%s | %.1f%% | %.1f%%", srvStats.uptime.c_str(), srvStats.ram_pct, srvStats.cpu);
+      tft->fillRect(16, 105, 208, 16, COL_BG);
+      const char* srvLbl = tr("Server: ", "Server: ");
+      drawUtf8Text(16, 110, srvLbl, 1, COL_WHITE, COL_BG);
+      char srvBuf[48];
+      snprintf(srvBuf, sizeof(srvBuf), "%s | %.1f%% | %.1f%%", srvStats.uptime.c_str(), srvStats.ram_pct, srvStats.cpu);
+      drawUtf8Text(16 + vnTextWidth(vnFont12, srvLbl), 110, String(srvBuf), 1, COL_GREEN, COL_BG, 208 - vnTextWidth(vnFont12, srvLbl));
       drawProgressBarSmooth(16, 124, 208, 8, constrain((int)srvStats.cpu, 0, 100), COL_GREEN);
       lastSrvCpu = srvStats.cpu;
       lastSrvRam = srvStats.ram_pct;
@@ -1716,13 +1939,12 @@ void drawPhysicalScreen() {
     float vEsp = readBatteryVoltage();
     int pctEsp = calculateBatteryPct(vEsp);
     if (viewChanged || pctEsp != lastEspBatPct) {
-      tft->fillRect(16, 166, 208, 14, COL_BG);
-      tft->setTextSize(1);
-      tft->setTextColor(COL_WHITE, COL_BG);
-      tft->setCursor(16, 168);
-      tft->print(tr("ESP32 Pin: ", "ESP32 batt: "));
-      tft->setTextColor(COL_AMBER, COL_BG);
-      tft->printf("%.2fV (%d%%)", vEsp, pctEsp);
+      tft->fillRect(16, 163, 208, 16, COL_BG);
+      const char* espLbl = tr("ESP32 Pin: ", "ESP32 batt: ");
+      drawUtf8Text(16, 168, espLbl, 1, COL_WHITE, COL_BG);
+      char espBuf[32];
+      snprintf(espBuf, sizeof(espBuf), "%.2fV (%d%%)", vEsp, pctEsp);
+      drawUtf8Text(16 + vnTextWidth(vnFont12, espLbl), 168, String(espBuf), 1, COL_AMBER, COL_BG);
       drawProgressBarSmooth(16, 184, 208, 8, constrain(pctEsp, 0, 100), COL_AMBER);
       lastEspBatPct = pctEsp;
     }
@@ -1730,73 +1952,74 @@ void drawPhysicalScreen() {
   // 4. VIEW TKB
   else if (srvStats.activeView == "tkb") {
     if (viewChanged) {
-      printCenteredText(tr("THOI KHOA BIEU", "TIMETABLE"), 36, 2, COL_AMBER, COL_BG);
+      printCenteredText(tr("THỜI KHÓA BIỂU", "TIMETABLE"), 32, 2, COL_AMBER, COL_BG);
 
-      int curY = 62;
-      tft->setTextSize(1);
-      tft->setTextColor(COL_CYAN, COL_BG);
-      tft->setCursor(14, curY);
-      tft->print(removeAccents(srvStats.tkbDay) + ":");
-      curY += 15;
+      auto drawTkbRow = [&](int& y, const char* label, uint16_t labelCol, const String& value, uint16_t valCol) {
+        if (y > 278) return;
+        String lbl(label);
+        drawUtf8Text(14, y, lbl, 1, labelCol, COL_BG, 0);
+        int lblW = vnTextWidth(vnFont12, lbl.c_str());
+        int valX = 14 + lblW;
+        int firstMaxW = max(60, 228 - valX);
 
-      tft->setTextColor(COL_AMBER, COL_BG);
-      tft->setCursor(16, curY);
-      tft->print(tr("* Sang: ", "* AM: "));
-      tft->setTextColor(COL_WHITE, COL_BG);
-      tft->setCursor(62, curY);
-      tft->print(removeAccents(srvStats.tkbMorning).substring(0, 28));
-      curY += 15;
+        // Word-wrap value onto up to 2 lines so subjects/uniform are never cut off
+        String v = value;
+        v.trim();
+        if (v.length() == 0) {
+          y += 16;
+          return;
+        }
+        auto strWidth = [&](const String& s) -> int {
+          return vnTextWidth(vnFont12, s.c_str());
+        };
+        if (strWidth(v) <= firstMaxW) {
+          drawUtf8Text(valX, y, v, 1, valCol, COL_BG, 0);
+          y += 16;
+          return;
+        }
+        // Split at last space that fits in firstMaxW
+        int splitPos = -1;
+        for (size_t i = 0; i < v.length(); i++) {
+          if (v[i] == ' ' && strWidth(v.substring(0, i)) <= firstMaxW) {
+            splitPos = (int)i;
+          }
+        }
+        if (splitPos <= 0) {
+          drawUtf8Text(valX, y, v, 1, valCol, COL_BG, firstMaxW);
+          y += 16;
+        } else {
+          String line1 = v.substring(0, splitPos);
+          String line2 = v.substring(splitPos + 1);
+          line2.trim();
+          drawUtf8Text(valX, y, line1, 1, valCol, COL_BG, 0);
+          y += 15;
+          if (y <= 280 && line2.length() > 0) {
+            drawUtf8Text(24, y, line2, 1, valCol, COL_BG, 204);
+            y += 16;
+          }
+        }
+      };
 
+      int curY = 60;
+      drawUtf8Text(12, curY, srvStats.tkbDay + ":", 1, COL_CYAN, COL_BG, 216);
+      curY += 17;
+      drawTkbRow(curY, tr("* Sáng: ", "* AM: "), COL_AMBER, srvStats.tkbMorning, COL_WHITE);
       if (srvStats.tkbHasAfternoon && srvStats.tkbAfternoon.length() > 0) {
-        tft->setTextColor(COL_AMBER, COL_BG);
-        tft->setCursor(16, curY);
-        tft->print(tr("* Chieu: ", "* PM: "));
-        tft->setTextColor(COL_WHITE, COL_BG);
-        tft->setCursor(62, curY);
-        tft->print(removeAccents(srvStats.tkbAfternoon).substring(0, 28));
-        curY += 15;
+        drawTkbRow(curY, tr("* Chiều: ", "* PM: "), COL_AMBER, srvStats.tkbAfternoon, COL_WHITE);
       }
+      drawTkbRow(curY, tr("* Đ.phục: ", "* Uniform: "), COL_GREEN, srvStats.tkbUniform, COL_CYAN);
 
-      tft->setTextColor(COL_GREEN, COL_BG);
-      tft->setCursor(16, curY);
-      tft->print(tr("* D.phuc: ", "* Uniform: "));
-      tft->setTextColor(COL_CYAN, COL_BG);
-      tft->setCursor(72, curY);
-      tft->print(removeAccents(srvStats.tkbUniform).substring(0, 26));
-      curY += 22;
-
-      tft->drawFastHLine(14, curY, 212, COL_BORDER);
+      curY += 6;
+      tft->drawFastHLine(12, curY, 216, COL_BORDER);
       curY += 10;
 
-      tft->setTextColor(COL_CYAN, COL_BG);
-      tft->setCursor(14, curY);
-      tft->print(removeAccents(srvStats.tkbTomDay) + ":");
-      curY += 15;
-
-      tft->setTextColor(COL_AMBER, COL_BG);
-      tft->setCursor(16, curY);
-      tft->print(tr("* Sang: ", "* AM: "));
-      tft->setTextColor(COL_WHITE, COL_BG);
-      tft->setCursor(62, curY);
-      tft->print(removeAccents(srvStats.tkbTomMorning).substring(0, 28));
-      curY += 15;
-
+      drawUtf8Text(12, curY, srvStats.tkbTomDay + ":", 1, COL_CYAN, COL_BG, 216);
+      curY += 17;
+      drawTkbRow(curY, tr("* Sáng: ", "* AM: "), COL_AMBER, srvStats.tkbTomMorning, COL_WHITE);
       if (srvStats.tkbTomHasAfternoon && srvStats.tkbTomAfternoon.length() > 0) {
-        tft->setTextColor(COL_AMBER, COL_BG);
-        tft->setCursor(16, curY);
-        tft->print(tr("* Chieu: ", "* PM: "));
-        tft->setTextColor(COL_WHITE, COL_BG);
-        tft->setCursor(62, curY);
-        tft->print(removeAccents(srvStats.tkbTomAfternoon).substring(0, 28));
-        curY += 15;
+        drawTkbRow(curY, tr("* Chiều: ", "* PM: "), COL_AMBER, srvStats.tkbTomAfternoon, COL_WHITE);
       }
-
-      tft->setTextColor(COL_GREEN, COL_BG);
-      tft->setCursor(16, curY);
-      tft->print(tr("* D.phuc: ", "* Uniform: "));
-      tft->setTextColor(COL_CYAN, COL_BG);
-      tft->setCursor(72, curY);
-      tft->print(removeAccents(srvStats.tkbTomUniform).substring(0, 26));
+      drawTkbRow(curY, tr("* Đ.phục: ", "* Uniform: "), COL_GREEN, srvStats.tkbTomUniform, COL_CYAN);
     }
   }
   // 5. VIEW WEATHER
@@ -1822,35 +2045,35 @@ void drawPhysicalScreen() {
     }
 
     if (srvStats.currentTrack != lastTrack) {
-      tft->fillRect(0, 36, 240, 22, COL_BG);
-      printCenteredText(removeAccents(srvStats.currentTrack).substring(0, 32), 42, 1, COL_MUTED, COL_BG);
+      tft->fillRect(0, 26, 240, 22, COL_BG);
+      printVietnameseCentered(srvStats.currentTrack, 32, COL_MUTED);
       lastTrack = srvStats.currentTrack;
     }
 
-    String lyricTxt = srvStats.lyricCurr.length() > 0 ? removeAccents(srvStats.lyricCurr) : "Chua phat nhac";
+    String lyricTxt = srvStats.lyricCurr.length() > 0 ? srvStats.lyricCurr : tr("Chưa phát nhạc", "No music playing");
     if (lyricTxt != lastLyric) {
-      tft->fillRect(0, 58, 240, 105, COL_BG);
-      if (lyricTxt.length() <= 18) {
-        printCenteredText(lyricTxt, 105, 2, COL_AMBER, COL_BG);
-      } else {
-        printBigWrappedCenteredText(lyricTxt, 105, 2, COL_AMBER, 17, 20);
-      }
+      tft->fillRect(0, 48, 240, 142, COL_BG);
+      printVietnameseWrappedCentered(lyricTxt, 115, COL_AMBER, 224, 20);
       lastLyric = lyricTxt;
     }
 
     if (srvStats.lyricNext != lastNext) {
-      tft->fillRect(0, 166, 240, 20, COL_BG);
+      tft->fillRect(0, 190, 240, 36, COL_BG);
       if (srvStats.lyricNext.length() > 0) {
-        String nextTxt = removeAccents(srvStats.lyricNext);
-        printCenteredText(nextTxt.substring(0, 30), 170, 1, COL_MUTED, COL_BG);
+        printVietnameseCentered(srvStats.lyricNext, 202, COL_MUTED);
       } else {
-        printCenteredText("~ ~ ~", 170, 1, COL_MUTED, COL_BG);
+        printCenteredText("~ ~ ~", 202, 1, COL_MUTED, COL_BG);
       }
       lastNext = srvStats.lyricNext;
     }
 
+    // Music progress bar: positioned ~30 pixels ABOVE the bottom separator line.
+    // Bottom separator is at Y = 296, bar height is 8, so Y = 296 - 30 - 8 = 258.
+    const int separatorY = 296;
+    const int musicBarH = 8;
+    const int musicBarY = separatorY - 30 - musicBarH; // 258
     if (srvStats.progressPct != lastPct) {
-      drawProgressBarSmooth(25, 208, 190, 8, srvStats.progressPct, COL_GREEN);
+      drawProgressBarSmooth(25, musicBarY, 190, musicBarH, srvStats.progressPct, COL_GREEN);
       lastPct = srvStats.progressPct;
     }
   }
@@ -1858,9 +2081,9 @@ void drawPhysicalScreen() {
   else if (srvStats.activeView == "math_alarm") {
     if (viewChanged) {
       printCenteredText("! MATH ALARM !", 40, 2, 0xF800, COL_BG);
-      printCenteredText(tr("Giai toan de tat chuong:", "Solve the math to silence:"), 80, 1, COL_WHITE, COL_BG);
+      printCenteredText(tr("Giải toán để tắt chuông:", "Solve the math to silence:"), 80, 1, COL_WHITE, COL_BG);
       printCenteredText(currentMathQuestion, 125, 3, COL_AMBER, COL_BG);
-      printCenteredText(tr("Dung lenh /solve tren Discord", "Use /solve on Discord"), 185, 1, COL_CYAN, COL_BG);
+      printCenteredText(tr("Dùng lệnh /solve trên Discord", "Use /solve on Discord"), 185, 1, COL_CYAN, COL_BG);
     }
   }
   // 8. VIEW CLOCK FULLSCREEN
@@ -1878,6 +2101,10 @@ void drawPhysicalScreen() {
   // 11. VIEW FOCUS (DEDICATED)
   else if (srvStats.activeView == "focus") {
     drawFocusView();
+  }
+  // 12. VIEW GOOGLE CALENDAR (DEDICATED)
+  else if (srvStats.activeView == "calendar") {
+    drawCalendarView();
   }
 }
 
@@ -2043,10 +2270,8 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       lang.trim();
       lang.toLowerCase();
       if (lang == "vi" || lang == "en") {
-        setStationLanguage(lang == "en");
-        lastRenderedView = "";
-        screenNeedUpdate = true;
-        addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
+        applyStationLanguage(lang == "en", false);
+        addLog("I18N", String("Station language from server: ") + (stationEnglish ? "EN" : "VI"));
       }
     }
     else if (topicStr == "deskflow/display" && action == "switch_view") {
@@ -2219,6 +2444,26 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       }
       screenNeedUpdate = true;
       addLog("COUNTDOWN", "Synced " + String(stationCountdownsCount) + " countdowns.");
+    }
+    else if (topicStr == "deskflow/display" && action == "sync_calendar") {
+      stationCalConnected = doc["connected"] | false;
+      JsonArray arr = doc["events"].as<JsonArray>();
+      stationCalCount = 0;
+      for (JsonObject ev : arr) {
+        if (stationCalCount >= MAX_STATION_CALENDAR) break;
+        stationCalEvents[stationCalCount].id = ev["id"].as<String>();
+        stationCalEvents[stationCalCount].title = ev["title"].as<String>();
+        stationCalEvents[stationCalCount].dateLabel = ev["date_label"].as<String>();
+        stationCalEvents[stationCalCount].timeLabel = ev["time_label"].as<String>();
+        stationCalEvents[stationCalCount].location = ev["location"].as<String>();
+        stationCalEvents[stationCalCount].allDay = ev["all_day"] | false;
+        stationCalEvents[stationCalCount].isToday = ev["is_today"] | false;
+        stationCalEvents[stationCalCount].isOngoing = ev["is_ongoing"] | false;
+        stationCalCount++;
+      }
+      if (activeCalIndex >= stationCalCount) activeCalIndex = 0;
+      if (srvStats.activeView == "calendar") screenNeedUpdate = true;
+      addLog("CAL", "Synced " + String(stationCalCount) + " Google Calendar events.");
     }
     else if (topicStr == "deskflow/display" && action == "clear_countdown") {
       srvStats.countdownName = "";
@@ -2450,8 +2695,13 @@ void reconnectMqtt() {
       mqtt.subscribe("deskflow/quote");
       mqtt.subscribe("deskflow/clock_style");
       mqtt.subscribe("deskflow/focus/status");
+      if (pendingLocalLangSync) {
+        sendClockStyleAck("applied", "");
+        publishStationLanguageUpdate();
+      }
       sendClockStyleRequest();
       sendHardwareSettingsRequest();
+      publishDeviceStatus();
       updateThemePalette();
     } else {
       int rc = mqtt.state();
@@ -2471,6 +2721,7 @@ void publishDeviceStatus() {
   doc["wifi_rssi"] = WiFi.RSSI();
   // Report the screen currently shown so every client can stay in sync.
   doc["active_view"] = srvStats.activeView;
+  doc["language"] = stationEnglish ? "en" : "vi";
 
   String out;
   serializeJson(doc, out);
@@ -2943,9 +3194,9 @@ void handleApiLedBright() {
 
 void handleApiLang() {
   if (server.hasArg("toggle")) {
-    setStationLanguage(!stationEnglish);
+    applyStationLanguage(!stationEnglish, true);
   } else if (server.hasArg("en")) {
-    setStationLanguage(server.arg("en") == "1" || server.arg("en") == "true");
+    applyStationLanguage(server.arg("en") == "1" || server.arg("en") == "true", true);
   }
   screenNeedUpdate = true;
   server.send(200, "application/json", String("{\"english\":") + (stationEnglish ? "true" : "false") + "}");
@@ -3109,6 +3360,8 @@ void cycleNextView() {
   } else if (srvStats.activeView == "stats") {
     srvStats.activeView = "tkb";
   } else if (srvStats.activeView == "tkb") {
+    srvStats.activeView = "calendar";
+  } else if (srvStats.activeView == "calendar") {
     srvStats.activeView = "weather";
   } else if (srvStats.activeView == "weather") {
     srvStats.activeView = "lyrics";
@@ -3200,9 +3453,8 @@ void handleMenuPlay() {
       screenNeedUpdate = true;
       triggerBuzz(45);
     } else if (menuCurrentItem == 6) {
-      // Switch station language VI <-> EN
-      setStationLanguage(!stationEnglish);
-      screenNeedsUpdateAfterLanguage();
+      // Switch station language VI <-> EN and sync to server
+      applyStationLanguage(!stationEnglish, true);
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
     } else if (menuCurrentItem == 7) {
@@ -3457,6 +3709,8 @@ void handleHardwareButtons() {
           cycleNextNote();
         } else if (srvStats.activeView == "countdown") {
           cycleNextCountdown();
+        } else if (srvStats.activeView == "calendar") {
+          cycleNextCalendar();
         } else {
           triggerBuzz(30);
           sendButtonAction("press_next");
@@ -3515,6 +3769,8 @@ void handleHardwareButtons() {
           cyclePrevNote();
         } else if (srvStats.activeView == "countdown") {
           cyclePrevCountdown();
+        } else if (srvStats.activeView == "calendar") {
+          cyclePrevCalendar();
         } else {
           triggerBuzz(30);
           sendButtonAction("press_prev");
@@ -3581,6 +3837,7 @@ void setup() {
   prefs.begin("deskflow", false);
   wifiListJson = prefs.getString("wifi_array", "[]");
   loadStationLanguage();
+  loadPendingLocalLangSync();
   loadClockConfigNVS();
 
   darkModeSetting = prefs.getString("dk_mode", "off");

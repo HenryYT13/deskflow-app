@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using DeskFlow.Models;
@@ -152,6 +153,13 @@ public sealed partial class MainWindow : Window
                         {
                             _liveStationView = liveView;
                         }
+                    }
+
+                    string? srvLang = await _client.GetClockLanguageAsync();
+                    if ((srvLang == "vi" || srvLang == "en") && srvLang != _lastServerLanguage)
+                    {
+                        _lastServerLanguage = srvLang;
+                        ApplyServerLanguage(srvLang);
                     }
                     if (status.Server != null)
                     {
@@ -367,11 +375,13 @@ public sealed partial class MainWindow : Window
         SpotifyPanel.Visibility = (tag == "spotify") ? Visibility.Visible : Visibility.Collapsed;
         AlarmsPanel.Visibility = (tag == "alarms") ? Visibility.Visible : Visibility.Collapsed;
         TkbPanel.Visibility = (tag == "timetable") ? Visibility.Visible : Visibility.Collapsed;
+        CalendarPanel.Visibility = (tag == "calendar") ? Visibility.Visible : Visibility.Collapsed;
         ToolsPanel.Visibility = (tag == "tools" || tag == "notes" || tag == "countdowns" || tag == "weather" || tag == "morse" || tag == "focus") ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanel.Visibility = (tag == "settings") ? Visibility.Visible : Visibility.Collapsed;
 
         if (tag == "system" || tag == "dashboard") _ = RefreshAllDataAsync();
         if (tag == "timetable") _ = LoadTimetableAsync();
+        if (tag == "calendar") _ = LoadCalendarAsync();
         if (tag == "spotify") _ = RefreshSpotifyAsync();
         if (tag == "alarms") RefreshAlarms();
         if (tag == "tools") { RenderNotesList(); RenderCountdownsList(); }
@@ -568,6 +578,270 @@ public sealed partial class MainWindow : Window
     {
         await LoadTimetableAsync();
         ShowBanner(Strings.CurrentLanguage == "vi" ? "Đã làm mới Thời khóa biểu!" : "Timetable refreshed!");
+    }
+
+    // =========================================================================
+    // Google Calendar (OAuth 2.0 + Private iCal)
+    // =========================================================================
+    private bool _suppressCalPickerChange;
+    private readonly List<string> _calPickerIds = new();
+
+    private async Task LoadCalendarAsync(bool showErrors = false)
+    {
+        if (CalNewDateBox != null && string.IsNullOrWhiteSpace(CalNewDateBox.Text))
+            CalNewDateBox.Text = DateTime.Now.ToString("yyyy-MM-dd");
+
+        var (ok, data, msg) = await _client.GetCalendarStatusAsync();
+        if (ok && data != null)
+            ApplyCalendarUi(data);
+        else if (showErrors)
+            ShowBanner(msg, isError: true);
+    }
+
+    private void ApplyCalendarUi(CalendarStatusDto st)
+    {
+        if (CalStatusText != null)
+        {
+            if (st.Connected)
+            {
+                var modes = new List<string>();
+                if (st.OAuthConnected) modes.Add($"OAuth ({st.ConnectedEmail})");
+                if (st.IcalConnected) modes.Add("Private iCal");
+                var errSuffix = string.IsNullOrEmpty(st.LastError) ? "" : $" • ⚠ {st.LastError}";
+                CalStatusText.Text = $"{st.TodayCount} hôm nay • {st.Events.Count} sự kiện ({string.Join(" + ", modes)}){errSuffix}";
+            }
+            else
+            {
+                CalStatusText.Text = Strings.CurrentLanguage == "vi"
+                    ? "Chưa kết nối Google Calendar (chọn OAuth 2.0 hoặc dán link iCal bên dưới)"
+                    : "Not connected (use Google OAuth 2.0 or paste iCal URL below)";
+            }
+        }
+
+        if (CalOAuthAccountText != null)
+        {
+            CalOAuthAccountText.Text = st.OAuthConnected
+                ? $"{st.ConnectedEmail} ({st.SelectedCalendarName})"
+                : (Strings.CurrentLanguage == "vi" ? "Chưa đăng nhập Google OAuth" : "Not signed in with Google OAuth");
+        }
+        if (CalOAuthDisconnectBtn != null)
+            CalOAuthDisconnectBtn.Visibility = st.OAuthConnected ? Visibility.Visible : Visibility.Collapsed;
+
+        if (CalClientIdBox != null && string.IsNullOrEmpty(CalClientIdBox.Text) && !string.IsNullOrEmpty(st.GoogleClientId))
+            CalClientIdBox.Text = st.GoogleClientId;
+        if (CalRedirectUriBox != null && !string.IsNullOrEmpty(st.GoogleRedirectUri))
+            CalRedirectUriBox.Text = st.GoogleRedirectUri;
+        if (CalIcalUrlBox != null && string.IsNullOrEmpty(CalIcalUrlBox.Text) && !string.IsNullOrEmpty(st.IcalUrl))
+            CalIcalUrlBox.Text = st.IcalUrl;
+
+        if (CalPickerCombo != null)
+        {
+            if (st.OAuthConnected && st.Calendars.Count > 0)
+            {
+                _suppressCalPickerChange = true;
+                CalPickerCombo.Items.Clear();
+                _calPickerIds.Clear();
+                int selIdx = 0;
+                for (int i = 0; i < st.Calendars.Count; i++)
+                {
+                    CalPickerCombo.Items.Add(st.Calendars[i].Summary);
+                    _calPickerIds.Add(st.Calendars[i].Id);
+                    if (st.Calendars[i].Id == st.SelectedCalendarId) selIdx = i;
+                }
+                CalPickerCombo.SelectedIndex = selIdx;
+                CalPickerCombo.Visibility = Visibility.Visible;
+                _suppressCalPickerChange = false;
+            }
+            else
+            {
+                CalPickerCombo.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        if (CalEventsListPanel == null) return;
+        CalEventsListPanel.Children.Clear();
+        if (st.Events.Count == 0)
+        {
+            CalEventsListPanel.Children.Add(new TextBlock
+            {
+                Text = Strings.CurrentLanguage == "vi" ? "Chưa có sự kiện sắp tới." : "No upcoming events.",
+                Opacity = 0.7
+            });
+            return;
+        }
+
+        foreach (var ev in st.Events)
+        {
+            var card = new Border
+            {
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(22, 255, 255, 255)),
+                BorderBrush = new SolidColorBrush(ev.IsToday ? Windows.UI.Color.FromArgb(140, 56, 189, 248) : Windows.UI.Color.FromArgb(40, 255, 255, 255)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(12, 8, 12, 8)
+            };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var left = new StackPanel { Spacing = 2 };
+            left.Children.Add(new TextBlock
+            {
+                Text = ev.Title,
+                FontSize = 14,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap
+            });
+            var timeTxt = ev.AllDay ? "Cả ngày" : (string.IsNullOrEmpty(ev.EndTime) ? ev.StartTime : $"{ev.StartTime}–{ev.EndTime}");
+            var meta = $"{ev.Date} • {timeTxt}" + (string.IsNullOrEmpty(ev.Location) ? "" : $" • @ {ev.Location}");
+            left.Children.Add(new TextBlock
+            {
+                Text = meta,
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 148, 163, 184))
+            });
+            Grid.SetColumn(left, 0);
+            grid.Children.Add(left);
+
+            if (ev.CanDelete)
+            {
+                var delBtn = new Button { Content = "Xóa", Margin = new Thickness(8, 0, 0, 0) };
+                delBtn.Click += async (_, _) =>
+                {
+                    var (ok, resData, errMsg) = await _client.DeleteCalendarEventAsync(ev.Id, ev.CalendarId);
+                    if (ok && resData != null)
+                    {
+                        ApplyCalendarUi(resData);
+                        ShowBanner("Đã xóa sự kiện.");
+                    }
+                    else
+                    {
+                        ShowBanner(errMsg, isError: true);
+                    }
+                };
+                Grid.SetColumn(delBtn, 1);
+                grid.Children.Add(delBtn);
+            }
+
+            card.Child = grid;
+            CalEventsListPanel.Children.Add(card);
+        }
+    }
+
+    private async void CalRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, data, msg) = await _client.SyncCalendarAsync();
+        if (ok && data != null)
+        {
+            ApplyCalendarUi(data);
+            ShowBanner("Đã đồng bộ Google Calendar!");
+        }
+        else ShowBanner(msg, isError: true);
+    }
+
+    private async void CalSyncEsp32_Click(object sender, RoutedEventArgs e)
+    {
+        await _client.SyncCalendarAsync();
+        var (ok, msg) = await _client.SwitchDisplayViewAsync("calendar");
+        ShowBanner(ok ? "Đã chuyển màn hình ESP32 sang Lịch Google!" : msg, !ok);
+    }
+
+    private async void CalSaveIcal_Click(object sender, RoutedEventArgs e)
+    {
+        var url = CalIcalUrlBox?.Text?.Trim() ?? "";
+        var (ok, data, msg) = await _client.UpdateCalendarConfigAsync(icalUrl: url);
+        if (ok && data != null)
+        {
+            ApplyCalendarUi(data);
+            ShowBanner("Đã lưu & đồng bộ link Private iCal!");
+        }
+        else ShowBanner(msg, isError: true);
+    }
+
+    private async void CalSaveOAuthCreds_Click(object sender, RoutedEventArgs e)
+    {
+        var cid = CalClientIdBox?.Text?.Trim() ?? "";
+        var csec = CalClientSecretBox?.Password?.Trim();
+        var ruri = CalRedirectUriBox?.Text?.Trim() ?? "";
+        var (ok, data, msg) = await _client.UpdateCalendarConfigAsync(
+            googleClientId: cid,
+            googleClientSecret: string.IsNullOrEmpty(csec) ? null : csec,
+            googleRedirectUri: ruri
+        );
+        if (ok && data != null)
+        {
+            if (CalClientSecretBox != null) CalClientSecretBox.Password = "";
+            ApplyCalendarUi(data);
+            ShowBanner("Đã lưu thông tin Google OAuth!");
+        }
+        else ShowBanner(msg, isError: true);
+    }
+
+    private async void CalOAuthConnect_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, url, msg) = await _client.StartCalendarOAuthAsync();
+        if (ok && !string.IsNullOrEmpty(url))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                ShowBanner("Đã mở trình duyệt đăng nhập Google. Xong hãy bấm Đồng bộ ngay!");
+            }
+            catch (Exception ex)
+            {
+                ShowBanner(ex.Message, isError: true);
+            }
+        }
+        else
+        {
+            ShowBanner(msg.Contains("google_oauth_credentials_missing")
+                ? "Hãy nhập Google Client ID & Secret trước khi đăng nhập OAuth!"
+                : msg, isError: true);
+        }
+    }
+
+    private async void CalOAuthDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        var (ok, data, msg) = await _client.DisconnectCalendarOAuthAsync();
+        if (ok && data != null)
+        {
+            ApplyCalendarUi(data);
+            ShowBanner("Đã ngắt Google OAuth.");
+        }
+        else ShowBanner(msg, isError: true);
+    }
+
+    private async void CalPickerCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressCalPickerChange || CalPickerCombo == null) return;
+        int idx = CalPickerCombo.SelectedIndex;
+        if (idx < 0 || idx >= _calPickerIds.Count) return;
+        var (ok, data, _) = await _client.UpdateCalendarConfigAsync(selectedCalendarId: _calPickerIds[idx]);
+        if (ok && data != null) ApplyCalendarUi(data);
+    }
+
+    private async void CalCreateEvent_Click(object sender, RoutedEventArgs e)
+    {
+        var title = CalNewTitleBox?.Text?.Trim() ?? "";
+        var date = CalNewDateBox?.Text?.Trim() ?? "";
+        var st = CalNewStartBox?.Text?.Trim() ?? "09:00";
+        var et = CalNewEndBox?.Text?.Trim() ?? "10:00";
+        var loc = CalNewLocBox?.Text?.Trim() ?? "";
+        bool allDay = CalNewAllDaySwitch?.IsOn ?? false;
+        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(date))
+        {
+            ShowBanner("Nhập tên sự kiện và ngày (YYYY-MM-DD).", isError: true);
+            return;
+        }
+        var (ok, data, msg) = await _client.CreateCalendarEventAsync(title, date, st, et, allDay, loc);
+        if (ok && data != null)
+        {
+            if (CalNewTitleBox != null) CalNewTitleBox.Text = "";
+            if (CalNewLocBox != null) CalNewLocBox.Text = "";
+            ApplyCalendarUi(data);
+            ShowBanner("Đã thêm sự kiện lên Google Calendar!");
+        }
+        else ShowBanner(msg, isError: true);
     }
 
     private async void ClockAccentColor_Click(object sender, RoutedEventArgs e)
@@ -1841,28 +2115,79 @@ public sealed partial class MainWindow : Window
         RenderNotesList();
     }
 
-    private void LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private bool _suppressEsp32LanguageSave;
+    private string? _lastServerLanguage;
+
+    private void ApplyServerLanguage(string lang)
     {
-        if (!_isLoaded || _client == null) return;
-        if (LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
+        if (lang != "vi" && lang != "en") return;
+        bool changed = _client.Settings.Language != lang || _client.Settings.Esp32Language != lang;
+        if (!changed) return;
+
+        _suppressEsp32LanguageSave = true;
+        try
         {
             _client.Settings.Language = lang;
+            _client.Settings.Esp32Language = lang;
             _client.Settings.Save();
             Strings.CurrentLanguage = lang;
+            if (LanguageCombo != null) LanguageCombo.SelectedIndex = (lang == "en") ? 1 : 0;
+            if (Esp32LanguageCombo != null) Esp32LanguageCombo.SelectedIndex = (lang == "en") ? 1 : 0;
             ApplyLanguage();
-            ShowBanner(lang == "vi" ? "Đã chuyển ngôn ngữ sang Tiếng Việt" : "Language switched to English");
+        }
+        finally
+        {
+            _suppressEsp32LanguageSave = false;
         }
     }
 
-    private bool _suppressEsp32LanguageSave;
+    private async void LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoaded || _client == null || _suppressEsp32LanguageSave) return;
+        if (LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
+        {
+            _suppressEsp32LanguageSave = true;
+            try
+            {
+                _client.Settings.Language = lang;
+                _client.Settings.Esp32Language = lang;
+                _client.Settings.Save();
+                Strings.CurrentLanguage = lang;
+                if (Esp32LanguageCombo != null) Esp32LanguageCombo.SelectedIndex = (lang == "en") ? 1 : 0;
+                ApplyLanguage();
+            }
+            finally
+            {
+                _suppressEsp32LanguageSave = false;
+            }
+            _lastServerLanguage = lang;
+            var (ok, msg) = await _client.SetClockLanguageAsync(lang);
+            ShowBanner(ok
+                ? (lang == "vi" ? "Đã chuyển ngôn ngữ sang Tiếng Việt" : "Language switched to English")
+                : msg, !ok);
+        }
+    }
 
     private async void Esp32LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_isLoaded || _client == null || _suppressEsp32LanguageSave) return;
         if (Esp32LanguageCombo.SelectedItem is ComboBoxItem item && item.Tag is string lang)
         {
-            _client.Settings.Esp32Language = lang;
-            _client.Settings.Save();
+            _suppressEsp32LanguageSave = true;
+            try
+            {
+                _client.Settings.Esp32Language = lang;
+                _client.Settings.Language = lang;
+                _client.Settings.Save();
+                Strings.CurrentLanguage = lang;
+                if (LanguageCombo != null) LanguageCombo.SelectedIndex = (lang == "en") ? 1 : 0;
+                ApplyLanguage();
+            }
+            finally
+            {
+                _suppressEsp32LanguageSave = false;
+            }
+            _lastServerLanguage = lang;
             var (ok, msg) = await _client.SetClockLanguageAsync(lang);
             ShowBanner(msg, !ok);
         }

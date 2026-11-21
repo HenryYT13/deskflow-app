@@ -668,3 +668,102 @@ public sealed class FlexibleStringConverter : JsonConverter<string>
     public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
         => writer.WriteStringValue(value);
 }
+
+public sealed class GoogleCalendarSummaryDto
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "primary";
+
+    [JsonPropertyName("summary")]
+    public string Summary { get; set; } = "Primary";
+
+    [JsonPropertyName("primary")]
+    public bool Primary { get; set; }
+
+    [JsonPropertyName("access_role")]
+    public string AccessRole { get; set; } = "reader";
+}
+
+public sealed class CalendarEventDto
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("date")]
+    public string Date { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_time")]
+    public string StartTime { get; set; } = string.Empty;
+
+    [JsonPropertyName("end_time")]
+    public string EndTime { get; set; } = string.Empty;
+
+    [JsonPropertyName("all_day")]
+    public bool AllDay { get; set; }
+
+    [JsonPropertyName("is_today")]
+    public bool IsToday { get; set; }
+
+    [JsonPropertyName("is_ongoing")]
+    public bool IsOngoing { get; set; }
+
+    [JsonPropertyName("location")]
+    public string Location { get; set; } = string.Empty;
+
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "ical";
+
+    [JsonPropertyName("can_delete")]
+    public bool CanDelete { get; set; }
+
+    [JsonPropertyName("calendar_id")]
+    public string CalendarId { get; set; } = "primary";
+}
+
+public sealed class CalendarStatusDto
+{
+    [JsonPropertyName("connected")]
+    public bool Connected { get; set; }
+
+    [JsonPropertyName("oauth_connected")]
+    public bool OAuthConnected { get; set; }
+
+    [JsonPropertyName("ical_connected")]
+    public bool IcalConnected { get; set; }
+
+    [JsonPropertyName("ical_url")]
+    public string IcalUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("google_client_id")]
+    public string GoogleClientId { get; set; } = string.Empty;
+
+    [JsonPropertyName("has_google_client_secret")]
+    public bool HasGoogleClientSecret { get; set; }
+
+    [JsonPropertyName("google_redirect_uri")]
+    public string GoogleRedirectUri { get; set; } = string.Empty;
+
+    [JsonPropertyName("connected_email")]
+    public string ConnectedEmail { get; set; } = string.Empty;
+
+    [JsonPropertyName("selected_calendar_id")]
+    public string SelectedCalendarId { get; set; } = "primary";
+
+    [JsonPropertyName("selected_calendar_name")]
+    public string SelectedCalendarName { get; set; } = "Primary";
+
+    [JsonPropertyName("calendars")]
+    public List<GoogleCalendarSummaryDto> Calendars { get; set; } = new();
+
+    [JsonPropertyName("last_error")]
+    public string? LastError { get; set; }
+
+    [JsonPropertyName("events")]
+    public List<CalendarEventDto> Events { get; set; } = new();
+
+    [JsonPropertyName("today_count")]
+    public int TodayCount { get; set; }
+}

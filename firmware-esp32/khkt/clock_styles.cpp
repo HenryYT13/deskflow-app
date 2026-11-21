@@ -9,6 +9,7 @@ StyleTransitionState styleTransition;
 
 static String lastDrawnTimeKey = "";
 static String lastDrawnDateKey = "";
+static unsigned long lastClockStyleReqMs = 0;
 
 uint16_t clockHexToRGB565(const String& hex) {
   if (hex.length() < 7 || hex[0] != '#') return COL_CYAN;
@@ -24,8 +25,8 @@ String getDayOfWeekName(int wday, const String& lang) {
     const char* days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     return (wday >= 0 && wday <= 6) ? days[wday] : "Day";
   } else {
-    const char* days[] = {"Chu Nhat", "Thu 2", "Thu 3", "Thu 4", "Thu 5", "Thu 6", "Thu 7"};
-    return (wday >= 0 && wday <= 6) ? days[wday] : "Thu";
+    const char* days[] = {"Chủ Nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"};
+    return (wday >= 0 && wday <= 6) ? days[wday] : "Thứ";
   }
 }
 
@@ -69,7 +70,8 @@ void loadClockConfigNVS() {
   clockCfg.showSeconds = prefs.getBool("clk_sec", true);
   clockCfg.showDate = prefs.getBool("clk_date", true);
   clockCfg.showAmPm = prefs.getBool("clk_ampm", false);
-  clockCfg.language = prefs.getString("clk_lang", "vi");
+  // Keep clockCfg.language unified with stationEnglish (lang_en) on boot
+  clockCfg.language = stationEnglish ? "en" : "vi";
   clockCfg.animationEnabled = prefs.getBool("clk_anim", true);
   clockCfg.animationSpeed = prefs.getFloat("clk_spd", 1.0f);
   clockCfg.accentHex = prefs.getString("clk_col", "#38BDF8");
@@ -122,10 +124,12 @@ void sendClockStyleAck(const String& status, const String& err) {
 }
 
 void sendClockStyleRequest() {
+  lastClockStyleReqMs = millis();
   DynamicJsonDocument doc(256);
   doc["device_id"] = "DeskFlow-ESP32";
   doc["current_version"] = clockCfg.configVersion;
   doc["current_style"] = clockCfg.style;
+  doc["current_language"] = clockCfg.language;
   String out;
   serializeJson(doc, out);
   mqtt.publish("deskflow/clock_style_request", out.c_str());
@@ -168,15 +172,22 @@ void handleClockConfigPayload(DynamicJsonDocument& doc) {
   if (doc.containsKey("show_date")) clockCfg.showDate = doc["show_date"].as<bool>();
   if (doc.containsKey("show_ampm")) clockCfg.showAmPm = doc["show_ampm"].as<bool>();
   if (doc.containsKey("language")) {
-    clockCfg.language = doc["language"].as<String>();
-    // The apps send the device language through /api/app/control/clock-style.
-    // Store it for the clock face AND switch the whole station UI, otherwise the
-    // menus, view list and status screens stayed Vietnamese after choosing EN.
-    String lang = clockCfg.language;
+    String lang = doc["language"].as<String>();
     lang.trim();
     lang.toLowerCase();
-    setStationLanguage(lang == "en");
-    addLog("I18N", String("Station language from app: ") + (stationEnglish ? "EN" : "VI"));
+    if (lang == "vi" || lang == "en") {
+      bool isResponseToReq = (lastClockStyleReqMs != 0) && (millis() - lastClockStyleReqMs < 8000);
+      String localLang = stationEnglish ? "en" : "vi";
+      if (pendingLocalLangSync && isResponseToReq && lang != localLang) {
+        clockCfg.language = localLang;
+        addLog("I18N", "Ignored stale server language '" + lang + "' while local '" + localLang + "' sync pending.");
+      } else {
+        clockCfg.language = lang;
+        setStationLanguage(lang == "en");
+        setPendingLocalLangSync(false);
+        addLog("I18N", String("Station language synced from server: ") + (stationEnglish ? "EN" : "VI"));
+      }
+    }
   }
   if (doc.containsKey("animation_enabled")) clockCfg.animationEnabled = doc["animation_enabled"].as<bool>();
   if (doc.containsKey("animation_speed")) clockCfg.animationSpeed = doc["animation_speed"].as<float>();
@@ -886,23 +897,22 @@ void drawWordClock(int x, int y, int w, int h, const struct tm& t, bool fullScre
       line2 += isPm ? " PM" : " AM";
     }
   } else {
-    // Vietnamese unaccented uppercase for clean Adafruit_GFX rendering
-    const char* hWords[] = {"MUOI HAI", "MOT", "HAI", "BA", "BON", "NAM", "SAU", "BAY", "TAM", "CHIN", "MUOI", "MUOI MOT", "MUOI HAI"};
+    const char* hWords[] = {"MƯỜI HAI", "MỘT", "HAI", "BA", "BỐN", "NĂM", "SÁU", "BẢY", "TÁM", "CHÍN", "MƯỜI", "MƯỜI MỘT", "MƯỜI HAI"};
     int idx = hr % 12;
     if (idx == 0) idx = 12;
-    line1 = String(hWords[idx]) + " GIO";
+    line1 = String(hWords[idx]) + " GIỜ";
 
-    if (m == 0) line2 = "DUNG";
-    else if (m == 15) line2 = "MUOI LAM PHUT";
-    else if (m == 30) line2 = "BA MUOI PHUT";
-    else if (m == 45) line2 = "BON LAM PHUT";
+    if (m == 0) line2 = "ĐÚNG";
+    else if (m == 15) line2 = "MƯỜI LĂM PHÚT";
+    else if (m == 30) line2 = "BA MƯƠI PHÚT";
+    else if (m == 45) line2 = "BỐN LĂM PHÚT";
     else {
       char b[16];
-      snprintf(b, sizeof(b), "%d PHUT", m);
+      snprintf(b, sizeof(b), "%d PHÚT", m);
       line2 = String(b);
     }
     if (showAmPm) {
-      line2 += isPm ? " CHIEU" : " SANG";
+      line2 += isPm ? " CHIỀU" : " SÁNG";
     }
   }
 

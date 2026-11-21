@@ -20,4 +20,9 @@ void setStationLanguage(bool english);
 // Reads the persisted choice ("lang_en"), defaulting to Vietnamese.
 void loadStationLanguage();
 
+// Marks/reads whether a local language change still needs to be pushed to the backend.
+extern bool pendingLocalLangSync;
+void setPendingLocalLangSync(bool pending);
+void loadPendingLocalLangSync();
+
 #endif  // DESKFLOW_I18N_H

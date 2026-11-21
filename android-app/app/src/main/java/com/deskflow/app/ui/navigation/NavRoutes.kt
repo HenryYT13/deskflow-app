@@ -50,6 +50,7 @@ object AppScreens {
     const val ROUTE_CONTROL = "tab_control"
     const val ROUTE_SPOTIFY = "tab_spotify"
     const val ROUTE_TIMETABLE = "tab_timetable"
+    const val ROUTE_CALENDAR = "screen_calendar"
     const val ROUTE_DASHBOARD = "screen_dashboard"
     const val ROUTE_ACTIVITY = "screen_activity"
     const val ROUTE_SETTINGS = "screen_settings"
@@ -61,6 +62,7 @@ object AppScreens {
         NavScreenItem(ROUTE_CONTROL, R.string.nav_control, R.string.card_control_title, Icons.Default.Tune),
         NavScreenItem(ROUTE_SPOTIFY, R.string.nav_spotify, R.string.card_spotify_title, Icons.Default.MusicNote),
         NavScreenItem(ROUTE_TIMETABLE, R.string.nav_timetable, R.string.timetable_title, Icons.Default.CalendarMonth),
+        NavScreenItem(ROUTE_CALENDAR, R.string.nav_calendar, R.string.calendar_desc, Icons.Default.EventNote),
         NavScreenItem(ROUTE_MORSE, R.string.morse_title, R.string.morse_subtitle, Icons.Default.GraphicEq),
         NavScreenItem(ROUTE_DASHBOARD, R.string.nav_dashboard, R.string.card_dashboard_desc, Icons.Default.Dashboard),
         NavScreenItem(ROUTE_ACTIVITY, R.string.nav_activity, R.string.card_activity_desc, Icons.Default.History),

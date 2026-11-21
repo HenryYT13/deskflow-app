@@ -1264,6 +1264,28 @@ public sealed class DeskFlowApiClient
         }
     }
 
+    /// <summary>Gets the ESP32 clock/OLED display language ("vi" or "en") from backend.</summary>
+    public async Task<string?> GetClockLanguageAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Get, "/api/app/control/clock-style", authenticated: false);
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return null;
+            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object
+                ? dataEl
+                : doc.RootElement;
+            string lang = ReadString(root, "language").Trim().ToLowerInvariant();
+            return (lang == "en" || lang == "vi") ? lang : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>Sets the ESP32 clock/OLED display language ("vi" or "en").</summary>
     public async Task<(bool Ok, string Message)> SetClockLanguageAsync(string language)
     {
@@ -1350,6 +1372,148 @@ public sealed class DeskFlowApiClient
         catch
         {
             return false;
+        }
+    }
+
+    public async Task<(bool Ok, CalendarStatusDto? Data, string Message)> GetCalendarStatusAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Get, "/api/app/calendar/status");
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, $"HTTP {(int)resp.StatusCode}");
+            var dto = JsonSerializer.Deserialize<CalendarStatusDto>(json, JsonOpts);
+            return (dto != null, dto, "OK");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, CalendarStatusDto? Data, string Message)> SyncCalendarAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/calendar/sync", new { });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, $"HTTP {(int)resp.StatusCode}");
+            var dto = JsonSerializer.Deserialize<CalendarStatusDto>(json, JsonOpts);
+            return (dto != null, dto, "Calendar synced.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, CalendarStatusDto? Data, string Message)> UpdateCalendarConfigAsync(
+        string? icalUrl = null,
+        string? googleClientId = null,
+        string? googleClientSecret = null,
+        string? googleRedirectUri = null,
+        string? selectedCalendarId = null)
+    {
+        try
+        {
+            var body = new Dictionary<string, object>();
+            if (icalUrl != null) body["ical_url"] = icalUrl;
+            if (googleClientId != null) body["google_client_id"] = googleClientId;
+            if (googleClientSecret != null) body["google_client_secret"] = googleClientSecret;
+            if (googleRedirectUri != null) body["google_redirect_uri"] = googleRedirectUri;
+            if (selectedCalendarId != null) body["selected_calendar_id"] = selectedCalendarId;
+
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/calendar/config", body);
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, $"HTTP {(int)resp.StatusCode}: {json}");
+            var dto = JsonSerializer.Deserialize<CalendarStatusDto>(json, JsonOpts);
+            return (dto != null, dto, "Saved calendar config.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, string? AuthUrl, string Message)> StartCalendarOAuthAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/calendar/oauth/start", new { });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, json);
+            using var doc = JsonDocument.Parse(json);
+            var url = doc.RootElement.TryGetProperty("auth_url", out var u) ? u.GetString() : null;
+            return (!string.IsNullOrEmpty(url), url, "OK");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, CalendarStatusDto? Data, string Message)> DisconnectCalendarOAuthAsync()
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/calendar/oauth/disconnect", new { });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, $"HTTP {(int)resp.StatusCode}");
+            var dto = JsonSerializer.Deserialize<CalendarStatusDto>(json, JsonOpts);
+            return (dto != null, dto, "Disconnected.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, CalendarStatusDto? Data, string Message)> CreateCalendarEventAsync(
+        string title, string dateStr, string startTime, string endTime, bool allDay, string location)
+    {
+        try
+        {
+            using var req = CreateRequest(HttpMethod.Post, "/api/app/calendar/events", new
+            {
+                title = title,
+                date = dateStr,
+                start_time = startTime,
+                end_time = endTime,
+                all_day = allDay,
+                location = location
+            });
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, json);
+            var dto = JsonSerializer.Deserialize<CalendarStatusDto>(json, JsonOpts);
+            return (dto != null, dto, "Event created.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, CalendarStatusDto? Data, string Message)> DeleteCalendarEventAsync(string eventId, string? calendarId = null)
+    {
+        try
+        {
+            var q = string.IsNullOrEmpty(calendarId) ? "" : $"?calendar_id={Uri.EscapeDataString(calendarId)}";
+            using var req = CreateRequest(HttpMethod.Delete, $"/api/app/calendar/events/{Uri.EscapeDataString(eventId)}{q}");
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, null, json);
+            var dto = JsonSerializer.Deserialize<CalendarStatusDto>(json, JsonOpts);
+            return (dto != null, dto, "Event deleted.");
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
         }
     }
 }

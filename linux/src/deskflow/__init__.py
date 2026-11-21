@@ -1,4 +1,4 @@
 """DeskFlow Native Linux Desktop Application (GTK4 + Libadwaita)."""
 
-__version__ = "1.1.6"
+__version__ = "2.0.0"
 __app_id__ = "com.deskflow.Station"

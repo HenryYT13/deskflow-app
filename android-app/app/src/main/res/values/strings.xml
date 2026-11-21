@@ -368,4 +368,9 @@
     <!-- ZXing Barcode Scanner Overrides -->
     <string name="zxing_msg_default_status">Point camera at the QR code to scan</string>
     <string name="zxing_app_name">QR Code Scanner</string>
+
+    <!-- Google Calendar -->
+    <string name="nav_calendar">Google Calendar</string>
+    <string name="calendar_desc">Sync Google Calendar via OAuth 2.0 or iCal</string>
+    <string name="view_calendar">Calendar</string>
 </resources>

@@ -368,4 +368,9 @@
     <!-- ZXing Barcode Scanner Overrides -->
     <string name="zxing_msg_default_status">Hướng camera về phía mã QR để quét</string>
     <string name="zxing_app_name">Quét mã QR</string>
+
+    <!-- Google Calendar -->
+    <string name="nav_calendar">Lịch Google</string>
+    <string name="calendar_desc">Đồng bộ Google Calendar qua OAuth 2.0 hoặc iCal</string>
+    <string name="view_calendar">Lịch Google</string>
 </resources>

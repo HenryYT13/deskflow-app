@@ -5,6 +5,7 @@
 extern Preferences prefs;
 
 bool stationEnglish = false;
+bool pendingLocalLangSync = false;
 
 const char* tr(const char* vi, const char* en) {
   if (stationEnglish) return (en != nullptr) ? en : vi;
@@ -14,8 +15,18 @@ const char* tr(const char* vi, const char* en) {
 void setStationLanguage(bool english) {
   stationEnglish = english;
   prefs.putBool("lang_en", stationEnglish);
+  prefs.putString("clk_lang", stationEnglish ? "en" : "vi");
 }
 
 void loadStationLanguage() {
   stationEnglish = prefs.getBool("lang_en", false);
+}
+
+void setPendingLocalLangSync(bool pending) {
+  pendingLocalLangSync = pending;
+  prefs.putBool("lang_dirty", pending);
+}
+
+void loadPendingLocalLangSync() {
+  pendingLocalLangSync = prefs.getBool("lang_dirty", false);
 }

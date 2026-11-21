@@ -47,8 +47,19 @@ public final class DeskFlowApiClient: ObservableObject {
             defaults.set(norm, forKey: "deskflow.darkModeEnd")
         }
     }
+    private var suppressLanguageSync: Bool = false
+    private var lastServerLanguage: String? = nil
+
     @Published public var appLanguage: String {
-        didSet { defaults.set(appLanguage, forKey: "deskflow.language"); L10n.lang = appLanguage }
+        didSet {
+            defaults.set(appLanguage, forKey: "deskflow.language")
+            L10n.lang = appLanguage
+            if !suppressLanguageSync && oldValue != appLanguage {
+                let lang = appLanguage
+                lastServerLanguage = lang
+                Task { await setClockLanguage(lang) }
+            }
+        }
     }
     @Published public var esp32ThemeMode: String {
         didSet {
@@ -63,6 +74,8 @@ public final class DeskFlowApiClient: ObservableObject {
     // Published domain state
     @Published public private(set) var timetableData: TimetableDataWrapper?
     @Published public private(set) var isFetchingTimetable: Bool = false
+    @Published public private(set) var calendarState: CalendarStatusDto = CalendarStatusDto()
+    @Published public private(set) var isSyncingCalendar: Bool = false
     @Published public private(set) var notes: [NoteItem] = []
     @Published public private(set) var deletingNoteIds: Set<String> = []
     @Published public private(set) var countdowns: [CountdownItem] = []
@@ -747,6 +760,33 @@ public final class DeskFlowApiClient: ObservableObject {
         await setClockStyle(style: code, accentColor: accentColor)
     }
 
+    public func setClockLanguage(_ language: String) async {
+        let lang = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("en") ? "en" : "vi"
+        guard let req = try? buildRequest(
+            path: "/api/app/control/clock-style",
+            method: "POST",
+            body: ["language": lang],
+            authenticated: false
+        ) else { return }
+        _ = try? await session.data(for: req)
+    }
+
+    public func fetchClockLanguage() async -> String? {
+        guard let req = try? buildRequest(path: "/api/app/control/clock-style", method: "GET", authenticated: false) else { return nil }
+        do {
+            let (data, res) = try await session.data(for: req)
+            if let http = res as? HTTPURLResponse, http.statusCode == 200,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let payload = (json["data"] as? [String: Any]) ?? json
+                if let lang = payload["language"] as? String {
+                    let norm = lang.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if norm == "vi" || norm == "en" { return norm }
+                }
+            }
+        } catch {}
+        return nil
+    }
+
     public func setClockAccentColor(_ hex: String) async {
         let clean = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         self.clockAccentColor = clean
@@ -792,6 +832,136 @@ public final class DeskFlowApiClient: ObservableObject {
         await fetchSystemStatus()
         await fetchSpotifyStatus()
         await fetchTimetable()
+        await fetchCalendarStatus()
+    }
+
+    // MARK: - Google Calendar (/api/app/calendar/*)
+
+    public func fetchCalendarStatus() async {
+        guard let req = try? buildRequest(path: "/api/app/calendar/status", method: "GET", authenticated: true) else { return }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(CalendarStatusDto.self, from: data) {
+                self.calendarState = decoded
+            }
+        } catch {}
+    }
+
+    public func syncCalendar() async {
+        isSyncingCalendar = true
+        defer { isSyncingCalendar = false }
+        guard let req = try? buildRequest(path: "/api/app/calendar/sync", method: "POST", body: [:], authenticated: true) else { return }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(CalendarStatusDto.self, from: data) {
+                self.calendarState = decoded
+                statusBannerMessage = appLanguage == "vi" ? "Đã đồng bộ Google Calendar!" : "Google Calendar synced!"
+            } else {
+                errorBannerMessage = "Sync calendar failed"
+            }
+        } catch {
+            errorBannerMessage = error.localizedDescription
+        }
+    }
+
+    public func updateCalendarConfig(
+        icalUrl: String? = nil,
+        googleClientId: String? = nil,
+        googleClientSecret: String? = nil,
+        googleRedirectUri: String? = nil,
+        selectedCalendarId: String? = nil
+    ) async {
+        var body: [String: Any] = [:]
+        if let v = icalUrl { body["ical_url"] = v }
+        if let v = googleClientId { body["google_client_id"] = v }
+        if let v = googleClientSecret { body["google_client_secret"] = v }
+        if let v = googleRedirectUri { body["google_redirect_uri"] = v }
+        if let v = selectedCalendarId { body["selected_calendar_id"] = v }
+
+        guard let req = try? buildRequest(path: "/api/app/calendar/config", method: "POST", body: body, authenticated: true) else { return }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(CalendarStatusDto.self, from: data) {
+                self.calendarState = decoded
+                statusBannerMessage = appLanguage == "vi" ? "Đã lưu cấu hình Google Calendar!" : "Saved Google Calendar settings!"
+            } else {
+                errorBannerMessage = String(data: data, encoding: .utf8) ?? "Save failed"
+            }
+        } catch {
+            errorBannerMessage = error.localizedDescription
+        }
+    }
+
+    public func startCalendarOAuth() async -> String? {
+        guard let req = try? buildRequest(path: "/api/app/calendar/oauth/start", method: "POST", body: [:], authenticated: true) else { return nil }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let url = obj["auth_url"] as? String {
+                return url
+            }
+            let raw = String(data: data, encoding: .utf8) ?? ""
+            errorBannerMessage = raw.contains("google_oauth_credentials_missing")
+                ? (appLanguage == "vi" ? "Hãy nhập Google Client ID & Secret trước!" : "Please enter Google Client ID & Secret first!")
+                : raw
+        } catch {
+            errorBannerMessage = error.localizedDescription
+        }
+        return nil
+    }
+
+    public func disconnectCalendarOAuth() async {
+        guard let req = try? buildRequest(path: "/api/app/calendar/oauth/disconnect", method: "POST", body: [:], authenticated: true) else { return }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(CalendarStatusDto.self, from: data) {
+                self.calendarState = decoded
+                statusBannerMessage = appLanguage == "vi" ? "Đã ngắt Google OAuth." : "Disconnected Google OAuth."
+            }
+        } catch {}
+    }
+
+    public func createCalendarEvent(title: String, dateStr: String, startTime: String, endTime: String, allDay: Bool, location: String) async {
+        let body: [String: Any] = [
+            "title": title,
+            "date": dateStr,
+            "start_time": startTime,
+            "end_time": endTime,
+            "all_day": allDay,
+            "location": location
+        ]
+        guard let req = try? buildRequest(path: "/api/app/calendar/events", method: "POST", body: body, authenticated: true) else { return }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(CalendarStatusDto.self, from: data) {
+                self.calendarState = decoded
+                statusBannerMessage = appLanguage == "vi" ? "Đã thêm sự kiện!" : "Event created!"
+            } else {
+                errorBannerMessage = String(data: data, encoding: .utf8) ?? "Create failed"
+            }
+        } catch {
+            errorBannerMessage = error.localizedDescription
+        }
+    }
+
+    public func deleteCalendarEvent(eventId: String, calendarId: String?) async {
+        let encoded = eventId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventId
+        let q = (calendarId ?? "").isEmpty ? "" : "?calendar_id=\(calendarId!.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        guard let req = try? buildRequest(path: "/api/app/calendar/events/\(encoded)\(q)", method: "DELETE", authenticated: true) else { return }
+        do {
+            let (data, response) = try await session.data(for: req)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(CalendarStatusDto.self, from: data) {
+                self.calendarState = decoded
+                statusBannerMessage = appLanguage == "vi" ? "Đã xóa sự kiện." : "Event deleted."
+            }
+        } catch {}
     }
 
     public func fetchSpotifyStatus() async {
@@ -1179,6 +1349,14 @@ public final class DeskFlowApiClient: ObservableObject {
                     self.compRam = (comp["ram"] as? Double) ?? (comp["ram_pct"] as? Double) ?? 0.0
                     self.compBattery = (comp["battery"] as? Int) ?? 100
                     self.compIsOnline = (comp["online"] as? Bool) ?? true
+                }
+                if let srvLang = await fetchClockLanguage(), srvLang != self.lastServerLanguage {
+                    self.lastServerLanguage = srvLang
+                    if self.appLanguage != srvLang {
+                        self.suppressLanguageSync = true
+                        self.appLanguage = srvLang
+                        self.suppressLanguageSync = false
+                    }
                 }
             }
         } catch {}

@@ -498,8 +498,21 @@ fun ControlScreen(
     // Poll the station status so the OLED preview follows whatever the ESP32 is
     // actually showing (including screens changed from another app or buttons).
     LaunchedEffect(Unit) {
+        var lastSyncedLang: String? = null
         while (true) {
             repository.refreshSystemStatus()
+            val clkRes = repository.getClockConfig()
+            if (clkRes is ApiResult.Success) {
+                clockConfig = clkRes.data
+                selectedClockStyle = clkRes.data.style
+                val srvLang = clkRes.data.language.trim().lowercase()
+                if ((srvLang == "vi" || srvLang == "en") && srvLang != lastSyncedLang) {
+                    lastSyncedLang = srvLang
+                    if (securePreferences.language != srvLang) {
+                        securePreferences.language = srvLang
+                    }
+                }
+            }
             kotlinx.coroutines.delay(3000L)
         }
     }
@@ -1978,6 +1991,7 @@ fun DisplayControlsCard(
                 "main" to stringResource(R.string.view_main),
                 "stats" to stringResource(R.string.view_stats),
                 "tkb" to stringResource(R.string.view_tkb),
+                "calendar" to stringResource(R.string.view_calendar),
                 "weather" to stringResource(R.string.view_weather),
                 "lyrics" to stringResource(R.string.view_lyrics),
                 "clock" to stringResource(R.string.view_clock),

@@ -61,6 +61,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
     case system = "system"
     case hardware = "hardware"
     case timetable = "timetable"
+    case calendar = "calendar"
     case spotify = "spotify"
     case alarms = "alarms"
     case tools = "tools"
@@ -73,6 +74,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
         case .system: return isVi ? "Giám sát hệ thống & Đo từ xa" : "System & Telemetry"
         case .hardware: return isVi ? "Phần cứng & Trạm ESP32" : "Hardware & ESP32 Station"
         case .timetable: return isVi ? "Thời khóa biểu (TKB)" : "Timetable (TKB)"
+        case .calendar: return isVi ? "Lịch Google (Calendar)" : "Google Calendar"
         case .spotify: return isVi ? "Spotify & Âm nhạc" : "Spotify & Media"
         case .alarms: return isVi ? "Báo thức & Còi báo" : "Alarms & Buzzer"
         case .tools: return isVi ? "Công cụ & Groq AI" : "Tools & Groq AI"
@@ -85,6 +87,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
         case .system: return "gauge.with.dots.needle.50percent"
         case .hardware: return "display.2"
         case .timetable: return "calendar.badge.clock"
+        case .calendar: return "calendar"
         case .spotify: return "music.note"
         case .alarms: return "bell.badge.fill"
         case .tools: return "wand.and.stars"
@@ -97,6 +100,7 @@ public enum MacSidebarSection: String, CaseIterable, Identifiable {
         case .system: return Color(hex: "#10b981")
         case .hardware: return Color(hex: "#38bdf8")
         case .timetable: return Color(hex: "#06b6d4")
+        case .calendar: return Color(hex: "#38bdf8")
         case .spotify: return Color(hex: "#1db954")
         case .alarms: return Color(hex: "#f59e0b")
         case .tools: return Color(hex: "#a855f7")
@@ -359,6 +363,8 @@ public struct MainSplitView: View {
                             StationMacView(client: client)
                         case .timetable:
                             TimetableMacView(client: client)
+                        case .calendar:
+                            CalendarMacView(client: client)
                         case .spotify:
                             SpotifyMacView(client: client)
                         case .alarms:
@@ -1870,6 +1876,7 @@ private struct StationMacView: View {
         OledViewOption(id: "focus", name: "Focus Mode", icon: "timer", desc: "Focus Mode countdown"),
         OledViewOption(id: "stats", name: "Server Stats", icon: "cpu", desc: "CPU, RAM & Uptime"),
         OledViewOption(id: "tkb", name: "Timetable", icon: "book.closed.fill", desc: "School class schedule"),
+        OledViewOption(id: "calendar", name: "Google Calendar", icon: "calendar", desc: "Google Calendar events"),
         OledViewOption(id: "lyrics", name: "Spotify Lyrics", icon: "music.note", desc: "Real-time music lyrics")
     ]
 
@@ -2752,6 +2759,226 @@ private struct TimetableMacView: View {
         .onAppear {
             if client.timetableData == nil {
                 Task { await client.fetchTimetable() }
+            }
+        }
+    }
+}
+
+// MARK: - Google Calendar View
+
+private struct CalendarMacView: View {
+    @ObservedObject var client: DeskFlowApiClient
+    @State private var icalUrlInput: String = ""
+    @State private var clientIdInput: String = ""
+    @State private var clientSecretInput: String = ""
+    @State private var redirectUriInput: String = "https://10th012013.duckdns.org/api/app/calendar/oauth/callback"
+    @State private var showOAuthCreds: Bool = false
+
+    @State private var newTitle: String = ""
+    @State private var newDate: String = ""
+    @State private var newStart: String = "09:00"
+    @State private var newEnd: String = "10:00"
+    @State private var newLocation: String = ""
+    @State private var newAllDay: Bool = false
+
+    private var isVi: Bool { client.appLanguage == "vi" }
+
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isVi ? "Lịch Google (Google Calendar)" : "Google Calendar")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text(isVi ? "Hỗ trợ Google OAuth 2.0 (2 chiều) và Private iCal (.ics)." : "Supports Google OAuth 2.0 (2-way) and Private iCal (.ics).")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button(isVi ? "Hiện lên ESP32" : "Show on ESP32") {
+                    Task {
+                        await client.syncCalendar()
+                        await client.switchDisplayView(view: "calendar")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                Button {
+                    Task { await client.syncCalendar() }
+                } label: {
+                    Label(isVi ? "Đồng bộ" : "Sync", systemImage: "arrow.clockwise")
+                }
+                .disabled(client.isSyncingCalendar)
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                LiquidGlassCard("Google OAuth 2.0", icon: "person.badge.key.fill", iconColor: .cyan) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(client.calendarState.oauthConnected
+                             ? "\(client.calendarState.connectedEmail) (\(client.calendarState.selectedCalendarName))"
+                             : (isVi ? "Chưa đăng nhập OAuth" : "Not signed in"))
+                            .font(.subheadline)
+                            .foregroundColor(client.calendarState.oauthConnected ? .green : .secondary)
+
+                        if client.calendarState.oauthConnected && !client.calendarState.calendars.isEmpty {
+                            Picker(isVi ? "Chọn lịch" : "Calendar", selection: Binding(
+                                get: { client.calendarState.selectedCalendarId },
+                                set: { val in Task { await client.updateCalendarConfig(selectedCalendarId: val) } }
+                            )) {
+                                ForEach(client.calendarState.calendars) { cal in
+                                    Text(cal.summary).tag(cal.id)
+                                }
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            Button(isVi ? "Đăng nhập Google" : "Connect Google") {
+                                Task {
+                                    if let urlStr = await client.startCalendarOAuth(),
+                                       let url = URL(string: urlStr) {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            if client.calendarState.oauthConnected {
+                                Button(isVi ? "Ngắt OAuth" : "Disconnect", role: .destructive) {
+                                    Task { await client.disconnectCalendarOAuth() }
+                                }
+                            }
+                        }
+
+                        DisclosureGroup(isVi ? "Cấu hình Client ID / Secret" : "OAuth Credentials", isExpanded: $showOAuthCreds) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextField("Google Client ID", text: $clientIdInput)
+                                    .textFieldStyle(.roundedBorder)
+                                SecureField("Google Client Secret", text: $clientSecretInput)
+                                    .textFieldStyle(.roundedBorder)
+                                TextField("Redirect URI", text: $redirectUriInput)
+                                    .textFieldStyle(.roundedBorder)
+                                Button(isVi ? "Lưu OAuth Credentials" : "Save Credentials") {
+                                    Task {
+                                        await client.updateCalendarConfig(
+                                            googleClientId: clientIdInput,
+                                            googleClientSecret: clientSecretInput.isEmpty ? nil : clientSecretInput,
+                                            googleRedirectUri: redirectUriInput
+                                        )
+                                        clientSecretInput = ""
+                                    }
+                                }
+                            }
+                            .padding(.top, 6)
+                        }
+                    }
+                }
+
+                LiquidGlassCard(isVi ? "Link Private iCal (.ics)" : "Private iCal (.ics)", icon: "link.badge.plus", iconColor: .green) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(isVi ? "Dán Secret iCal URL từ Google Calendar Settings (chỉ xem)." : "Paste Secret iCal URL from Google Calendar Settings (read-only).")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("https://calendar.google.com/calendar/ical/.../basic.ics", text: $icalUrlInput)
+                            .textFieldStyle(.roundedBorder)
+                        Button(isVi ? "Lưu & Đồng bộ iCal" : "Save & Sync iCal") {
+                            Task { await client.updateCalendarConfig(icalUrl: icalUrlInput) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+
+            LiquidGlassCard(isVi ? "Thêm sự kiện mới (OAuth)" : "Create Event (OAuth)", icon: "plus.circle.fill", iconColor: .purple) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        TextField(isVi ? "Tên sự kiện" : "Title", text: $newTitle)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("YYYY-MM-DD", text: $newDate)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 120)
+                        if !newAllDay {
+                            TextField("09:00", text: $newStart)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 72)
+                            TextField("10:00", text: $newEnd)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 72)
+                        }
+                        TextField(isVi ? "Địa điểm" : "Location", text: $newLocation)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                        Toggle(isVi ? "Cả ngày" : "All day", isOn: $newAllDay)
+                            .toggleStyle(.switch)
+                        Button(isVi ? "Thêm" : "Add") {
+                            Task {
+                                await client.createCalendarEvent(
+                                    title: newTitle,
+                                    dateStr: newDate,
+                                    startTime: newStart,
+                                    endTime: newEnd,
+                                    allDay: newAllDay,
+                                    location: newLocation
+                                )
+                                newTitle = ""
+                                newLocation = ""
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(newTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+
+            LiquidGlassCard(isVi ? "Sự kiện sắp tới (30 ngày)" : "Upcoming Events (30 days)", icon: "calendar", iconColor: .orange) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if client.calendarState.events.isEmpty {
+                        Text(isVi ? "Chưa có sự kiện sắp tới." : "No upcoming events.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(client.calendarState.events) { ev in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(ev.title).font(.headline)
+                                    let timeStr = ev.allDay ? (isVi ? "Cả ngày" : "All day") : (ev.endTime.isEmpty ? ev.startTime : "\(ev.startTime)–\(ev.endTime)")
+                                    Text("\(ev.date) • \(timeStr)\(ev.location.isEmpty ? "" : " • @ \(ev.location)")")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if ev.isToday {
+                                    Text(isVi ? "HÔM NAY" : "TODAY")
+                                        .font(.caption2.bold())
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Color.cyan.opacity(0.2))
+                                        .foregroundColor(.cyan)
+                                        .cornerRadius(6)
+                                }
+                                if ev.canDelete {
+                                    Button(role: .destructive) {
+                                        Task { await client.deleteCalendarEvent(eventId: ev.id, calendarId: ev.calendarId) }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                }
+                            }
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if newDate.isEmpty { newDate = Self.dateFmt.string(from: Date()) }
+            Task {
+                await client.fetchCalendarStatus()
+                if icalUrlInput.isEmpty { icalUrlInput = client.calendarState.icalUrl }
+                if clientIdInput.isEmpty { clientIdInput = client.calendarState.googleClientId }
+                if !client.calendarState.googleRedirectUri.isEmpty { redirectUriInput = client.calendarState.googleRedirectUri }
             }
         }
     }

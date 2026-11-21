@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .models import (
+    CalendarEventItem,
+    CalendarStatus,
     ConfigStore,
     CountdownItem,
     DualDayTimetable,
@@ -76,6 +78,7 @@ class DeskFlowApiClient:
         self.active_note_id: Optional[str] = None
         self.countdowns: List[CountdownItem] = []
         self.active_countdown_id: Optional[str] = None
+        self.calendar_status: CalendarStatus = CalendarStatus()
         self._in_flight_note_deletes: Set[str] = set()
         self._in_flight_countdown_deletes: Set[str] = set()
 
@@ -762,6 +765,14 @@ class DeskFlowApiClient:
             )
         return res
 
+    def get_clock_config(self) -> ApiResult:
+        """Fetch current ESP32 clock/OLED config (including language) from backend."""
+        return self.request(
+            "GET",
+            "/api/app/control/clock-style",
+            authenticated=False,
+        )
+
     def set_clock_language(self, language: str) -> ApiResult:
         """Set the ESP32 clock/OLED display language ("vi" or "en")."""
         lang = "en" if str(language).strip().lower().startswith("en") else "vi"
@@ -899,3 +910,91 @@ class DeskFlowApiClient:
                 "darkmode_end": end,
             },
         )
+
+    # -------------------------------------------------------------------------
+    # Google Calendar (/api/app/calendar/*)
+    # -------------------------------------------------------------------------
+    def _sync_calendar_from_payload(self, body: Any) -> CalendarStatus:
+        if isinstance(body, dict):
+            self.calendar_status = CalendarStatus.from_dict(body)
+        return self.calendar_status
+
+    def get_calendar_status(self) -> ApiResult:
+        res = self.request("GET", "/api/app/calendar/status")
+        if res.ok:
+            self._sync_calendar_from_payload(res.data)
+        return res
+
+    def sync_calendar(self) -> ApiResult:
+        res = self.request("POST", "/api/app/calendar/sync", payload={})
+        if res.ok:
+            self._sync_calendar_from_payload(res.data)
+        return res
+
+    def update_calendar_config(
+        self,
+        ical_url: Optional[str] = None,
+        google_client_id: Optional[str] = None,
+        google_client_secret: Optional[str] = None,
+        google_redirect_uri: Optional[str] = None,
+        selected_calendar_id: Optional[str] = None,
+    ) -> ApiResult:
+        payload: Dict[str, Any] = {}
+        if ical_url is not None:
+            payload["ical_url"] = ical_url
+        if google_client_id is not None:
+            payload["google_client_id"] = google_client_id
+        if google_client_secret is not None:
+            payload["google_client_secret"] = google_client_secret
+        if google_redirect_uri is not None:
+            payload["google_redirect_uri"] = google_redirect_uri
+        if selected_calendar_id is not None:
+            payload["selected_calendar_id"] = selected_calendar_id
+        res = self.request("POST", "/api/app/calendar/config", payload=payload)
+        if res.ok:
+            self._sync_calendar_from_payload(res.data)
+        return res
+
+    def start_calendar_oauth(self) -> ApiResult:
+        return self.request("POST", "/api/app/calendar/oauth/start", payload={})
+
+    def disconnect_calendar_oauth(self) -> ApiResult:
+        res = self.request("POST", "/api/app/calendar/oauth/disconnect", payload={})
+        if res.ok:
+            self._sync_calendar_from_payload(res.data)
+        return res
+
+    def create_calendar_event(
+        self,
+        title: str,
+        date_str: str,
+        start_time: str = "",
+        end_time: str = "",
+        all_day: bool = False,
+        location: str = "",
+        description: str = "",
+        calendar_id: Optional[str] = None,
+    ) -> ApiResult:
+        payload: Dict[str, Any] = {
+            "title": title,
+            "date": date_str,
+            "start_time": start_time,
+            "end_time": end_time,
+            "all_day": all_day,
+            "location": location,
+            "description": description,
+        }
+        if calendar_id:
+            payload["calendar_id"] = calendar_id
+        res = self.request("POST", "/api/app/calendar/events", payload=payload)
+        if res.ok:
+            self._sync_calendar_from_payload(res.data)
+        return res
+
+    def delete_calendar_event(self, event_id: str, calendar_id: Optional[str] = None) -> ApiResult:
+        encoded = urllib.parse.quote(event_id, safe="")
+        q = f"?calendar_id={urllib.parse.quote(calendar_id, safe='')}" if calendar_id else ""
+        res = self.request("DELETE", f"/api/app/calendar/events/{encoded}{q}")
+        if res.ok:
+            self._sync_calendar_from_payload(res.data)
+        return res

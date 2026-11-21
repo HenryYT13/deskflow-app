@@ -88,6 +88,7 @@
                 <NavigationViewItem x:Name="NavSystemItem" Icon="Home" Content="Giám sát hệ thống &amp; Đo từ xa" Tag="system" />
                 <NavigationViewItem x:Name="NavStationItem" Icon="AllApps" Content="Phần cứng &amp; Trạm ESP32" Tag="station" />
                 <NavigationViewItem x:Name="NavTimetableItem" Icon="Calendar" Content="Thời khóa biểu (TKB)" Tag="timetable" />
+                <NavigationViewItem x:Name="NavCalendarItem" Icon="CalendarDay" Content="Lịch Google (Calendar)" Tag="calendar" />
                 <NavigationViewItem x:Name="NavSpotifyItem" Icon="Audio" Content="Spotify &amp; Âm nhạc" Tag="spotify" />
                 <NavigationViewItem x:Name="NavAlarmsItem" Icon="Important" Content="Báo thức &amp; Còi báo" Tag="alarms" />
                 <NavigationViewItem x:Name="NavToolsItem" Icon="Edit" Content="Công cụ &amp; Groq AI" Tag="tools" />
@@ -496,6 +497,7 @@
                             <Button Content="Chính (Default)" Tag="main" Click="SwitchViewButton_Click" Style="{StaticResource AccentButtonStyle}" />
                             <Button Content="Đồng hồ" Tag="clock" Click="SwitchViewButton_Click" />
                             <Button Content="Thời khóa biểu" Tag="tkb" Click="SwitchViewButton_Click" />
+                            <Button Content="Lịch Google" Tag="calendar" Click="SwitchViewButton_Click" />
                             <Button Content="Thời tiết" Tag="weather" Click="SwitchViewButton_Click" />
                             <Button Content="Lời bài hát" Tag="lyrics" Click="SwitchViewButton_Click" />
                             <Button Content="Ghi chú" Tag="notes" Click="SwitchViewButton_Click" />
@@ -658,6 +660,91 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+                    </StackPanel>
+
+                    <!-- ========================================================================= -->
+                    <!-- LỊCH GOOGLE (GOOGLE CALENDAR - OAUTH 2.0 + PRIVATE ICAL)                  -->
+                    <!-- ========================================================================= -->
+                    <StackPanel x:Name="CalendarPanel" Spacing="16" Visibility="Collapsed">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Lịch Google (Google Calendar)" FontSize="22" FontWeight="Bold" />
+                                    <TextBlock x:Name="CalStatusText" Text="Chưa kết nối Google Calendar" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="13" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Button Content="Hiện lên ESP32" Style="{StaticResource AccentButtonStyle}" Click="CalSyncEsp32_Click" />
+                                    <Button Content="Đồng bộ ngay" Click="CalRefresh_Click" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- OAuth + Private iCal Configuration -->
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Google OAuth 2.0 -->
+                            <Border Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Google OAuth 2.0 (2 chiều)" FontSize="16" FontWeight="SemiBold" Foreground="#38BDF8" />
+                                    <TextBlock x:Name="CalOAuthAccountText" Text="Chưa đăng nhập Google OAuth" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    <ComboBox x:Name="CalPickerCombo" Header="Lịch đang chọn" HorizontalAlignment="Stretch" Visibility="Collapsed" SelectionChanged="CalPickerCombo_SelectionChanged" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Đăng nhập Google" Style="{StaticResource AccentButtonStyle}" Click="CalOAuthConnect_Click" />
+                                        <Button x:Name="CalOAuthDisconnectBtn" Content="Ngắt OAuth" Visibility="Collapsed" Click="CalOAuthDisconnect_Click" />
+                                    </StackPanel>
+                                    <Expander Header="Cấu hình OAuth Client ID / Secret" HorizontalAlignment="Stretch">
+                                        <StackPanel Spacing="8" Margin="0,8,0,0">
+                                            <TextBox x:Name="CalClientIdBox" Header="Google Client ID" PlaceholderText="xxx.apps.googleusercontent.com" />
+                                            <PasswordBox x:Name="CalClientSecretBox" Header="Google Client Secret (trống = giữ nguyên)" />
+                                            <TextBox x:Name="CalRedirectUriBox" Header="Redirect URI" Text="https://10th012013.duckdns.org/api/app/calendar/oauth/callback" />
+                                            <Button Content="Lưu thông tin OAuth" Click="CalSaveOAuthCreds_Click" />
+                                        </StackPanel>
+                                    </Expander>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Private iCal (.ics) Quick Link -->
+                            <Border Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Kết nối nhanh Private iCal (.ics)" FontSize="16" FontWeight="SemiBold" Foreground="#10B981" />
+                                    <TextBlock Text="Dán 'Secret address in iCal format' trong Google Calendar Settings (chỉ xem, không cần Google Cloud)." FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    <TextBox x:Name="CalIcalUrlBox" Header="Secret iCal (.ics) URL" PlaceholderText="https://calendar.google.com/calendar/ical/.../basic.ics" />
+                                    <Button Content="Lưu &amp; Đồng bộ iCal" Style="{StaticResource AccentButtonStyle}" Click="CalSaveIcal_Click" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Create Event Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Thêm sự kiện lên Google Calendar (cần Google OAuth)" FontSize="15" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBox x:Name="CalNewTitleBox" Header="Tên sự kiện" Width="220" PlaceholderText="VD: Họp nhóm" />
+                                    <TextBox x:Name="CalNewDateBox" Header="Ngày (YYYY-MM-DD)" Width="140" PlaceholderText="2026-11-21" />
+                                    <TextBox x:Name="CalNewStartBox" Header="Bắt đầu" Width="90" Text="09:00" />
+                                    <TextBox x:Name="CalNewEndBox" Header="Kết thúc" Width="90" Text="10:00" />
+                                    <TextBox x:Name="CalNewLocBox" Header="Địa điểm" Width="150" PlaceholderText="Online / Phòng..." />
+                                    <ToggleSwitch x:Name="CalNewAllDaySwitch" Header="Cả ngày" OffContent="Giờ" OnContent="Cả ngày" VerticalAlignment="Bottom" />
+                                    <Button Content="Thêm" Style="{StaticResource AccentButtonStyle}" VerticalAlignment="Bottom" Click="CalCreateEvent_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Events List -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Sự kiện sắp tới (30 ngày)" FontSize="16" FontWeight="SemiBold" />
+                                <StackPanel x:Name="CalEventsListPanel" Spacing="8" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
 

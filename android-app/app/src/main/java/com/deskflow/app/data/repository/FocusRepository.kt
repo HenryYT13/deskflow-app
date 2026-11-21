@@ -57,6 +57,9 @@ class FocusRepository(
     private val _timetableState = MutableStateFlow<TimetableDataWrapper?>(null)
     val timetableState: StateFlow<TimetableDataWrapper?> = _timetableState.asStateFlow()
 
+    private val _calendarState = MutableStateFlow(CalendarStatusDto())
+    val calendarState: StateFlow<CalendarStatusDto> = _calendarState.asStateFlow()
+
     private val _focusHistory = MutableStateFlow<List<FocusSessionDto>>(emptyList())
     val focusHistory: StateFlow<List<FocusSessionDto>> = _focusHistory.asStateFlow()
 
@@ -1365,6 +1368,110 @@ class FocusRepository(
                 errorType = "UNKNOWN_ERROR",
                 errorMessage = e.message ?: "Unexpected error occurred"
             )
+        }
+    }
+
+    // --- Google Calendar ---
+    suspend fun refreshCalendarStatus(): ApiResult<CalendarStatusDto> {
+        return try {
+            val response = apiService.getCalendarStatus()
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                _calendarState.value = body
+                ApiResult.Success(body)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to load calendar")
+        }
+    }
+
+    suspend fun syncCalendar(): ApiResult<CalendarStatusDto> {
+        return try {
+            val response = apiService.syncCalendar()
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                _calendarState.value = body
+                ApiResult.Success(body)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to sync calendar")
+        }
+    }
+
+    suspend fun updateCalendarConfig(request: CalendarConfigRequest): ApiResult<CalendarStatusDto> {
+        return try {
+            val response = apiService.updateCalendarConfig(request)
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                _calendarState.value = body
+                ApiResult.Success(body)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to update calendar config")
+        }
+    }
+
+    suspend fun startCalendarOAuth(): ApiResult<CalendarOAuthStartResponse> {
+        return try {
+            val response = apiService.startCalendarOAuth()
+            if (response.isSuccessful && response.body() != null) {
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to start Google OAuth")
+        }
+    }
+
+    suspend fun disconnectCalendarOAuth(): ApiResult<CalendarStatusDto> {
+        return try {
+            val response = apiService.disconnectCalendarOAuth()
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                _calendarState.value = body
+                ApiResult.Success(body)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to disconnect OAuth")
+        }
+    }
+
+    suspend fun createCalendarEvent(request: CreateCalendarEventRequest): ApiResult<CalendarStatusDto> {
+        return try {
+            val response = apiService.createCalendarEvent(request)
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                _calendarState.value = body
+                ApiResult.Success(body)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to create event")
+        }
+    }
+
+    suspend fun deleteCalendarEvent(eventId: String, calendarId: String? = null): ApiResult<CalendarStatusDto> {
+        return try {
+            val response = apiService.deleteCalendarEvent(eventId, calendarId)
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                _calendarState.value = body
+                ApiResult.Success(body)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: "Failed to delete event")
         }
     }
 }

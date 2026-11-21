@@ -42,6 +42,7 @@ import com.deskflow.app.ui.home.HomeScreen
 import com.deskflow.app.ui.morse.MorseConverterScreen
 import com.deskflow.app.ui.navigation.AppScreens
 import com.deskflow.app.ui.navigation.BottomTab
+import com.deskflow.app.ui.calendar.CalendarScreen
 import com.deskflow.app.ui.navigation.WaterdropNavigationBar
 import com.deskflow.app.ui.settings.SettingsScreen
 import com.deskflow.app.ui.spotify.SpotifyScreen
@@ -54,10 +55,11 @@ private fun getScreenOrder(route: String): Int = when (route) {
     AppScreens.ROUTE_HOME -> 2
     AppScreens.ROUTE_SPOTIFY -> 3
     AppScreens.ROUTE_TIMETABLE -> 4
-    AppScreens.ROUTE_DASHBOARD -> 5
-    AppScreens.ROUTE_ACTIVITY -> 6
-    AppScreens.ROUTE_SETTINGS -> 7
-    AppScreens.ROUTE_MORSE -> 8
+    AppScreens.ROUTE_CALENDAR -> 5
+    AppScreens.ROUTE_DASHBOARD -> 6
+    AppScreens.ROUTE_ACTIVITY -> 7
+    AppScreens.ROUTE_SETTINGS -> 8
+    AppScreens.ROUTE_MORSE -> 9
     else -> 2
 }
 
@@ -205,6 +207,10 @@ fun DeskFlowUnifiedScreen(
                     onOpenScreenSwitcher = { showScreenSwitcher = true }
                 )
                 AppScreens.ROUTE_TIMETABLE -> TimetableScreen(
+                    repository = repository,
+                    onOpenScreenSwitcher = { showScreenSwitcher = true }
+                )
+                AppScreens.ROUTE_CALENDAR -> CalendarScreen(
                     repository = repository,
                     onOpenScreenSwitcher = { showScreenSwitcher = true }
                 )

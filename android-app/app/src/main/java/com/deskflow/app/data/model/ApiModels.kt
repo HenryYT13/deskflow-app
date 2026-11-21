@@ -574,3 +574,73 @@ data class MelodyPlayRequest(
     @SerialName("filename") val filename: String? = null
 )
 
+// --- Google Calendar Models ---
+@Serializable
+data class GoogleCalendarSummaryDto(
+    @SerialName("id") val id: String = "primary",
+    @SerialName("summary") val summary: String = "Primary",
+    @SerialName("primary") val primary: Boolean = false,
+    @SerialName("access_role") val accessRole: String = "reader"
+)
+
+@Serializable
+data class CalendarEventDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("title") val title: String = "",
+    @SerialName("date") val date: String = "",
+    @SerialName("start_time") val startTime: String = "",
+    @SerialName("end_time") val endTime: String = "",
+    @SerialName("all_day") val allDay: Boolean = false,
+    @SerialName("is_today") val isToday: Boolean = false,
+    @SerialName("is_ongoing") val isOngoing: Boolean = false,
+    @SerialName("location") val location: String = "",
+    @SerialName("source") val source: String = "ical",
+    @SerialName("can_delete") val canDelete: Boolean = false,
+    @SerialName("calendar_id") val calendarId: String = "primary"
+)
+
+@Serializable
+data class CalendarStatusDto(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("connected") val connected: Boolean = false,
+    @SerialName("oauth_connected") val oauthConnected: Boolean = false,
+    @SerialName("ical_connected") val icalConnected: Boolean = false,
+    @SerialName("ical_url") val icalUrl: String = "",
+    @SerialName("google_client_id") val googleClientId: String = "",
+    @SerialName("has_google_client_secret") val hasGoogleClientSecret: Boolean = false,
+    @SerialName("google_redirect_uri") val googleRedirectUri: String = "https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+    @SerialName("connected_email") val connectedEmail: String = "",
+    @SerialName("selected_calendar_id") val selectedCalendarId: String = "primary",
+    @SerialName("selected_calendar_name") val selectedCalendarName: String = "Primary",
+    @SerialName("calendars") val calendars: List<GoogleCalendarSummaryDto> = emptyList(),
+    @SerialName("last_error") val lastError: String? = null,
+    @SerialName("events") val events: List<CalendarEventDto> = emptyList(),
+    @SerialName("today_count") val todayCount: Int = 0
+)
+
+@Serializable
+data class CalendarConfigRequest(
+    @SerialName("ical_url") val icalUrl: String? = null,
+    @SerialName("google_client_id") val googleClientId: String? = null,
+    @SerialName("google_client_secret") val googleClientSecret: String? = null,
+    @SerialName("google_redirect_uri") val googleRedirectUri: String? = null,
+    @SerialName("selected_calendar_id") val selectedCalendarId: String? = null
+)
+
+@Serializable
+data class CreateCalendarEventRequest(
+    @SerialName("title") val title: String,
+    @SerialName("date") val date: String,
+    @SerialName("start_time") val startTime: String = "",
+    @SerialName("end_time") val endTime: String = "",
+    @SerialName("all_day") val allDay: Boolean = false,
+    @SerialName("location") val location: String = ""
+)
+
+@Serializable
+data class CalendarOAuthStartResponse(
+    @SerialName("success") val success: Boolean = false,
+    @SerialName("auth_url") val authUrl: String? = null,
+    @SerialName("redirect_uri") val redirectUri: String? = null
+)
+
