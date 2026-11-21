@@ -1729,14 +1729,14 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         cred_expander = Adw.ExpanderRow(
             title=self._tr("Cấu hình Google OAuth Credentials", "Google OAuth Credentials Setup"),
             subtitle=self._tr(
-                "Redirect URI: https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
-                "Redirect URI: https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+                "Redirect URI: https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback",
+                "Redirect URI: https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback",
             ),
         )
         self.cal_client_id_entry = Adw.EntryRow(title="Google Client ID")
         self.cal_client_secret_entry = Adw.PasswordEntryRow(title="Google Client Secret (để trống nếu giữ nguyên)")
         self.cal_redirect_uri_entry = Adw.EntryRow(title="Redirect URI")
-        self.cal_redirect_uri_entry.set_text("https://10th012013.duckdns.org/api/app/calendar/oauth/callback")
+        self.cal_redirect_uri_entry.set_text("https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback")
         cred_save_row = Adw.ActionRow(
             title=self._tr("Lưu thông tin OAuth", "Save OAuth Credentials"),
         )

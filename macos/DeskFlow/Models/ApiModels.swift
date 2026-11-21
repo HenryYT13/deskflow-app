@@ -779,7 +779,7 @@ public struct CalendarStatusDto: Codable, Equatable {
         icalUrl: String = "",
         googleClientId: String = "",
         hasGoogleClientSecret: Bool = false,
-        googleRedirectUri: String = "https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+        googleRedirectUri: String = "https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback",
         connectedEmail: String = "",
         selectedCalendarId: String = "primary",
         selectedCalendarName: String = "Primary",

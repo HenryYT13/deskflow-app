@@ -608,7 +608,7 @@ data class CalendarStatusDto(
     @SerialName("ical_url") val icalUrl: String = "",
     @SerialName("google_client_id") val googleClientId: String = "",
     @SerialName("has_google_client_secret") val hasGoogleClientSecret: Boolean = false,
-    @SerialName("google_redirect_uri") val googleRedirectUri: String = "https://10th012013.duckdns.org/api/app/calendar/oauth/callback",
+    @SerialName("google_redirect_uri") val googleRedirectUri: String = "https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback",
     @SerialName("connected_email") val connectedEmail: String = "",
     @SerialName("selected_calendar_id") val selectedCalendarId: String = "primary",
     @SerialName("selected_calendar_name") val selectedCalendarName: String = "Primary",

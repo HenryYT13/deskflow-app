@@ -704,7 +704,7 @@
                                         <StackPanel Spacing="8" Margin="0,8,0,0">
                                             <TextBox x:Name="CalClientIdBox" Header="Google Client ID" PlaceholderText="xxx.apps.googleusercontent.com" />
                                             <PasswordBox x:Name="CalClientSecretBox" Header="Google Client Secret (trống = giữ nguyên)" />
-                                            <TextBox x:Name="CalRedirectUriBox" Header="Redirect URI" Text="https://10th012013.duckdns.org/api/app/calendar/oauth/callback" />
+                                            <TextBox x:Name="CalRedirectUriBox" Header="Redirect URI" Text="https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback" />
                                             <Button Content="Lưu thông tin OAuth" Click="CalSaveOAuthCreds_Click" />
                                         </StackPanel>
                                     </Expander>

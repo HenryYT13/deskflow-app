@@ -2771,7 +2771,7 @@ private struct CalendarMacView: View {
     @State private var icalUrlInput: String = ""
     @State private var clientIdInput: String = ""
     @State private var clientSecretInput: String = ""
-    @State private var redirectUriInput: String = "https://10th012013.duckdns.org/api/app/calendar/oauth/callback"
+    @State private var redirectUriInput: String = "https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback"
     @State private var showOAuthCreds: Bool = false
 
     @State private var newTitle: String = ""
