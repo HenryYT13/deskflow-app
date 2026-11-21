@@ -429,6 +429,146 @@ fun CalendarScreen(
                 }
             }
 
+            // Interactive Month Grid Card
+            var viewYear by remember { mutableIntStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) }
+            var viewMonth by remember { mutableIntStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.MONTH)) } // 0-based
+            var selectedDateStr by remember { mutableStateOf(defaultDate) }
+
+            val eventsByDate = remember(calState.events) {
+                calState.events.groupBy { it.date }
+            }
+
+            ElevatedCard(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = {
+                            if (viewMonth == 0) { viewMonth = 11; viewYear -= 1 } else { viewMonth -= 1 }
+                        }) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "Prev Month")
+                        }
+                        Text(
+                            text = String.format(Locale.US, "%s %02d/%04d", AppStrings.t("Tháng"), viewMonth + 1, viewYear),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(onClick = {
+                            if (viewMonth == 11) { viewMonth = 0; viewYear += 1 } else { viewMonth += 1 }
+                        }) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Next Month")
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        listOf("CN", "T2", "T3", "T4", "T5", "T6", "T7").forEach { wd ->
+                            Text(
+                                text = wd,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+
+                    val calTmp = remember(viewYear, viewMonth) {
+                        java.util.Calendar.getInstance().apply {
+                            set(viewYear, viewMonth, 1)
+                        }
+                    }
+                    val firstWd = calTmp.get(java.util.Calendar.DAY_OF_WEEK) - 1 // 0=Sun..6=Sat
+                    val daysInMonth = calTmp.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                    val totalSlots = firstWd + daysInMonth
+                    val numRows = (totalSlots + 6) / 7
+
+                    for (r in 0 until numRows) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            for (c in 0 until 7) {
+                                val slot = r * 7 + c
+                                val dNum = slot - firstWd + 1
+                                if (dNum in 1..daysInMonth) {
+                                    val dStr = String.format(Locale.US, "%04d-%02d-%02d", viewYear, viewMonth + 1, dNum)
+                                    val dayEvs = eventsByDate[dStr].orEmpty()
+                                    val isSel = (dStr == selectedDateStr)
+                                    val isTodayCell = (dStr == defaultDate)
+                                    Surface(
+                                        onClick = { selectedDateStr = dStr },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = when {
+                                            isSel -> MaterialTheme.colorScheme.primary
+                                            isTodayCell -> MaterialTheme.colorScheme.primaryContainer
+                                            dayEvs.isNotEmpty() -> MaterialTheme.colorScheme.surfaceVariant
+                                            else -> MaterialTheme.colorScheme.surface
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Text(
+                                                text = dNum.toString(),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (dayEvs.isNotEmpty()) {
+                                                Text(
+                                                    text = "•".repeat(minOf(dayEvs.size, 3)),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.weight(1f).height(44.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider()
+                    val selDayList = eventsByDate[selectedDateStr].orEmpty()
+                    Text(
+                        text = "$selectedDateStr (${selDayList.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (selDayList.isEmpty()) {
+                        Text(
+                            text = AppStrings.t("Hôm nay chưa có sự kiện nào."),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        selDayList.forEach { ev ->
+                            val tStr = if (ev.allDay) AppStrings.t("Cả ngày") else if (ev.endTime.isNotBlank()) "${ev.startTime}–${ev.endTime}" else ev.startTime
+                            Text(
+                                text = "• $tStr  ${ev.title}" + (if (ev.location.isNotBlank()) " (@ ${ev.location})" else ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
             // Day-by-Day Agenda List
             Text(
                 text = AppStrings.t("Lịch trình từng ngày (30 ngày)"),

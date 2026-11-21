@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar as py_calendar
 import threading
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -1796,6 +1797,44 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         create_group.add(self.cal_new_allday)
         create_group.add(create_btn_row)
 
+        # 4b. Interactive Month Grid Calendar
+        today_dt = datetime.now().date()
+        self._cal_view_year = today_dt.year
+        self._cal_view_month = today_dt.month
+        self._cal_selected_date = today_dt.strftime("%Y-%m-%d")
+
+        month_group = Adw.PreferencesGroup(
+            title=self._tr("Lịch theo tháng (Month Grid)", "Monthly Calendar Grid"),
+            description=self._tr("Bấm vào một ngày trên lưới để xem các việc và giờ cụ thể.", "Click any day on the grid to inspect its events & hours."),
+        )
+        page.add(month_group)
+
+        month_nav_row = Adw.ActionRow(title="--/--")
+        self.cal_month_nav_row = month_nav_row
+        prev_m_btn = Gtk.Button(icon_name="go-previous-symbolic", valign=Gtk.Align.CENTER)
+        prev_m_btn.connect("clicked", lambda *_: self._shift_calendar_month(-1))
+        today_m_btn = Gtk.Button(label=self._tr("Hôm nay", "Today"), valign=Gtk.Align.CENTER)
+        today_m_btn.connect("clicked", lambda *_: self._jump_calendar_today())
+        next_m_btn = Gtk.Button(icon_name="go-next-symbolic", valign=Gtk.Align.CENTER)
+        next_m_btn.connect("clicked", lambda *_: self._shift_calendar_month(1))
+        month_nav_row.add_suffix(prev_m_btn)
+        month_nav_row.add_suffix(today_m_btn)
+        month_nav_row.add_suffix(next_m_btn)
+        month_group.add(month_nav_row)
+
+        self.cal_month_grid = Gtk.Grid(column_homogeneous=True, row_spacing=4, column_spacing=4)
+        self.cal_month_grid.set_margin_top(8)
+        self.cal_month_grid.set_margin_bottom(8)
+        self.cal_month_grid.set_margin_start(4)
+        self.cal_month_grid.set_margin_end(4)
+        month_group.add(self.cal_month_grid)
+
+        self.cal_selected_day_group = Adw.PreferencesGroup(
+            title=self._tr("Việc trong ngày đã chọn", "Selected Day Events"),
+        )
+        page.add(self.cal_selected_day_group)
+        self._cal_selected_rows: List[Gtk.Widget] = []
+
         # 5. Day-by-Day Upcoming Events Agenda
         self.cal_events_group = Adw.PreferencesGroup(
             title=self._tr("Lịch trình từng ngày (30 ngày)", "Daily Agenda (30 days)"),
@@ -1806,6 +1845,93 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         self._apply_calendar_ui(self.api_client.calendar_status)
 
         return page
+
+    def _shift_calendar_month(self, delta: int) -> None:
+        m = self._cal_view_month + delta
+        y = self._cal_view_year
+        if m < 1:
+            m = 12
+            y -= 1
+        elif m > 12:
+            m = 1
+            y += 1
+        self._cal_view_year = y
+        self._cal_view_month = m
+        self._render_calendar_month_grid(self.api_client.calendar_status)
+
+    def _jump_calendar_today(self) -> None:
+        t = datetime.now().date()
+        self._cal_view_year = t.year
+        self._cal_view_month = t.month
+        self._cal_selected_date = t.strftime("%Y-%m-%d")
+        self._render_calendar_month_grid(self.api_client.calendar_status)
+
+    def _select_calendar_day(self, date_str: str) -> None:
+        self._cal_selected_date = date_str
+        self._render_calendar_month_grid(self.api_client.calendar_status)
+
+    def _render_calendar_month_grid(self, st: CalendarStatus) -> None:
+        if not hasattr(self, "cal_month_grid"):
+            return
+        while (child := self.cal_month_grid.get_first_child()) is not None:
+            self.cal_month_grid.remove(child)
+
+        y, m = self._cal_view_year, self._cal_view_month
+        self.cal_month_nav_row.set_title(self._tr(f"Tháng {m:02d}/{y}", f"{py_calendar.month_name[m]} {y}"))
+
+        by_date: Dict[str, List[CalendarEventItem]] = {}
+        for ev in st.events:
+            by_date.setdefault(ev.date, []).append(ev)
+
+        today_str = datetime.now().date().strftime("%Y-%m-%d")
+        wd_headers = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"] if self.config_store.config.language == "vi" else ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        for c, w_txt in enumerate(wd_headers):
+            lbl = Gtk.Label(label=w_txt)
+            lbl.add_css_class("heading")
+            self.cal_month_grid.attach(lbl, c, 0, 1, 1)
+
+        # Sunday-first week index (0=Sun..6=Sat)
+        mon_first_wd, dim = py_calendar.monthrange(y, m)
+        sun_first_wd = (mon_first_wd + 1) % 7
+        for day_num in range(1, dim + 1):
+            slot = sun_first_wd + (day_num - 1)
+            col = slot % 7
+            row = 1 + (slot // 7)
+            d_str = f"{y:04d}-{m:02d}-{day_num:02d}"
+            items = by_date.get(d_str, [])
+            label_txt = f"{day_num}\n•{len(items)}" if items else f"{day_num}"
+            btn = Gtk.Button(label=label_txt)
+            if d_str == self._cal_selected_date:
+                btn.add_css_class("suggested-action")
+            elif d_str == today_str:
+                btn.add_css_class("accent")
+            btn.connect("clicked", lambda _b, ds=d_str: self._select_calendar_day(ds))
+            self.cal_month_grid.attach(btn, col, row, 1, 1)
+
+        # Render Selected Day Details
+        for r in self._cal_selected_rows:
+            self.cal_selected_day_group.remove(r)
+        self._cal_selected_rows.clear()
+        sel_items = by_date.get(self._cal_selected_date, [])
+        self.cal_selected_day_group.set_title(
+            self._tr(f"Ngày {self._cal_selected_date} ({len(sel_items)} việc)", f"Date {self._cal_selected_date} ({len(sel_items)} events)")
+        )
+        if not sel_items:
+            r0 = Adw.ActionRow(title=self._tr("Trống lịch — không có việc nào", "Free day — nothing scheduled"))
+            self.cal_selected_day_group.add(r0)
+            self._cal_selected_rows.append(r0)
+        else:
+            for ev in sel_items:
+                t_str = self._tr("Cả ngày", "All day") if ev.all_day else (f"{ev.start_time}–{ev.end_time}" if ev.end_time else ev.start_time)
+                sub = t_str + (f" • @ {ev.location}" if ev.location else "")
+                r = Adw.ActionRow(title=ev.title, subtitle=sub)
+                if ev.can_delete:
+                    del_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+                    del_btn.add_css_class("destructive-action")
+                    del_btn.connect("clicked", lambda _b, item=ev: self._on_delete_calendar_event(item))
+                    r.add_suffix(del_btn)
+                self.cal_selected_day_group.add(r)
+                self._cal_selected_rows.append(r)
 
     def refresh_calendar_async(self) -> None:
         def _done(res: ApiResult) -> None:
@@ -1975,6 +2101,8 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
             self._suppress_cal_picker = False
         else:
             self.cal_picker_row.set_visible(False)
+
+        self._render_calendar_month_grid(st)
 
         # Day-by-Day Agenda grouping
         for row in self._cal_event_rows:

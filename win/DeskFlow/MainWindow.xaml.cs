@@ -585,6 +585,149 @@ public sealed partial class MainWindow : Window
     // =========================================================================
     private bool _suppressCalPickerChange;
     private readonly List<string> _calPickerIds = new();
+    private CalendarStatusDto? _lastCalStatus;
+    private int _calViewYear = DateTime.Now.Year;
+    private int _calViewMonth = DateTime.Now.Month;
+    private string _calSelectedDate = DateTime.Now.ToString("yyyy-MM-dd");
+
+    private void CalPrevMonth_Click(object sender, RoutedEventArgs e)
+    {
+        if (_calViewMonth == 1) { _calViewMonth = 12; _calViewYear--; }
+        else _calViewMonth--;
+        RenderCalendarMonthGrid(_lastCalStatus);
+    }
+
+    private void CalNextMonth_Click(object sender, RoutedEventArgs e)
+    {
+        if (_calViewMonth == 12) { _calViewMonth = 1; _calViewYear++; }
+        else _calViewMonth++;
+        RenderCalendarMonthGrid(_lastCalStatus);
+    }
+
+    private void CalTodayMonth_Click(object sender, RoutedEventArgs e)
+    {
+        _calViewYear = DateTime.Now.Year;
+        _calViewMonth = DateTime.Now.Month;
+        _calSelectedDate = DateTime.Now.ToString("yyyy-MM-dd");
+        RenderCalendarMonthGrid(_lastCalStatus);
+    }
+
+    private void RenderCalendarMonthGrid(CalendarStatusDto? st)
+    {
+        if (CalMonthGrid == null || CalMonthTitleText == null) return;
+        CalMonthTitleText.Text = Strings.CurrentLanguage == "vi"
+            ? $"Tháng {_calViewMonth:00}/{_calViewYear}"
+            : $"{new DateTime(_calViewYear, _calViewMonth, 1):MMMM yyyy}";
+
+        CalMonthGrid.Children.Clear();
+        CalMonthGrid.RowDefinitions.Clear();
+
+        var eventsByDate = new Dictionary<string, List<CalendarEventDto>>(StringComparer.Ordinal);
+        if (st != null)
+        {
+            foreach (var ev in st.Events)
+            {
+                if (!eventsByDate.TryGetValue(ev.Date, out var list))
+                {
+                    list = new List<CalendarEventDto>();
+                    eventsByDate[ev.Date] = list;
+                }
+                list.Add(ev);
+            }
+        }
+
+        string[] wdHdrs = Strings.CurrentLanguage == "vi"
+            ? new[] { "CN", "T2", "T3", "T4", "T5", "T6", "T7" }
+            : new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+        CalMonthGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (int c = 0; c < 7; c++)
+        {
+            var tb = new TextBlock
+            {
+                Text = wdHdrs[c],
+                HorizontalAlignment = HorizontalAlignment.Center,
+                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                FontSize = 12,
+                Foreground = new SolidColorBrush(c == 0 ? Windows.UI.Color.FromArgb(255, 245, 158, 11) : Windows.UI.Color.FromArgb(255, 148, 163, 184))
+            };
+            Grid.SetRow(tb, 0);
+            Grid.SetColumn(tb, c);
+            CalMonthGrid.Children.Add(tb);
+        }
+
+        var firstDay = new DateTime(_calViewYear, _calViewMonth, 1);
+        int firstWd = (int)firstDay.DayOfWeek; // 0=Sun..6=Sat
+        int dim = DateTime.DaysInMonth(_calViewYear, _calViewMonth);
+        int numRows = (firstWd + dim + 6) / 7;
+        for (int r = 0; r < numRows; r++)
+            CalMonthGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        string todayIso = DateTime.Now.ToString("yyyy-MM-dd");
+        for (int d = 1; d <= dim; d++)
+        {
+            int slot = firstWd + (d - 1);
+            int row = 1 + (slot / 7);
+            int col = slot % 7;
+            string dStr = $"{_calViewYear:0000}-{_calViewMonth:00}-{d:00}";
+            eventsByDate.TryGetValue(dStr, out var dayEvs);
+            int cnt = dayEvs?.Count ?? 0;
+            bool isSel = (dStr == _calSelectedDate);
+            bool isToday = (dStr == todayIso);
+
+            var btn = new Button
+            {
+                Content = cnt > 0 ? $"{d} ({cnt})" : $"{d}",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Height = 40,
+                Background = isSel
+                    ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 56, 189, 248))
+                    : (isToday ? new SolidColorBrush(Windows.UI.Color.FromArgb(60, 16, 185, 129))
+                               : new SolidColorBrush(Windows.UI.Color.FromArgb(cnt > 0 ? (byte)28 : (byte)10, 255, 255, 255))),
+                Foreground = isSel
+                    ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 0, 0))
+                    : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)),
+                FontWeight = (isSel || isToday) ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal
+            };
+            btn.Click += (_, _) =>
+            {
+                _calSelectedDate = dStr;
+                RenderCalendarMonthGrid(_lastCalStatus);
+            };
+            Grid.SetRow(btn, row);
+            Grid.SetColumn(btn, col);
+            CalMonthGrid.Children.Add(btn);
+        }
+
+        if (CalSelectedDayHeaderText != null && CalSelectedDayEventsPanel != null)
+        {
+            eventsByDate.TryGetValue(_calSelectedDate, out var selList);
+            int selCount = selList?.Count ?? 0;
+            CalSelectedDayHeaderText.Text = $"{_calSelectedDate} ({selCount})";
+            CalSelectedDayEventsPanel.Children.Clear();
+            if (selCount == 0)
+            {
+                CalSelectedDayEventsPanel.Children.Add(new TextBlock
+                {
+                    Text = Strings.CurrentLanguage == "vi" ? "Trống lịch — không có việc nào." : "Free day — nothing scheduled.",
+                    FontSize = 12,
+                    Opacity = 0.75
+                });
+            }
+            else
+            {
+                foreach (var ev in selList!)
+                {
+                    var tTxt = ev.AllDay ? "Cả ngày" : (string.IsNullOrEmpty(ev.EndTime) ? ev.StartTime : $"{ev.StartTime}–{ev.EndTime}");
+                    CalSelectedDayEventsPanel.Children.Add(new TextBlock
+                    {
+                        Text = $"• {tTxt}  {ev.Title}" + (string.IsNullOrEmpty(ev.Location) ? "" : $" (@ {ev.Location})"),
+                        FontSize = 13,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
+            }
+        }
+    }
 
     private async Task LoadCalendarAsync(bool showErrors = false)
     {
@@ -600,6 +743,8 @@ public sealed partial class MainWindow : Window
 
     private void ApplyCalendarUi(CalendarStatusDto st)
     {
+        _lastCalStatus = st;
+        RenderCalendarMonthGrid(st);
         if (CalStatusText != null)
         {
             if (st.Connected)

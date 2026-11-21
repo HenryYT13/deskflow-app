@@ -161,32 +161,30 @@ CountdownItem stationCountdowns[MAX_STATION_COUNTDOWNS];
 int stationCountdownsCount = 0;
 int activeCountdownIndex = 0;
 
-// Google Calendar Day-by-Day Agenda Storage
-struct CalendarEventItem {
-  String id;
+// Google Calendar Month Grid + Day Detail Storage
+struct StationCalEvent {
+  uint16_t year = 2026;
+  uint8_t month = 11;
+  uint8_t day = 1;
+  String timeStr;
   String title;
-  String dateLabel;
-  String timeLabel;
   String location;
-  bool allDay = false;
-  bool isToday = false;
-  bool isOngoing = false;
 };
-const int MAX_STATION_CAL_DAYS = 7;
-const int MAX_CAL_EVENTS_PER_DAY = 5;
-struct CalendarDayBucket {
-  String date;
-  String dayLabelVi;
-  String dayLabelEn;
-  bool isToday = false;
-  int total = 0;
-  CalendarEventItem events[MAX_CAL_EVENTS_PER_DAY];
-  int eventCount = 0;
-};
-CalendarDayBucket stationCalDays[MAX_STATION_CAL_DAYS];
-int stationCalDayCount = 0;
+const int MAX_STATION_CAL_EVENTS = 90;
+StationCalEvent stationCalEvents[MAX_STATION_CAL_EVENTS];
+int stationCalEventCount = 0;
 bool stationCalConnected = false;
-int activeCalDayIndex = 0;
+
+int calCurYear = 2026, calCurMonth = 11, calTodayDay = 21;
+int calCurFirstWd = 0, calCurDaysInMonth = 30;
+int calNextYear = 2026, calNextMonth = 12;
+int calNextFirstWd = 2, calNextDaysInMonth = 31;
+
+bool calShowNextMonth = false;
+int calCursorDay = 0;
+bool calInDayDetail = false;
+int calDetailIdx = 0;
+bool calForceRedraw = true;
 
 Preferences prefs;
 WebServer server(80);
@@ -959,20 +957,106 @@ void cyclePrevCountdown() {
   addLog("COUNTDOWN", "Xem dem nguoc truoc: " + String(activeCountdownIndex + 1) + "/" + String(stationCountdownsCount));
 }
 
-void cycleNextCalendar() {
-  if (stationCalDayCount <= 0) return;
-  activeCalDayIndex = (activeCalDayIndex + 1) % stationCalDayCount;
+int getCalDayEvents(uint16_t y, uint8_t m, uint8_t d, int* outIndices, int maxOut) {
+  int cnt = 0;
+  for (int i = 0; i < stationCalEventCount; i++) {
+    if (stationCalEvents[i].year == y && stationCalEvents[i].month == m && stationCalEvents[i].day == d) {
+      if (outIndices && cnt < maxOut) outIndices[cnt] = i;
+      cnt++;
+    }
+  }
+  return cnt;
+}
+
+void ensureCalCursorValid() {
+  int activeDim = calShowNextMonth ? calNextDaysInMonth : calCurDaysInMonth;
+  if (activeDim <= 0) activeDim = 30;
+  if (calCursorDay < 1 || calCursorDay > activeDim) {
+    calShowNextMonth = false;
+    calCursorDay = (calTodayDay >= 1 && calTodayDay <= calCurDaysInMonth) ? calTodayDay : 1;
+  }
+}
+
+void toggleCalendarSelectOrExit() {
+  ensureCalCursorValid();
+  if (!calInDayDetail) {
+    calInDayDetail = true;
+    calDetailIdx = 0;
+    addLog("CAL", "Mo chi tiet ngay " + String(calCursorDay));
+  } else {
+    calInDayDetail = false;
+    addLog("CAL", "Thoat chi tiet ve grid thang");
+  }
+  calForceRedraw = true;
   screenNeedUpdate = true;
-  triggerBuzz(25);
-  addLog("CAL", "Ngay tiep theo: " + String(activeCalDayIndex + 1) + "/" + String(stationCalDayCount));
+  triggerBuzz(35);
+}
+
+void cycleNextCalendar() {
+  ensureCalCursorValid();
+  if (calInDayDetail) {
+    uint16_t ay = calShowNextMonth ? calNextYear : calCurYear;
+    uint8_t am = calShowNextMonth ? calNextMonth : calCurMonth;
+    int totalDayEv = getCalDayEvents(ay, am, calCursorDay, nullptr, 0);
+    if (totalDayEv > 0) {
+      calDetailIdx = (calDetailIdx + 1) % totalDayEv;
+      calForceRedraw = true;
+      screenNeedUpdate = true;
+      triggerBuzz(22);
+    } else {
+      triggerBuzz(15);
+    }
+    return;
+  }
+
+  int activeDim = calShowNextMonth ? calNextDaysInMonth : calCurDaysInMonth;
+  if (calCursorDay < activeDim) {
+    calCursorDay++;
+  } else if (!calShowNextMonth && calNextDaysInMonth > 0) {
+    calShowNextMonth = true;
+    calCursorDay = 1;
+    calForceRedraw = true;
+  } else {
+    calShowNextMonth = false;
+    calCursorDay = 1;
+    calForceRedraw = true;
+  }
+  screenNeedUpdate = true;
+  triggerBuzz(20);
 }
 
 void cyclePrevCalendar() {
-  if (stationCalDayCount <= 0) return;
-  activeCalDayIndex = (activeCalDayIndex - 1 + stationCalDayCount) % stationCalDayCount;
+  ensureCalCursorValid();
+  if (calInDayDetail) {
+    uint16_t ay = calShowNextMonth ? calNextYear : calCurYear;
+    uint8_t am = calShowNextMonth ? calNextMonth : calCurMonth;
+    int totalDayEv = getCalDayEvents(ay, am, calCursorDay, nullptr, 0);
+    if (totalDayEv > 0) {
+      calDetailIdx = (calDetailIdx - 1 + totalDayEv) % totalDayEv;
+      calForceRedraw = true;
+      screenNeedUpdate = true;
+      triggerBuzz(22);
+    } else {
+      triggerBuzz(15);
+    }
+    return;
+  }
+
+  if (calCursorDay > 1) {
+    calCursorDay--;
+  } else if (calShowNextMonth) {
+    calShowNextMonth = false;
+    calCursorDay = calCurDaysInMonth;
+    calForceRedraw = true;
+  } else if (calNextDaysInMonth > 0) {
+    calShowNextMonth = true;
+    calCursorDay = calNextDaysInMonth;
+    calForceRedraw = true;
+  } else {
+    calCursorDay = calCurDaysInMonth;
+  }
   screenNeedUpdate = true;
-  triggerBuzz(25);
-  addLog("CAL", "Ngay truoc: " + String(activeCalDayIndex + 1) + "/" + String(stationCalDayCount));
+  triggerBuzz(20);
 }
 
 float readBatteryVoltage() {
@@ -1436,87 +1520,201 @@ String translateCalLabel(const String& raw) {
   return raw;
 }
 
-void drawCalendarView() {
-  printCenteredText(tr("LỊCH TỪNG NGÀY", "DAILY AGENDA"), 32, 2, COL_CYAN, COL_BG);
+void drawCalendarView(bool viewChanged) {
+  static bool lastDetail = false;
+  static bool lastNextM = false;
+  static int lastCursor = -1;
 
-  if (!stationCalConnected && stationCalDayCount == 0) {
-    tft->fillRoundRect(14, 72, 212, 198, 8, COL_CARD);
-    tft->drawRoundRect(14, 72, 212, 198, 8, COL_BORDER);
-    printCenteredText(tr("Chưa kết nối Google Calendar", "Google Calendar not linked"), 122, 1, COL_AMBER, COL_CARD);
-    printCenteredText(tr("Mở app DeskFlow -> mục Calendar", "Open DeskFlow app -> Calendar"), 154, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Đăng nhập Google hoặc dán link .ics", "Sign in with Google or paste .ics"), 180, 1, COL_MUTED, COL_CARD);
-    printCenteredText("< PREV               NEXT >", 282, 1, COL_MUTED, COL_BG);
-    return;
+  if (viewChanged) {
+    calInDayDetail = false;
+    calShowNextMonth = false;
+    calCursorDay = calTodayDay;
+    calForceRedraw = true;
   }
 
-  if (stationCalDayCount == 0) {
-    tft->fillRoundRect(14, 72, 212, 198, 8, COL_CARD);
-    tft->drawRoundRect(14, 72, 212, 198, 8, COL_BORDER);
-    printCenteredText(tr("Không có dữ liệu lịch", "No calendar data yet"), 148, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Tự đồng bộ mỗi 5 phút", "Auto-syncs every 5 mins"), 176, 1, COL_MUTED, COL_CARD);
-    printCenteredText("< PREV               NEXT >", 282, 1, COL_MUTED, COL_BG);
-    return;
+  ensureCalCursorValid();
+  uint16_t ay = calShowNextMonth ? calNextYear : calCurYear;
+  uint8_t am = calShowNextMonth ? calNextMonth : calCurMonth;
+  int firstWd = calShowNextMonth ? calNextFirstWd : calCurFirstWd;
+  int dim = calShowNextMonth ? calNextDaysInMonth : calCurDaysInMonth;
+
+  bool fullRedraw = viewChanged || calForceRedraw || (calInDayDetail != lastDetail) || (calShowNextMonth != lastNextM);
+  if (fullRedraw && !viewChanged) {
+    tft->fillRect(0, 26, 240, 270, COL_BG);
   }
+  calForceRedraw = false;
 
-  if (activeCalDayIndex >= stationCalDayCount) activeCalDayIndex = 0;
-  auto& day = stationCalDays[activeCalDayIndex];
+  if (calInDayDetail) {
+    // --- DAY DETAIL VIEW (when a day is selected via PLAY) ---
+    int wd = (firstWd + calCursorDay - 1) % 7; // 0=Sun..6=Sat
+    static const char* VI_WD_FULL[] = {"CN", "T2", "T3", "T4", "T5", "T6", "T7"};
+    static const char* EN_WD_FULL[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    bool isToday = (!calShowNextMonth && calCursorDay == calTodayDay);
 
-  String dayHdr = (stationEnglish ? day.dayLabelEn : day.dayLabelVi) +
-                  " (" + String(activeCalDayIndex + 1) + "/" + String(stationCalDayCount) + ")";
-  uint16_t dayHdrCol = day.isToday ? COL_GREEN : COL_AMBER;
-  printCenteredText(dayHdr, 55, 1, dayHdrCol, COL_BG);
+    String hdr = (isToday ? String(tr("HÔM NAY • ", "TODAY • ")) : String("")) +
+                 String(stationEnglish ? EN_WD_FULL[wd] : VI_WD_FULL[wd]) +
+                 ", " + String(calCursorDay) + "/" + String(am) + "/" + String(ay);
+    printCenteredText(hdr, 34, 2, isToday ? COL_GREEN : COL_CYAN, COL_BG);
 
-  if (day.eventCount == 0) {
-    tft->fillRoundRect(14, 74, 212, 196, 8, COL_CARD);
-    tft->drawRoundRect(14, 74, 212, 196, 8, day.isToday ? COL_CYAN : COL_BORDER);
-    printCenteredText(tr("Không có sự kiện nào", "Nothing scheduled"), 148, 1, COL_WHITE, COL_CARD);
-    printCenteredText(tr("Hôm nay trống lịch!", "Free day!"), 174, 1, COL_MUTED, COL_CARD);
-    printCenteredText(tr("< NGÀY TRƯỚC      NGÀY SAU >", "< PREV DAY        NEXT DAY >"), 282, 1, COL_MUTED, COL_BG);
-    return;
-  }
+    int idxs[12];
+    int totalEv = getCalDayEvents(ay, am, calCursorDay, idxs, 12);
 
-  int n = day.eventCount;
-  bool compact = (n >= 4);
-  int startY = 74;
-  int cardH = compact ? 36 : (n == 3 ? 60 : 88);
-  int gap = compact ? 4 : 6;
-
-  for (int i = 0; i < n; i++) {
-    int y = startY + i * (cardH + gap);
-    if (y + cardH > 274) break;
-    auto& ev = day.events[i];
-    uint16_t bCol = ev.isOngoing ? COL_GREEN : (day.isToday ? COL_CYAN : COL_BORDER);
-
-    tft->fillRoundRect(12, y, 216, cardH, 6, COL_CARD);
-    tft->drawRoundRect(12, y, 216, cardH, 6, bCol);
-
-    String tLbl = translateCalLabel(ev.timeLabel);
-    uint16_t tCol = ev.isOngoing ? COL_GREEN : COL_AMBER;
-    if (compact) {
-      drawUtf8Text(18, y + 6, tLbl, 1, tCol, COL_CARD, 86);
-      drawUtf8Text(106, y + 6, ev.title, 1, COL_WHITE, COL_CARD, 116);
-      if (ev.location.length() > 0) {
-        drawUtf8Text(18, y + 21, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, 204);
-      }
+    if (totalEv == 0) {
+      tft->fillRoundRect(14, 72, 212, 196, 8, COL_CARD);
+      tft->drawRoundRect(14, 72, 212, 196, 8, isToday ? COL_GREEN : COL_BORDER);
+      printCenteredText(tr("Không có việc nào", "Nothing scheduled"), 142, 1, COL_WHITE, COL_CARD);
+      printCenteredText(tr("Ngày này trống lịch", "Free day!"), 170, 1, COL_MUTED, COL_CARD);
+      printCenteredText(tr("[PLAY]: Quay lại lịch tháng", "[PLAY]: Back to month grid"), 282, 1, COL_MUTED, COL_BG);
     } else {
-      uint16_t badgeBg = ev.isOngoing ? COL_GREEN : COL_BG;
-      uint16_t badgeFg = ev.isOngoing ? COL_BG : tCol;
-      tft->fillRoundRect(18, y + 7, 88, 15, 4, badgeBg);
-      drawUtf8Text(22, y + 10, tLbl, 1, badgeFg, badgeBg, 80);
-      if (ev.isOngoing) {
-        drawUtf8Text(112, y + 10, tr("ĐANG DIỄN RA", "ONGOING"), 1, COL_GREEN, COL_CARD, 108);
-      } else if (day.total > MAX_CAL_EVENTS_PER_DAY && i == n - 1) {
-        String moreStr = String("+") + String(day.total - n + 1) + tr(" nữa", " more");
-        drawUtf8Text(140, y + 10, moreStr, 1, COL_MUTED, COL_CARD, 80);
+      int shownCnt = min(totalEv, 12);
+      if (calDetailIdx >= shownCnt) calDetailIdx = 0;
+      String cntStr = String(tr("Việc: ", "Event: ")) + String(calDetailIdx + 1) + "/" + String(totalEv);
+      printCenteredText(cntStr, 55, 1, COL_MUTED, COL_BG);
+
+      auto& ev = stationCalEvents[idxs[calDetailIdx]];
+      tft->fillRoundRect(12, 72, 216, 114, 8, COL_CARD);
+      tft->drawRoundRect(12, 72, 216, 114, 8, isToday ? COL_GREEN : COL_CYAN);
+
+      String tStr = translateCalLabel(ev.timeStr);
+      tft->fillRoundRect(20, 80, 196, 26, 6, COL_BG);
+      printCenteredText(tStr, 86, 2, COL_AMBER, COL_BG);
+
+      // Wrap title cleanly inside card (up to 2 lines)
+      String ttl = ev.title;
+      ttl.trim();
+      int maxW = 196;
+      if (vnTextWidth(vnFont17, ttl.c_str()) <= maxW) {
+        drawUtf8Text(20, 116, ttl, 2, COL_WHITE, COL_CARD, maxW);
+      } else {
+        int splitPos = -1;
+        for (size_t i = 0; i < ttl.length(); i++) {
+          if (ttl[i] == ' ' && vnTextWidth(vnFont12, ttl.substring(0, i).c_str()) <= maxW) {
+            splitPos = (int)i;
+          }
+        }
+        if (splitPos > 0) {
+          drawUtf8Text(20, 116, ttl.substring(0, splitPos), 1, COL_WHITE, COL_CARD, maxW);
+          drawUtf8Text(20, 134, ttl.substring(splitPos + 1), 1, COL_WHITE, COL_CARD, maxW);
+        } else {
+          drawUtf8Text(20, 120, ttl, 1, COL_WHITE, COL_CARD, maxW);
+        }
       }
-      drawUtf8Text(18, y + 29, ev.title, 1, COL_WHITE, COL_CARD, 202);
-      if (cardH >= 60 && ev.location.length() > 0) {
-        drawUtf8Text(18, y + 44, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, 202);
+
+      if (ev.location.length() > 0) {
+        drawUtf8Text(20, 162, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, maxW);
+      } else {
+        drawUtf8Text(20, 162, tr("Bấm << / >> xem việc khác", "Use << / >> for more"), 1, COL_MUTED, COL_CARD, maxW);
+      }
+
+      // Summary list of events in that day (Y=192..268)
+      tft->fillRoundRect(12, 192, 216, 76, 8, COL_CARD);
+      tft->drawRoundRect(12, 192, 216, 76, 8, COL_BORDER);
+      int listStart = (calDetailIdx / 3) * 3;
+      for (int row = 0; row < 3; row++) {
+        int j = listStart + row;
+        if (j >= shownCnt) break;
+        auto& item = stationCalEvents[idxs[j]];
+        bool cur = (j == calDetailIdx);
+        int ry = 200 + row * 22;
+        String line = (cur ? "> " : "  ") + translateCalLabel(item.timeStr) + " " + item.title;
+        drawUtf8Text(18, ry, line, 1, cur ? COL_CYAN : COL_WHITE, COL_CARD, 202);
+      }
+
+      printCenteredText(tr("<< / >>: Đổi việc   [PLAY]: Thoát", "<< / >>: Event   [PLAY]: Back"), 282, 1, COL_MUTED, COL_BG);
+    }
+
+    lastDetail = calInDayDetail;
+    lastNextM = calShowNextMonth;
+    lastCursor = calCursorDay;
+    return;
+  }
+
+  // --- MONTH GRID VIEW ---
+  int numRows = (firstWd + dim + 6) / 7;
+  if (numRows < 5) numRows = 5;
+  int rowH = (numRows >= 6) ? 27 : 31;
+  int rowStep = rowH + 2;
+
+  auto drawDayCell = [&](int dNum) {
+    if (dNum < 1 || dNum > dim) return;
+    int slot = firstWd + (dNum - 1);
+    int col = slot % 7;
+    int row = slot / 7;
+    int x = 8 + col * 32;
+    int y = 70 + row * rowStep;
+
+    int evCnt = getCalDayEvents(ay, am, dNum, nullptr, 0);
+    bool isCursor = (dNum == calCursorDay);
+    bool isToday = (!calShowNextMonth && dNum == calTodayDay);
+
+    uint16_t bg = isCursor ? COL_CYAN : (evCnt > 0 ? COL_CARD : COL_BG);
+    uint16_t border = isCursor ? COL_WHITE : (isToday ? COL_GREEN : (evCnt > 0 ? COL_BORDER : COL_BG));
+    uint16_t fg = isCursor ? COL_BG : (isToday ? COL_GREEN : (evCnt > 0 ? COL_WHITE : COL_MUTED));
+
+    tft->fillRoundRect(x, y, 30, rowH, 4, bg);
+    tft->drawRoundRect(x, y, 30, rowH, 4, border);
+    if (isToday && !isCursor) {
+      tft->drawRoundRect(x + 1, y + 1, 28, rowH - 2, 3, COL_GREEN);
+    }
+
+    char numBuf[4];
+    snprintf(numBuf, sizeof(numBuf), "%d", dNum);
+    int tw = vnTextWidth(vnFont12, numBuf);
+    drawUtf8Text(x + max(1, (30 - tw) / 2), y + 7, String(numBuf), 1, fg, bg, 28);
+
+    if (evCnt > 0) {
+      int dots = min(evCnt, 3);
+      uint16_t dotCol = isCursor ? COL_BG : COL_AMBER;
+      int startDotX = x + 15 - (dots - 1) * 3;
+      int dotY = y + rowH - 5;
+      for (int k = 0; k < dots; k++) {
+        tft->fillCircle(startDotX + k * 6, dotY, 2, dotCol);
       }
     }
+  };
+
+  if (fullRedraw) {
+    String mTitle = String(tr("THÁNG ", "MONTH ")) + String(am) + "/" + String(ay);
+    printCenteredText(mTitle, 32, 2, COL_CYAN, COL_BG);
+
+    static const char* VI_WD_HDR[7] = {"CN", "T2", "T3", "T4", "T5", "T6", "T7"};
+    static const char* EN_WD_HDR[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+    for (int c = 0; c < 7; c++) {
+      const char* wLbl = stationEnglish ? EN_WD_HDR[c] : VI_WD_HDR[c];
+      int tw = vnTextWidth(vnFont12, wLbl);
+      drawUtf8Text(8 + c * 32 + max(1, (30 - tw) / 2), 54, String(wLbl), 1, (c == 0) ? COL_AMBER : COL_MUTED, COL_BG, 28);
+    }
+    tft->drawFastHLine(8, 67, 224, COL_BORDER);
+
+    for (int dNum = 1; dNum <= dim; dNum++) {
+      drawDayCell(dNum);
+    }
+
+    printCenteredText(tr("<< / >>: Ngày   [PLAY]: Xem việc", "<< / >>: Day   [PLAY]: Open"), 282, 1, COL_MUTED, COL_BG);
+  } else if (calCursorDay != lastCursor) {
+    drawDayCell(lastCursor);
+    drawDayCell(calCursorDay);
   }
 
-  printCenteredText(tr("< NGÀY TRƯỚC      NGÀY SAU >", "< PREV DAY        NEXT DAY >"), 282, 1, COL_MUTED, COL_BG);
+  // Bottom selected-day quick preview bar (Y=246..274)
+  tft->fillRoundRect(8, 246, 224, 28, 6, COL_CARD);
+  tft->drawRoundRect(8, 246, 224, 28, 6, COL_CYAN);
+  int idxs[6];
+  int cnt = getCalDayEvents(ay, am, calCursorDay, idxs, 6);
+  String previewStr = String(calCursorDay) + "/" + String(am) + " (" + String(cnt) + tr(" việc): ", "): ");
+  if (!stationCalConnected && stationCalEventCount == 0) {
+    previewStr = tr("Chưa liên kết Google Calendar", "Link Google Calendar in App");
+  } else if (cnt == 0) {
+    previewStr += tr("Trống lịch", "Free day");
+  } else {
+    auto& firstEv = stationCalEvents[idxs[0]];
+    previewStr += translateCalLabel(firstEv.timeStr) + " " + firstEv.title;
+  }
+  drawUtf8Text(14, 255, previewStr, 1, COL_WHITE, COL_CARD, 212);
+
+  lastDetail = calInDayDetail;
+  lastNextM = calShowNextMonth;
+  lastCursor = calCursorDay;
 }
 
 void drawFocusView() {
@@ -2114,7 +2312,7 @@ void drawPhysicalScreen() {
   }
   // 12. VIEW GOOGLE CALENDAR (DEDICATED)
   else if (srvStats.activeView == "calendar") {
-    drawCalendarView();
+    drawCalendarView(viewChanged);
   }
 }
 
@@ -2457,60 +2655,37 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     }
     else if (topicStr == "deskflow/display" && action == "sync_calendar") {
       stationCalConnected = doc["connected"] | false;
-      stationCalDayCount = 0;
-      if (doc.containsKey("days") && doc["days"].is<JsonArray>()) {
-        JsonArray dArr = doc["days"].as<JsonArray>();
-        for (JsonObject dObj : dArr) {
-          if (stationCalDayCount >= MAX_STATION_CAL_DAYS) break;
-          auto& bucket = stationCalDays[stationCalDayCount];
-          bucket.date = dObj["date"].as<String>();
-          bucket.dayLabelVi = dObj["day_label"].as<String>();
-          bucket.dayLabelEn = dObj["day_label_en"].as<String>();
-          bucket.isToday = dObj["is_today"] | false;
-          bucket.total = dObj["total"] | 0;
-          bucket.eventCount = 0;
-          JsonArray evArr = dObj["events"].as<JsonArray>();
-          for (JsonObject ev : evArr) {
-            if (bucket.eventCount >= MAX_CAL_EVENTS_PER_DAY) break;
-            bucket.events[bucket.eventCount].id = ev["id"].as<String>();
-            bucket.events[bucket.eventCount].title = ev["title"].as<String>();
-            bucket.events[bucket.eventCount].dateLabel = ev["date_label"].as<String>();
-            bucket.events[bucket.eventCount].timeLabel = ev["time_label"].as<String>();
-            bucket.events[bucket.eventCount].location = ev["location"].as<String>();
-            bucket.events[bucket.eventCount].allDay = ev["all_day"] | false;
-            bucket.events[bucket.eventCount].isToday = ev["is_today"] | false;
-            bucket.events[bucket.eventCount].isOngoing = ev["is_ongoing"] | false;
-            bucket.eventCount++;
-          }
-          stationCalDayCount++;
-        }
-      } else if (doc.containsKey("events")) {
-        // Fallback single-bucket if older payload
+      if (doc.containsKey("year")) calCurYear = doc["year"] | 2026;
+      if (doc.containsKey("month")) calCurMonth = doc["month"] | 11;
+      if (doc.containsKey("today")) calTodayDay = doc["today"] | 1;
+      if (doc.containsKey("first_wd")) calCurFirstWd = doc["first_wd"] | 0;
+      if (doc.containsKey("days_in_month")) calCurDaysInMonth = doc["days_in_month"] | 30;
+      if (doc.containsKey("next_year")) calNextYear = doc["next_year"] | calCurYear;
+      if (doc.containsKey("next_month")) calNextMonth = doc["next_month"] | ((calCurMonth % 12) + 1);
+      if (doc.containsKey("next_first_wd")) calNextFirstWd = doc["next_first_wd"] | 0;
+      if (doc.containsKey("next_days_in_month")) calNextDaysInMonth = doc["next_days_in_month"] | 31;
+
+      stationCalEventCount = 0;
+      if (doc.containsKey("events") && doc["events"].is<JsonArray>()) {
         JsonArray arr = doc["events"].as<JsonArray>();
-        auto& bucket = stationCalDays[0];
-        bucket.date = "";
-        bucket.dayLabelVi = "Sắp tới";
-        bucket.dayLabelEn = "Upcoming";
-        bucket.isToday = true;
-        bucket.eventCount = 0;
         for (JsonObject ev : arr) {
-          if (bucket.eventCount >= MAX_CAL_EVENTS_PER_DAY) break;
-          bucket.events[bucket.eventCount].id = ev["id"].as<String>();
-          bucket.events[bucket.eventCount].title = ev["title"].as<String>();
-          bucket.events[bucket.eventCount].dateLabel = ev["date_label"].as<String>();
-          bucket.events[bucket.eventCount].timeLabel = ev["time_label"].as<String>();
-          bucket.events[bucket.eventCount].location = ev["location"].as<String>();
-          bucket.events[bucket.eventCount].allDay = ev["all_day"] | false;
-          bucket.events[bucket.eventCount].isToday = ev["is_today"] | false;
-          bucket.events[bucket.eventCount].isOngoing = ev["is_ongoing"] | false;
-          bucket.eventCount++;
+          if (stationCalEventCount >= MAX_STATION_CAL_EVENTS) break;
+          stationCalEvents[stationCalEventCount].year = ev["y"] | calCurYear;
+          stationCalEvents[stationCalEventCount].month = ev["m"] | calCurMonth;
+          stationCalEvents[stationCalEventCount].day = ev["d"] | 1;
+          stationCalEvents[stationCalEventCount].timeStr = ev["t"].as<String>();
+          stationCalEvents[stationCalEventCount].title = ev["s"].as<String>();
+          stationCalEvents[stationCalEventCount].location = ev["l"].as<String>();
+          stationCalEventCount++;
         }
-        bucket.total = bucket.eventCount;
-        stationCalDayCount = 1;
       }
-      if (activeCalDayIndex >= stationCalDayCount) activeCalDayIndex = 0;
+      if (calCursorDay <= 0) {
+        calCursorDay = calTodayDay;
+        calShowNextMonth = false;
+      }
+      calForceRedraw = true;
       if (srvStats.activeView == "calendar") screenNeedUpdate = true;
-      addLog("CAL", "Synced " + String(stationCalDayCount) + " agenda days.");
+      addLog("CAL", "Synced " + String(stationCalEventCount) + " events for Month " + String(calCurMonth));
     }
     else if (topicStr == "deskflow/display" && action == "clear_countdown") {
       srvStats.countdownName = "";
@@ -3704,6 +3879,8 @@ void handleHardwareButtons() {
         screenNeedUpdate = true;
         triggerBuzz(60);
         addLog("VIEW", "Da chon man hinh: " + srvStats.activeView);
+      } else if (srvStats.activeView == "calendar") {
+        toggleCalendarSelectOrExit();
       } else {
         triggerBuzz(30);
         sendButtonAction("press_play");

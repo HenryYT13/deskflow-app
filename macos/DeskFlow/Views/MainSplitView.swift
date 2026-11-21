@@ -2781,6 +2781,10 @@ private struct CalendarMacView: View {
     @State private var newLocation: String = ""
     @State private var newAllDay: Bool = false
 
+    @State private var gridYear: Int = Foundation.Calendar.current.component(.year, from: Date())
+    @State private var gridMonth: Int = Foundation.Calendar.current.component(.month, from: Date())
+    @State private var selectedDateKey: String = ""
+
     private var isVi: Bool { client.appLanguage == "vi" }
 
     private static let dateFmt: DateFormatter = {
@@ -2933,6 +2937,95 @@ private struct CalendarMacView: View {
                 }
             }
 
+            LiquidGlassCard(isVi ? "Lịch theo tháng (Month Grid)" : "Monthly Calendar Grid", icon: "calendar", iconColor: .cyan) {
+                VStack(alignment: .leading, spacing: 12) {
+                    let todayStr = Self.dateFmt.string(from: Date())
+                    let curSel = selectedDateKey.isEmpty ? todayStr : selectedDateKey
+                    let eventsByDate = Dictionary(grouping: client.calendarState.events, by: { $0.date })
+
+                    HStack {
+                        Button {
+                            if gridMonth == 1 { gridMonth = 12; gridYear -= 1 } else { gridMonth -= 1 }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        Spacer()
+                        Text(String(format: isVi ? "Tháng %02d/%04d" : "%02d/%04d", gridMonth, gridYear))
+                            .font(.headline)
+                        Spacer()
+                        Button(isVi ? "Hôm nay" : "Today") {
+                            gridYear = Foundation.Calendar.current.component(.year, from: Date())
+                            gridMonth = Foundation.Calendar.current.component(.month, from: Date())
+                            selectedDateKey = todayStr
+                        }
+                        Button {
+                            if gridMonth == 12 { gridMonth = 1; gridYear += 1 } else { gridMonth += 1 }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                    }
+
+                    let wdHeaders = isVi ? ["CN", "T2", "T3", "T4", "T5", "T6", "T7"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
+                        ForEach(wdHeaders, id: \.self) { wd in
+                            Text(wd)
+                                .font(.caption2.bold())
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        let firstWd = Self.firstWeekdaySundayBased(year: gridYear, month: gridMonth)
+                        let dim = Self.daysInMonth(year: gridYear, month: gridMonth)
+                        ForEach(0..<firstWd, id: \.self) { _ in
+                            Color.clear.frame(height: 38)
+                        }
+                        ForEach(1...dim, id: \.self) { dayNum in
+                            let dStr = String(format: "%04d-%02d-%02d", gridYear, gridMonth, dayNum)
+                            let dayEvs = eventsByDate[dStr] ?? []
+                            let isSel = (dStr == curSel)
+                            let isTodayCell = (dStr == todayStr)
+                            Button {
+                                selectedDateKey = dStr
+                            } label: {
+                                VStack(spacing: 2) {
+                                    Text("\(dayNum)")
+                                        .font(.caption.bold())
+                                    if !dayEvs.isEmpty {
+                                        Text("•\(dayEvs.count)")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(isSel ? .black : .orange)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                                .background(
+                                    isSel ? Color.cyan : (isTodayCell ? Color.green.opacity(0.25) : (dayEvs.isEmpty ? Color.white.opacity(0.03) : Color.white.opacity(0.09)))
+                                )
+                                .foregroundColor(isSel ? .black : .primary)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Divider()
+                    let selEvs = eventsByDate[curSel] ?? []
+                    Text("\(curSel) (\(selEvs.count))")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.cyan)
+                    if selEvs.isEmpty {
+                        Text(isVi ? "Trống lịch — không có việc nào." : "Free day — nothing scheduled.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(selEvs) { ev in
+                            let tStr = ev.allDay ? (isVi ? "Cả ngày" : "All day") : (ev.endTime.isEmpty ? ev.startTime : "\(ev.startTime)–\(ev.endTime)")
+                            Text("• \(tStr)  \(ev.title)\(ev.location.isEmpty ? "" : " (@ \(ev.location))")")
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+
             LiquidGlassCard(isVi ? "Lịch trình từng ngày (30 ngày)" : "Daily Agenda (30 days)", icon: "calendar", iconColor: .orange) {
                 VStack(alignment: .leading, spacing: 14) {
                     let todayStr = Self.dateFmt.string(from: Date())
@@ -3015,6 +3108,29 @@ private struct CalendarMacView: View {
         if dateStr == todayStr { return "\(isVi ? "Hôm nay" : "Today") • \(formatted) (\(count))" }
         if dateStr == tomorrowStr { return "\(isVi ? "Ngày mai" : "Tomorrow") • \(formatted) (\(count))" }
         return "\(formatted) (\(count))"
+    }
+
+    private static func daysInMonth(year: Int, month: Int) -> Int {
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        let cal = Foundation.Calendar.current
+        if let d = cal.date(from: comps), let range = cal.range(of: .day, in: .month, for: d) {
+            return range.count
+        }
+        return 30
+    }
+
+    private static func firstWeekdaySundayBased(year: Int, month: Int) -> Int {
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        let cal = Foundation.Calendar.current
+        if let d = cal.date(from: comps) {
+            return max(0, min(6, cal.component(.weekday, from: d) - 1))
+        }
+        return 0
     }
 }
 

@@ -738,6 +738,38 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Month Grid Calendar -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+                            <StackPanel Spacing="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="◀" Click="CalPrevMonth_Click" />
+                                    <TextBlock x:Name="CalMonthTitleText" Grid.Column="1" Text="Tháng --/----" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                        <Button Content="Hôm nay" Click="CalTodayMonth_Click" />
+                                        <Button Content="▶" Click="CalNextMonth_Click" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid x:Name="CalMonthGrid" ColumnSpacing="4" RowSpacing="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                </Grid>
+                                <TextBlock x:Name="CalSelectedDayHeaderText" Text="Ngày đã chọn" FontSize="14" FontWeight="SemiBold" Foreground="#38BDF8" Margin="0,4,0,0" />
+                                <StackPanel x:Name="CalSelectedDayEventsPanel" Spacing="4" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- Events List -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
                             <StackPanel Spacing="10">
