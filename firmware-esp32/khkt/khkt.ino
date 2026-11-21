@@ -161,7 +161,7 @@ CountdownItem stationCountdowns[MAX_STATION_COUNTDOWNS];
 int stationCountdownsCount = 0;
 int activeCountdownIndex = 0;
 
-// Google Calendar Event Storage
+// Google Calendar Day-by-Day Agenda Storage
 struct CalendarEventItem {
   String id;
   String title;
@@ -172,11 +172,21 @@ struct CalendarEventItem {
   bool isToday = false;
   bool isOngoing = false;
 };
-const int MAX_STATION_CALENDAR = 8;
-CalendarEventItem stationCalEvents[MAX_STATION_CALENDAR];
-int stationCalCount = 0;
+const int MAX_STATION_CAL_DAYS = 7;
+const int MAX_CAL_EVENTS_PER_DAY = 5;
+struct CalendarDayBucket {
+  String date;
+  String dayLabelVi;
+  String dayLabelEn;
+  bool isToday = false;
+  int total = 0;
+  CalendarEventItem events[MAX_CAL_EVENTS_PER_DAY];
+  int eventCount = 0;
+};
+CalendarDayBucket stationCalDays[MAX_STATION_CAL_DAYS];
+int stationCalDayCount = 0;
 bool stationCalConnected = false;
-int activeCalIndex = 0;
+int activeCalDayIndex = 0;
 
 Preferences prefs;
 WebServer server(80);
@@ -950,19 +960,19 @@ void cyclePrevCountdown() {
 }
 
 void cycleNextCalendar() {
-  if (stationCalCount <= 0) return;
-  activeCalIndex = (activeCalIndex + 1) % stationCalCount;
+  if (stationCalDayCount <= 0) return;
+  activeCalDayIndex = (activeCalDayIndex + 1) % stationCalDayCount;
   screenNeedUpdate = true;
   triggerBuzz(25);
-  addLog("CAL", "Su kien tiep theo: " + String(activeCalIndex + 1) + "/" + String(stationCalCount));
+  addLog("CAL", "Ngay tiep theo: " + String(activeCalDayIndex + 1) + "/" + String(stationCalDayCount));
 }
 
 void cyclePrevCalendar() {
-  if (stationCalCount <= 0) return;
-  activeCalIndex = (activeCalIndex - 1 + stationCalCount) % stationCalCount;
+  if (stationCalDayCount <= 0) return;
+  activeCalDayIndex = (activeCalDayIndex - 1 + stationCalDayCount) % stationCalDayCount;
   screenNeedUpdate = true;
   triggerBuzz(25);
-  addLog("CAL", "Su kien truoc: " + String(activeCalIndex + 1) + "/" + String(stationCalCount));
+  addLog("CAL", "Ngay truoc: " + String(activeCalDayIndex + 1) + "/" + String(stationCalDayCount));
 }
 
 float readBatteryVoltage() {
@@ -1427,86 +1437,86 @@ String translateCalLabel(const String& raw) {
 }
 
 void drawCalendarView() {
-  printCenteredText(tr("LỊCH GOOGLE", "GOOGLE CALENDAR"), 34, 2, COL_CYAN, COL_BG);
+  printCenteredText(tr("LỊCH TỪNG NGÀY", "DAILY AGENDA"), 32, 2, COL_CYAN, COL_BG);
 
-  if (stationCalCount == 0) {
-    tft->fillRoundRect(14, 75, 212, 195, 8, COL_CARD);
-    tft->drawRoundRect(14, 75, 212, 195, 8, COL_BORDER);
-    if (!stationCalConnected) {
-      printCenteredText(tr("Chưa kết nối Google Calendar", "Google Calendar not linked"), 122, 1, COL_AMBER, COL_CARD);
-      printCenteredText(tr("Mở app DeskFlow -> mục Calendar", "Open DeskFlow app -> Calendar"), 154, 1, COL_WHITE, COL_CARD);
-      printCenteredText(tr("Đăng nhập Google hoặc dán link .ics", "Sign in with Google or paste .ics"), 180, 1, COL_MUTED, COL_CARD);
-    } else {
-      printCenteredText(tr("Không có sự kiện sắp tới", "No upcoming events"), 148, 1, COL_WHITE, COL_CARD);
-      printCenteredText(tr("Tự đồng bộ mỗi 5 phút", "Auto-syncs every 5 mins"), 176, 1, COL_MUTED, COL_CARD);
-    }
-    printCenteredText("< PREV               NEXT >", 280, 1, COL_MUTED, COL_BG);
+  if (!stationCalConnected && stationCalDayCount == 0) {
+    tft->fillRoundRect(14, 72, 212, 198, 8, COL_CARD);
+    tft->drawRoundRect(14, 72, 212, 198, 8, COL_BORDER);
+    printCenteredText(tr("Chưa kết nối Google Calendar", "Google Calendar not linked"), 122, 1, COL_AMBER, COL_CARD);
+    printCenteredText(tr("Mở app DeskFlow -> mục Calendar", "Open DeskFlow app -> Calendar"), 154, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Đăng nhập Google hoặc dán link .ics", "Sign in with Google or paste .ics"), 180, 1, COL_MUTED, COL_CARD);
+    printCenteredText("< PREV               NEXT >", 282, 1, COL_MUTED, COL_BG);
     return;
   }
 
-  if (activeCalIndex >= stationCalCount) activeCalIndex = 0;
-  String pageStr = String(tr("Sự kiện: ", "Event: ")) + (activeCalIndex + 1) + "/" + stationCalCount;
-  printCenteredText(pageStr, 56, 1, COL_MUTED, COL_BG);
+  if (stationCalDayCount == 0) {
+    tft->fillRoundRect(14, 72, 212, 198, 8, COL_CARD);
+    tft->drawRoundRect(14, 72, 212, 198, 8, COL_BORDER);
+    printCenteredText(tr("Không có dữ liệu lịch", "No calendar data yet"), 148, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Tự đồng bộ mỗi 5 phút", "Auto-syncs every 5 mins"), 176, 1, COL_MUTED, COL_CARD);
+    printCenteredText("< PREV               NEXT >", 282, 1, COL_MUTED, COL_BG);
+    return;
+  }
 
-  // Focused Card (Top: Y=74..174)
-  auto& ev = stationCalEvents[activeCalIndex];
-  uint16_t borderCol = ev.isOngoing ? COL_GREEN : (ev.isToday ? COL_CYAN : COL_BORDER);
-  tft->fillRoundRect(12, 74, 216, 102, 8, COL_CARD);
-  tft->drawRoundRect(12, 74, 216, 102, 8, borderCol);
+  if (activeCalDayIndex >= stationCalDayCount) activeCalDayIndex = 0;
+  auto& day = stationCalDays[activeCalDayIndex];
 
-  uint16_t badgeCol = ev.isOngoing ? COL_GREEN : (ev.isToday ? COL_CYAN : COL_AMBER);
-  String badgeText = ev.isOngoing ? tr("ĐANG DIỄN RA", "ONGOING") : translateCalLabel(ev.dateLabel);
-  tft->fillRoundRect(20, 82, 92, 16, 4, badgeCol);
-  drawUtf8Text(26, 86, badgeText, 1, COL_BG, badgeCol, 80);
+  String dayHdr = (stationEnglish ? day.dayLabelEn : day.dayLabelVi) +
+                  " (" + String(activeCalDayIndex + 1) + "/" + String(stationCalDayCount) + ")";
+  uint16_t dayHdrCol = day.isToday ? COL_GREEN : COL_AMBER;
+  printCenteredText(dayHdr, 55, 1, dayHdrCol, COL_BG);
 
-  String tLbl = translateCalLabel(ev.timeLabel);
-  drawUtf8Text(118, 86, tLbl, 1, COL_WHITE, COL_CARD, 102);
+  if (day.eventCount == 0) {
+    tft->fillRoundRect(14, 74, 212, 196, 8, COL_CARD);
+    tft->drawRoundRect(14, 74, 212, 196, 8, day.isToday ? COL_CYAN : COL_BORDER);
+    printCenteredText(tr("Không có sự kiện nào", "Nothing scheduled"), 148, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Hôm nay trống lịch!", "Free day!"), 174, 1, COL_MUTED, COL_CARD);
+    printCenteredText(tr("< NGÀY TRƯỚC      NGÀY SAU >", "< PREV DAY        NEXT DAY >"), 282, 1, COL_MUTED, COL_BG);
+    return;
+  }
 
-  // Event title (up to 2 wrapped lines inside card)
-  String title = ev.title;
-  title.trim();
-  int maxW = 196;
-  if (vnTextWidth(vnFont17, title.c_str()) <= maxW) {
-    drawUtf8Text(20, 110, title, 2, COL_WHITE, COL_CARD, maxW);
-  } else {
-    // Wrap nicely using vnFont12 if long
-    int splitPos = -1;
-    for (size_t i = 0; i < title.length(); i++) {
-      if (title[i] == ' ' && vnTextWidth(vnFont12, title.substring(0, i).c_str()) <= maxW) {
-        splitPos = (int)i;
+  int n = day.eventCount;
+  bool compact = (n >= 4);
+  int startY = 74;
+  int cardH = compact ? 36 : (n == 3 ? 60 : 88);
+  int gap = compact ? 4 : 6;
+
+  for (int i = 0; i < n; i++) {
+    int y = startY + i * (cardH + gap);
+    if (y + cardH > 274) break;
+    auto& ev = day.events[i];
+    uint16_t bCol = ev.isOngoing ? COL_GREEN : (day.isToday ? COL_CYAN : COL_BORDER);
+
+    tft->fillRoundRect(12, y, 216, cardH, 6, COL_CARD);
+    tft->drawRoundRect(12, y, 216, cardH, 6, bCol);
+
+    String tLbl = translateCalLabel(ev.timeLabel);
+    uint16_t tCol = ev.isOngoing ? COL_GREEN : COL_AMBER;
+    if (compact) {
+      drawUtf8Text(18, y + 6, tLbl, 1, tCol, COL_CARD, 86);
+      drawUtf8Text(106, y + 6, ev.title, 1, COL_WHITE, COL_CARD, 116);
+      if (ev.location.length() > 0) {
+        drawUtf8Text(18, y + 21, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, 204);
+      }
+    } else {
+      uint16_t badgeBg = ev.isOngoing ? COL_GREEN : COL_BG;
+      uint16_t badgeFg = ev.isOngoing ? COL_BG : tCol;
+      tft->fillRoundRect(18, y + 7, 88, 15, 4, badgeBg);
+      drawUtf8Text(22, y + 10, tLbl, 1, badgeFg, badgeBg, 80);
+      if (ev.isOngoing) {
+        drawUtf8Text(112, y + 10, tr("ĐANG DIỄN RA", "ONGOING"), 1, COL_GREEN, COL_CARD, 108);
+      } else if (day.total > MAX_CAL_EVENTS_PER_DAY && i == n - 1) {
+        String moreStr = String("+") + String(day.total - n + 1) + tr(" nữa", " more");
+        drawUtf8Text(140, y + 10, moreStr, 1, COL_MUTED, COL_CARD, 80);
+      }
+      drawUtf8Text(18, y + 29, ev.title, 1, COL_WHITE, COL_CARD, 202);
+      if (cardH >= 60 && ev.location.length() > 0) {
+        drawUtf8Text(18, y + 44, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, 202);
       }
     }
-    if (splitPos > 0) {
-      drawUtf8Text(20, 108, title.substring(0, splitPos), 1, COL_WHITE, COL_CARD, maxW);
-      drawUtf8Text(20, 126, title.substring(splitPos + 1), 1, COL_WHITE, COL_CARD, maxW);
-    } else {
-      drawUtf8Text(20, 112, title, 1, COL_WHITE, COL_CARD, maxW);
-    }
   }
 
-  if (ev.location.length() > 0) {
-    drawUtf8Text(20, 152, String("@ ") + ev.location, 1, COL_MUTED, COL_CARD, maxW);
-  } else {
-    drawUtf8Text(20, 152, ev.isToday ? tr("Lịch hôm nay", "Today's schedule") : tr("Sự kiện sắp tới", "Upcoming event"), 1, COL_MUTED, COL_CARD, maxW);
-  }
-
-  // Secondary Preview Card (Next event: Y=184..264)
-  if (stationCalCount > 1) {
-    int nextIdx = (activeCalIndex + 1) % stationCalCount;
-    auto& nxt = stationCalEvents[nextIdx];
-    tft->fillRoundRect(12, 184, 216, 80, 8, COL_CARD);
-    tft->drawRoundRect(12, 184, 216, 80, 8, COL_BORDER);
-    drawUtf8Text(20, 192, tr("TIẾP THEO:", "UP NEXT:"), 1, COL_MUTED, COL_CARD, 85);
-    String nxtMeta = translateCalLabel(nxt.dateLabel) + " • " + translateCalLabel(nxt.timeLabel);
-    drawUtf8Text(20, 212, nxtMeta, 1, COL_AMBER, COL_CARD, 196);
-    drawUtf8Text(20, 232, nxt.title, 1, COL_WHITE, COL_CARD, 196);
-  } else {
-    tft->fillRoundRect(12, 184, 216, 80, 8, COL_CARD);
-    tft->drawRoundRect(12, 184, 216, 80, 8, COL_BORDER);
-    printCenteredText(tr("Chỉ có 1 sự kiện sắp tới", "Only 1 upcoming event"), 218, 1, COL_MUTED, COL_CARD);
-  }
-
-  printCenteredText("< PREV               NEXT >", 280, 1, COL_MUTED, COL_BG);
+  printCenteredText(tr("< NGÀY TRƯỚC      NGÀY SAU >", "< PREV DAY        NEXT DAY >"), 282, 1, COL_MUTED, COL_BG);
 }
 
 void drawFocusView() {
@@ -2447,23 +2457,60 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     }
     else if (topicStr == "deskflow/display" && action == "sync_calendar") {
       stationCalConnected = doc["connected"] | false;
-      JsonArray arr = doc["events"].as<JsonArray>();
-      stationCalCount = 0;
-      for (JsonObject ev : arr) {
-        if (stationCalCount >= MAX_STATION_CALENDAR) break;
-        stationCalEvents[stationCalCount].id = ev["id"].as<String>();
-        stationCalEvents[stationCalCount].title = ev["title"].as<String>();
-        stationCalEvents[stationCalCount].dateLabel = ev["date_label"].as<String>();
-        stationCalEvents[stationCalCount].timeLabel = ev["time_label"].as<String>();
-        stationCalEvents[stationCalCount].location = ev["location"].as<String>();
-        stationCalEvents[stationCalCount].allDay = ev["all_day"] | false;
-        stationCalEvents[stationCalCount].isToday = ev["is_today"] | false;
-        stationCalEvents[stationCalCount].isOngoing = ev["is_ongoing"] | false;
-        stationCalCount++;
+      stationCalDayCount = 0;
+      if (doc.containsKey("days") && doc["days"].is<JsonArray>()) {
+        JsonArray dArr = doc["days"].as<JsonArray>();
+        for (JsonObject dObj : dArr) {
+          if (stationCalDayCount >= MAX_STATION_CAL_DAYS) break;
+          auto& bucket = stationCalDays[stationCalDayCount];
+          bucket.date = dObj["date"].as<String>();
+          bucket.dayLabelVi = dObj["day_label"].as<String>();
+          bucket.dayLabelEn = dObj["day_label_en"].as<String>();
+          bucket.isToday = dObj["is_today"] | false;
+          bucket.total = dObj["total"] | 0;
+          bucket.eventCount = 0;
+          JsonArray evArr = dObj["events"].as<JsonArray>();
+          for (JsonObject ev : evArr) {
+            if (bucket.eventCount >= MAX_CAL_EVENTS_PER_DAY) break;
+            bucket.events[bucket.eventCount].id = ev["id"].as<String>();
+            bucket.events[bucket.eventCount].title = ev["title"].as<String>();
+            bucket.events[bucket.eventCount].dateLabel = ev["date_label"].as<String>();
+            bucket.events[bucket.eventCount].timeLabel = ev["time_label"].as<String>();
+            bucket.events[bucket.eventCount].location = ev["location"].as<String>();
+            bucket.events[bucket.eventCount].allDay = ev["all_day"] | false;
+            bucket.events[bucket.eventCount].isToday = ev["is_today"] | false;
+            bucket.events[bucket.eventCount].isOngoing = ev["is_ongoing"] | false;
+            bucket.eventCount++;
+          }
+          stationCalDayCount++;
+        }
+      } else if (doc.containsKey("events")) {
+        // Fallback single-bucket if older payload
+        JsonArray arr = doc["events"].as<JsonArray>();
+        auto& bucket = stationCalDays[0];
+        bucket.date = "";
+        bucket.dayLabelVi = "Sắp tới";
+        bucket.dayLabelEn = "Upcoming";
+        bucket.isToday = true;
+        bucket.eventCount = 0;
+        for (JsonObject ev : arr) {
+          if (bucket.eventCount >= MAX_CAL_EVENTS_PER_DAY) break;
+          bucket.events[bucket.eventCount].id = ev["id"].as<String>();
+          bucket.events[bucket.eventCount].title = ev["title"].as<String>();
+          bucket.events[bucket.eventCount].dateLabel = ev["date_label"].as<String>();
+          bucket.events[bucket.eventCount].timeLabel = ev["time_label"].as<String>();
+          bucket.events[bucket.eventCount].location = ev["location"].as<String>();
+          bucket.events[bucket.eventCount].allDay = ev["all_day"] | false;
+          bucket.events[bucket.eventCount].isToday = ev["is_today"] | false;
+          bucket.events[bucket.eventCount].isOngoing = ev["is_ongoing"] | false;
+          bucket.eventCount++;
+        }
+        bucket.total = bucket.eventCount;
+        stationCalDayCount = 1;
       }
-      if (activeCalIndex >= stationCalCount) activeCalIndex = 0;
+      if (activeCalDayIndex >= stationCalDayCount) activeCalDayIndex = 0;
       if (srvStats.activeView == "calendar") screenNeedUpdate = true;
-      addLog("CAL", "Synced " + String(stationCalCount) + " Google Calendar events.");
+      addLog("CAL", "Synced " + String(stationCalDayCount) + " agenda days.");
     }
     else if (topicStr == "deskflow/display" && action == "clear_countdown") {
       srvStats.countdownName = "";

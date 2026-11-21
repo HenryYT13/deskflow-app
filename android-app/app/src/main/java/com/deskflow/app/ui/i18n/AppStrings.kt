@@ -262,6 +262,8 @@ private val ENGLISH: Map<String, String> = mapOf(
     "Đã thêm sự kiện lên Google Calendar!" to "Event added to Google Calendar!",
     "Thêm" to "Add",
     "Sự kiện sắp tới (30 ngày)" to "Upcoming Events (30 days)",
+    "Lịch trình từng ngày (30 ngày)" to "Daily Agenda (30 days)",
+    "Hôm nay chưa có sự kiện nào." to "Nothing scheduled today.",
     "Chưa có sự kiện sắp tới." to "No upcoming events."
 )
 

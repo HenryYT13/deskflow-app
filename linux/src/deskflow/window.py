@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 import gi
@@ -1796,10 +1796,10 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         create_group.add(self.cal_new_allday)
         create_group.add(create_btn_row)
 
-        # 5. Upcoming Events List
+        # 5. Day-by-Day Upcoming Events Agenda
         self.cal_events_group = Adw.PreferencesGroup(
-            title=self._tr("Sự kiện sắp tới (30 ngày)", "Upcoming Events (30 days)"),
-            description=self._tr("Đồng bộ tự động mỗi 5 phút lên trạm ESP32.", "Auto-syncs every 5 mins to ESP32 station."),
+            title=self._tr("Lịch trình từng ngày (30 ngày)", "Daily Agenda (30 days)"),
+            description=self._tr("Hiển thị từng ngày bạn có những sự kiện gì • tự đồng bộ lên ESP32.", "Shows what you have scheduled each day • auto-syncs to ESP32."),
         )
         page.add(self.cal_events_group)
         self._cal_event_rows: List[Gtk.Widget] = []
@@ -1976,41 +1976,75 @@ class DeskFlowMainWindow(Adw.ApplicationWindow):
         else:
             self.cal_picker_row.set_visible(False)
 
-        # Events list
+        # Day-by-Day Agenda grouping
         for row in self._cal_event_rows:
             self.cal_events_group.remove(row)
         self._cal_event_rows.clear()
 
-        if not st.events:
-            empty = Adw.ActionRow(
-                title=self._tr("Không có sự kiện sắp tới", "No upcoming events"),
-                subtitle=self._tr(
-                    "Kết nối Google Calendar ở trên rồi bấm Làm mới.",
-                    "Link your Google Calendar above and click Sync.",
-                ),
-            )
-            self.cal_events_group.add(empty)
-            self._cal_event_rows.append(empty)
-            return
+        today_d = datetime.now().date()
+        tomorrow_d = today_d + timedelta(days=1)
+        vi_wd = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
+        en_wd = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+        by_date: Dict[str, List[CalendarEventItem]] = {}
+        today_iso = today_d.strftime("%Y-%m-%d")
+        by_date[today_iso] = []
         for ev in st.events:
-            t_str = self._tr("Cả ngày", "All day") if ev.all_day else (f"{ev.start_time}–{ev.end_time}" if ev.end_time else ev.start_time)
-            sub = f"{ev.date} • {t_str}"
-            if ev.location:
-                sub += f" • @ {ev.location}"
-            row = Adw.ActionRow(title=ev.title, subtitle=sub)
-            if ev.is_today:
+            d_key = ev.date or today_iso
+            by_date.setdefault(d_key, []).append(ev)
+
+        def _format_day_header(d_str: str, count: int) -> str:
+            try:
+                d_obj = datetime.strptime(d_str, "%Y-%m-%d").date()
+                wd_lbl = self._tr(vi_wd[d_obj.weekday()], en_wd[d_obj.weekday()])
+                dm = d_obj.strftime("%d/%m/%Y")
+                if d_obj == today_d:
+                    prefix = self._tr("Hôm nay", "Today")
+                elif d_obj == tomorrow_d:
+                    prefix = self._tr("Ngày mai", "Tomorrow")
+                else:
+                    prefix = wd_lbl
+                return f"{prefix} • {wd_lbl}, {dm} ({count})" if d_obj in (today_d, tomorrow_d) else f"{wd_lbl}, {dm} ({count})"
+            except Exception:
+                return f"{d_str} ({count})"
+
+        for d_key in sorted(by_date.keys()):
+            day_items = by_date[d_key]
+            day_exp = Adw.ExpanderRow(
+                title=_format_day_header(d_key, len(day_items)),
+                subtitle=self._tr("Không có sự kiện nào", "Nothing scheduled") if not day_items else ", ".join(e.title for e in day_items[:3]),
+            )
+            day_exp.set_expanded(d_key == today_iso or len(day_items) > 0)
+            if d_key == today_iso:
                 badge = Gtk.Label(label=self._tr("HÔM NAY", "TODAY"))
                 badge.add_css_class("deskflow-badge-online")
                 badge.set_valign(Gtk.Align.CENTER)
-                row.add_suffix(badge)
-            if ev.can_delete:
-                del_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-                del_btn.add_css_class("destructive-action")
-                del_btn.connect("clicked", lambda _b, item=ev: self._on_delete_calendar_event(item))
-                row.add_suffix(del_btn)
-            self.cal_events_group.add(row)
-            self._cal_event_rows.append(row)
+                day_exp.add_suffix(badge)
+
+            if not day_items:
+                empty_sub = Adw.ActionRow(
+                    title=self._tr("Hôm nay trống lịch", "Free day — no events"),
+                )
+                day_exp.add_row(empty_sub)
+            else:
+                for ev in day_items:
+                    t_str = self._tr("Cả ngày", "All day") if ev.all_day else (f"{ev.start_time}–{ev.end_time}" if ev.end_time else ev.start_time)
+                    sub = t_str + (f" • @ {ev.location}" if ev.location else "")
+                    row = Adw.ActionRow(title=ev.title, subtitle=sub)
+                    if ev.is_ongoing:
+                        on_lbl = Gtk.Label(label=self._tr("ĐANG DIỄN RA", "ONGOING"))
+                        on_lbl.add_css_class("deskflow-badge-online")
+                        on_lbl.set_valign(Gtk.Align.CENTER)
+                        row.add_suffix(on_lbl)
+                    if ev.can_delete:
+                        del_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+                        del_btn.add_css_class("destructive-action")
+                        del_btn.connect("clicked", lambda _b, item=ev: self._on_delete_calendar_event(item))
+                        row.add_suffix(del_btn)
+                    day_exp.add_row(row)
+
+            self.cal_events_group.add(day_exp)
+            self._cal_event_rows.append(day_exp)
 
     def _build_tkb_day_card(self, is_today: bool) -> Dict[str, Any]:
         accent = "#38BDF8" if is_today else "#A78BFA"

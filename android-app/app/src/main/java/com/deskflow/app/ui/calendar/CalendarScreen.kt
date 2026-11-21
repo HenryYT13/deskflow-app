@@ -429,52 +429,94 @@ fun CalendarScreen(
                 }
             }
 
-            // Upcoming Events List
+            // Day-by-Day Agenda List
             Text(
-                text = AppStrings.t("Sự kiện sắp tới (30 ngày)"),
+                text = AppStrings.t("Lịch trình từng ngày (30 ngày)"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
 
-            if (calState.events.isEmpty()) {
-                ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = AppStrings.t("Chưa có sự kiện sắp tới."),
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
+            val tomorrowDate = remember {
+                val cal = java.util.Calendar.getInstance()
+                cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+            }
+            val groupedDays = remember(calState.events, defaultDate) {
+                val map = java.util.TreeMap<String, MutableList<com.deskflow.app.data.model.CalendarEventDto>>()
+                map[defaultDate] = mutableListOf()
                 calState.events.forEach { ev ->
-                    ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(ev.title, fontWeight = FontWeight.SemiBold)
-                                val timeStr = if (ev.allDay) AppStrings.t("Cả ngày") else if (ev.endTime.isNotBlank()) "${ev.startTime}–${ev.endTime}" else ev.startTime
-                                Text(
-                                    text = buildString {
-                                        append("${ev.date} • $timeStr")
-                                        if (ev.location.isNotBlank()) append(" • @ ${ev.location}")
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (ev.canDelete) {
-                                IconButton(
-                                    onClick = {
-                                        scope.launch {
-                                            repository.deleteCalendarEvent(ev.id, ev.calendarId)
+                    val k = ev.date.ifBlank { defaultDate }
+                    map.getOrPut(k) { mutableListOf() }.add(ev)
+                }
+                map.toList()
+            }
+
+            groupedDays.forEach { (dateKey, dayEvents) ->
+                val isToday = dateKey == defaultDate
+                val dayHeading = remember(dateKey, dayEvents.size) {
+                    val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val parsed = try { fmt.parse(dateKey) } catch (_: Exception) { null }
+                    if (parsed != null) {
+                        val wdFmt = SimpleDateFormat("EEEE, dd/MM/yyyy", Locale.getDefault())
+                        val wdStr = wdFmt.format(parsed)
+                        when (dateKey) {
+                            defaultDate -> AppStrings.t("Hôm nay") + " • $wdStr (${dayEvents.size})"
+                            tomorrowDate -> AppStrings.t("Ngày mai") + " • $wdStr (${dayEvents.size})"
+                            else -> "$wdStr (${dayEvents.size})"
+                        }
+                    } else "$dateKey (${dayEvents.size})"
+                }
+
+                ElevatedCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = dayHeading,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                        )
+                        if (dayEvents.isEmpty()) {
+                            Text(
+                                text = AppStrings.t("Hôm nay chưa có sự kiện nào."),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            dayEvents.forEach { ev ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(ev.title, fontWeight = FontWeight.SemiBold)
+                                        val timeStr = if (ev.allDay) AppStrings.t("Cả ngày") else if (ev.endTime.isNotBlank()) "${ev.startTime}–${ev.endTime}" else ev.startTime
+                                        Text(
+                                            text = buildString {
+                                                append(timeStr)
+                                                if (ev.location.isNotBlank()) append(" • @ ${ev.location}")
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (ev.canDelete) {
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    repository.deleteCalendarEvent(ev.id, ev.calendarId)
+                                                }
+                                            }
+                                        ) {
+                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete")
                                         }
                                     }
-                                ) {
-                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete")
                                 }
+                                HorizontalDivider()
                             }
                         }
                     }

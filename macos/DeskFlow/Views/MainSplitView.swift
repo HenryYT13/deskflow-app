@@ -2933,41 +2933,64 @@ private struct CalendarMacView: View {
                 }
             }
 
-            LiquidGlassCard(isVi ? "Sự kiện sắp tới (30 ngày)" : "Upcoming Events (30 days)", icon: "calendar", iconColor: .orange) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if client.calendarState.events.isEmpty {
-                        Text(isVi ? "Chưa có sự kiện sắp tới." : "No upcoming events.")
-                            .foregroundColor(.secondary)
-                    } else {
-                        ForEach(client.calendarState.events) { ev in
+            LiquidGlassCard(isVi ? "Lịch trình từng ngày (30 ngày)" : "Daily Agenda (30 days)", icon: "calendar", iconColor: .orange) {
+                VStack(alignment: .leading, spacing: 14) {
+                    let todayStr = Self.dateFmt.string(from: Date())
+                    let tomorrowStr = Self.dateFmt.string(from: Foundation.Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+                    let grouped = Dictionary(grouping: client.calendarState.events, by: { $0.date.isEmpty ? todayStr : $0.date })
+                    let allDates = Array(Set([todayStr] + Array(grouped.keys))).sorted()
+
+                    ForEach(allDates, id: \.self) { dateKey in
+                        let dayItems = grouped[dateKey] ?? []
+                        let isToday = (dateKey == todayStr)
+                        let dayTitle = Self.formatDayHeader(dateStr: dateKey, todayStr: todayStr, tomorrowStr: tomorrowStr, count: dayItems.count, isVi: isVi)
+
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(ev.title).font(.headline)
-                                    let timeStr = ev.allDay ? (isVi ? "Cả ngày" : "All day") : (ev.endTime.isEmpty ? ev.startTime : "\(ev.startTime)–\(ev.endTime)")
-                                    Text("\(ev.date) • \(timeStr)\(ev.location.isEmpty ? "" : " • @ \(ev.location)")")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text(dayTitle)
+                                    .font(.system(.subheadline, design: .rounded).bold())
+                                    .foregroundColor(isToday ? .cyan : .orange)
                                 Spacer()
-                                if ev.isToday {
-                                    Text(isVi ? "HÔM NAY" : "TODAY")
-                                        .font(.caption2.bold())
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(Color.cyan.opacity(0.2))
-                                        .foregroundColor(.cyan)
-                                        .cornerRadius(6)
-                                }
-                                if ev.canDelete {
-                                    Button(role: .destructive) {
-                                        Task { await client.deleteCalendarEvent(eventId: ev.id, calendarId: ev.calendarId) }
-                                    } label: {
-                                        Image(systemName: "trash")
+                            }
+                            if dayItems.isEmpty {
+                                Text(isVi ? "Hôm nay chưa có sự kiện nào." : "Nothing scheduled today.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ForEach(dayItems) { ev in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(ev.title).font(.headline)
+                                            let timeStr = ev.allDay ? (isVi ? "Cả ngày" : "All day") : (ev.endTime.isEmpty ? ev.startTime : "\(ev.startTime)–\(ev.endTime)")
+                                            Text("\(timeStr)\(ev.location.isEmpty ? "" : " • @ \(ev.location)")")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        if ev.isOngoing {
+                                            Text(isVi ? "ĐANG DIỄN RA" : "ONGOING")
+                                                .font(.caption2.bold())
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .background(Color.green.opacity(0.2))
+                                                .foregroundColor(.green)
+                                                .cornerRadius(6)
+                                        }
+                                        if ev.canDelete {
+                                            Button(role: .destructive) {
+                                                Task { await client.deleteCalendarEvent(eventId: ev.id, calendarId: ev.calendarId) }
+                                            } label: {
+                                                Image(systemName: "trash")
+                                            }
+                                        }
                                     }
+                                    .padding(8)
+                                    .background(Color.white.opacity(0.05))
+                                    .cornerRadius(8)
                                 }
                             }
-                            Divider()
                         }
+                        Divider()
                     }
                 }
             }
@@ -2981,6 +3004,17 @@ private struct CalendarMacView: View {
                 if !client.calendarState.googleRedirectUri.isEmpty { redirectUriInput = client.calendarState.googleRedirectUri }
             }
         }
+    }
+
+    private static func formatDayHeader(dateStr: String, todayStr: String, tomorrowStr: String, count: Int, isVi: Bool) -> String {
+        guard let d = dateFmt.date(from: dateStr) else { return "\(dateStr) (\(count))" }
+        let outFmt = DateFormatter()
+        outFmt.locale = Locale(identifier: isVi ? "vi_VN" : "en_US_POSIX")
+        outFmt.dateFormat = "EEEE, dd/MM/yyyy"
+        let formatted = outFmt.string(from: d)
+        if dateStr == todayStr { return "\(isVi ? "Hôm nay" : "Today") • \(formatted) (\(count))" }
+        if dateStr == tomorrowStr { return "\(isVi ? "Ngày mai" : "Tomorrow") • \(formatted) (\(count))" }
+        return "\(formatted) (\(count))"
     }
 }
 

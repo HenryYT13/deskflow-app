@@ -660,71 +660,126 @@ public sealed partial class MainWindow : Window
 
         if (CalEventsListPanel == null) return;
         CalEventsListPanel.Children.Clear();
-        if (st.Events.Count == 0)
-        {
-            CalEventsListPanel.Children.Add(new TextBlock
-            {
-                Text = Strings.CurrentLanguage == "vi" ? "Chưa có sự kiện sắp tới." : "No upcoming events.",
-                Opacity = 0.7
-            });
-            return;
-        }
 
+        var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+        var tomorrowStr = DateTime.Now.AddDays(1).ToString("yyyy-MM-dd");
+        var byDate = new SortedDictionary<string, List<CalendarEventDto>>(StringComparer.Ordinal);
+        byDate[todayStr] = new List<CalendarEventDto>();
         foreach (var ev in st.Events)
         {
-            var card = new Border
+            var key = string.IsNullOrEmpty(ev.Date) ? todayStr : ev.Date;
+            if (!byDate.TryGetValue(key, out var list))
             {
-                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(22, 255, 255, 255)),
-                BorderBrush = new SolidColorBrush(ev.IsToday ? Windows.UI.Color.FromArgb(140, 56, 189, 248) : Windows.UI.Color.FromArgb(40, 255, 255, 255)),
+                list = new List<CalendarEventDto>();
+                byDate[key] = list;
+            }
+            list.Add(ev);
+        }
+
+        string FormatDayTitle(string dStr, int count)
+        {
+            if (DateTime.TryParseExact(dStr, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt))
+            {
+                string[] viWd = { "Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7" };
+                string[] enWd = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+                var wd = Strings.CurrentLanguage == "vi" ? viWd[(int)dt.DayOfWeek] : enWd[(int)dt.DayOfWeek];
+                var dm = dt.ToString("dd/MM/yyyy");
+                if (dStr == todayStr) return (Strings.CurrentLanguage == "vi" ? $"Hôm nay • {wd}, {dm}" : $"Today • {wd}, {dm}") + $" ({count})";
+                if (dStr == tomorrowStr) return (Strings.CurrentLanguage == "vi" ? $"Ngày mai • {wd}, {dm}" : $"Tomorrow • {wd}, {dm}") + $" ({count})";
+                return $"{wd}, {dm} ({count})";
+            }
+            return $"{dStr} ({count})";
+        }
+
+        foreach (var kv in byDate)
+        {
+            bool isToday = kv.Key == todayStr;
+            var dayBorder = new Border
+            {
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(14, 255, 255, 255)),
+                BorderBrush = new SolidColorBrush(isToday ? Windows.UI.Color.FromArgb(140, 56, 189, 248) : Windows.UI.Color.FromArgb(36, 255, 255, 255)),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(12, 8, 12, 8)
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(12, 10, 12, 10)
             };
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var left = new StackPanel { Spacing = 2 };
-            left.Children.Add(new TextBlock
+            var dayStack = new StackPanel { Spacing = 8 };
+            dayStack.Children.Add(new TextBlock
             {
-                Text = ev.Title,
+                Text = FormatDayTitle(kv.Key, kv.Value.Count),
                 FontSize = 14,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                TextWrapping = TextWrapping.Wrap
+                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                Foreground = new SolidColorBrush(isToday ? Windows.UI.Color.FromArgb(255, 56, 189, 248) : Windows.UI.Color.FromArgb(255, 245, 158, 11))
             });
-            var timeTxt = ev.AllDay ? "Cả ngày" : (string.IsNullOrEmpty(ev.EndTime) ? ev.StartTime : $"{ev.StartTime}–{ev.EndTime}");
-            var meta = $"{ev.Date} • {timeTxt}" + (string.IsNullOrEmpty(ev.Location) ? "" : $" • @ {ev.Location}");
-            left.Children.Add(new TextBlock
-            {
-                Text = meta,
-                FontSize = 12,
-                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 148, 163, 184))
-            });
-            Grid.SetColumn(left, 0);
-            grid.Children.Add(left);
 
-            if (ev.CanDelete)
+            if (kv.Value.Count == 0)
             {
-                var delBtn = new Button { Content = "Xóa", Margin = new Thickness(8, 0, 0, 0) };
-                delBtn.Click += async (_, _) =>
+                dayStack.Children.Add(new TextBlock
                 {
-                    var (ok, resData, errMsg) = await _client.DeleteCalendarEventAsync(ev.Id, ev.CalendarId);
-                    if (ok && resData != null)
+                    Text = Strings.CurrentLanguage == "vi" ? "Hôm nay không có sự kiện nào." : "Nothing scheduled today.",
+                    FontSize = 12,
+                    Opacity = 0.7
+                });
+            }
+            else
+            {
+                foreach (var ev in kv.Value)
+                {
+                    var card = new Border
                     {
-                        ApplyCalendarUi(resData);
-                        ShowBanner("Đã xóa sự kiện.");
-                    }
-                    else
+                        Background = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 255, 255, 255)),
+                        CornerRadius = new CornerRadius(8),
+                        Padding = new Thickness(10, 8, 10, 8)
+                    };
+                    var grid = new Grid();
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                    var left = new StackPanel { Spacing = 2 };
+                    left.Children.Add(new TextBlock
                     {
-                        ShowBanner(errMsg, isError: true);
+                        Text = ev.Title,
+                        FontSize = 14,
+                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                    var timeTxt = ev.AllDay ? "Cả ngày" : (string.IsNullOrEmpty(ev.EndTime) ? ev.StartTime : $"{ev.StartTime}–{ev.EndTime}");
+                    var meta = timeTxt + (string.IsNullOrEmpty(ev.Location) ? "" : $" • @ {ev.Location}");
+                    left.Children.Add(new TextBlock
+                    {
+                        Text = meta,
+                        FontSize = 12,
+                        Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 148, 163, 184))
+                    });
+                    Grid.SetColumn(left, 0);
+                    grid.Children.Add(left);
+
+                    if (ev.CanDelete)
+                    {
+                        var delBtn = new Button { Content = "Xóa", Margin = new Thickness(8, 0, 0, 0) };
+                        delBtn.Click += async (_, _) =>
+                        {
+                            var (ok, resData, errMsg) = await _client.DeleteCalendarEventAsync(ev.Id, ev.CalendarId);
+                            if (ok && resData != null)
+                            {
+                                ApplyCalendarUi(resData);
+                                ShowBanner("Đã xóa sự kiện.");
+                            }
+                            else
+                            {
+                                ShowBanner(errMsg, isError: true);
+                            }
+                        };
+                        Grid.SetColumn(delBtn, 1);
+                        grid.Children.Add(delBtn);
                     }
-                };
-                Grid.SetColumn(delBtn, 1);
-                grid.Children.Add(delBtn);
+
+                    card.Child = grid;
+                    dayStack.Children.Add(card);
+                }
             }
 
-            card.Child = grid;
-            CalEventsListPanel.Children.Add(card);
+            dayBorder.Child = dayStack;
+            CalEventsListPanel.Children.Add(dayBorder);
         }
     }
 
