@@ -320,4 +320,80 @@ interface FocusApiService {
         @Path("id") id: String,
         @Query("calendar_id") calendarId: String? = null
     ): Response<CalendarStatusDto>
+
+    // --- Web Parity v2.2 Endpoints ---
+    @POST("api/app/control/lamp/effect")
+    suspend fun setLampEffect(@Body request: LampEffectRequest): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/lamp/ambient")
+    suspend fun setAmbientSync(@Body request: EnabledToggleRequest): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/lamp/bpm-sync")
+    suspend fun setBpmSync(@Body request: EnabledToggleRequest): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/boot-logo")
+    suspend fun setBootLogo(@Body request: BootLogoRequest): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/game/mode")
+    suspend fun setGameMode(@Body request: GameModeRequest): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/ota/status")
+    suspend fun getOtaStatus(): Response<OtaStatusResponse>
+
+    @POST("api/app/control/ota/check-update")
+    suspend fun checkAndPullOta(@Body request: OtaCheckUpdateRequest): Response<OtaCheckUpdateResponse>
+
+    @POST("api/app/control/ota/flash")
+    suspend fun flashOta(): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/alarms")
+    suspend fun getPersistentAlarms(): Response<PersistentAlarmsResponse>
+
+    @POST("api/app/control/alarms")
+    suspend fun createPersistentAlarm(@Body request: CreatePersistentAlarmRequest): Response<PersistentAlarmsResponse>
+
+    @POST("api/app/control/alarms/{id}/toggle")
+    suspend fun togglePersistentAlarm(@Path("id") id: String, @Body request: EnabledToggleRequest): Response<PersistentAlarmsResponse>
+
+    @DELETE("api/app/control/alarms/{id}")
+    suspend fun deletePersistentAlarm(@Path("id") id: String): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/melody/library")
+    suspend fun getMelodyLibrary(): Response<SavedMelodiesResponse>
+
+    @POST("api/app/control/melody/library")
+    suspend fun saveMelodyToLibrary(@Body request: SaveMelodyRequest): Response<SavedMelodiesResponse>
+
+    @DELETE("api/app/control/melody/library/{id}")
+    suspend fun deleteSavedMelody(@Path("id") id: String): Response<SavedMelodiesResponse>
+
+    @POST("api/app/control/melody/library/{id}/play")
+    suspend fun playSavedMelody(@Path("id") id: String): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/briefing")
+    suspend fun getMorningBriefing(): Response<MorningBriefingResponse>
+
+    @GET("api/app/spotify/stats")
+    suspend fun getSpotifyStats(): Response<SpotifyStatsResponse>
+
+    @POST("api/app/calendar/quick-add")
+    suspend fun quickAddCalendarEvent(@Body request: QuickAddCalendarRequest): Response<CalendarStatusDto>
+
+    @POST("api/app/calendar/ai-sync-tkb")
+    suspend fun aiSyncTkbToCalendar(@Body request: AiSyncTkbRequest): Response<AiSyncTkbResponse>
+
+    @POST("api/app/ai/chat")
+    suspend fun sendAiCopilotChat(@Body request: AiChatRequest): Response<AiChatResponse>
+
+    @POST("api/app/control/notify/test")
+    suspend fun sendTestNotification(): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/backup")
+    suspend fun exportBackup(): Response<BackupExportResponse>
+
+    @POST("api/app/control/restore")
+    suspend fun restoreBackup(@Body request: BackupRestoreRequest): Response<ActionSuccessResponse>
+
+    @GET("api/public/status")
+    suspend fun getPublicStatus(): Response<PublicStatusResponse>
 }

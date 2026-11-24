@@ -197,18 +197,38 @@ fun CalendarScreen(
                     )
 
                     if (calState.oauthConnected && calState.calendars.isNotEmpty()) {
+                        val activeCalIds = if (calState.selectedCalendarIds.isNotEmpty()) {
+                            calState.selectedCalendarIds
+                        } else {
+                            listOf(calState.selectedCalendarId.ifBlank { "primary" })
+                        }
+                        Text(
+                            text = AppStrings.t("Chọn nhiều lịch đồng bộ (#15):"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             calState.calendars.take(4).forEach { cal ->
+                                val isChecked = activeCalIds.contains(cal.id)
                                 FilterChip(
-                                    selected = cal.id == calState.selectedCalendarId,
+                                    selected = isChecked,
                                     onClick = {
+                                        val nextIds = if (isChecked) {
+                                            activeCalIds.filter { it != cal.id }.ifEmpty { listOf(cal.id) }
+                                        } else {
+                                            activeCalIds + cal.id
+                                        }
                                         scope.launch {
                                             repository.updateCalendarConfig(
-                                                CalendarConfigRequest(selectedCalendarId = cal.id)
+                                                CalendarConfigRequest(
+                                                    selectedCalendarId = nextIds.first(),
+                                                    selectedCalendarIds = nextIds
+                                                )
                                             )
+                                            feedbackMsg = AppStrings.tpl("Đang đồng bộ ${nextIds.size} lịch!")
                                         }
                                     },
                                     label = { Text(cal.summary, maxLines = 1) }
@@ -335,6 +355,66 @@ fun CalendarScreen(
                         }
                     ) {
                         Text(AppStrings.t("Lưu & Đồng bộ iCal"))
+                    }
+                }
+            }
+
+            // AI Quick Add (#11) + AI TKB Sync Card
+            var quickAddText by remember { mutableStateOf("") }
+            var aiBusy by remember { mutableStateOf(false) }
+            ElevatedCard(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = AppStrings.t("✨ AI Quick Add (#11) & Sync TKB"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = quickAddText,
+                            onValueChange = { quickAddText = it },
+                            placeholder = { Text(AppStrings.t("VD: Ôn Toán 19h tối mai 2 tiếng")) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            enabled = !aiBusy && quickAddText.isNotBlank(),
+                            onClick = {
+                                aiBusy = true
+                                scope.launch {
+                                    val r = repository.quickAddCalendarEvent(quickAddText.trim())
+                                    aiBusy = false
+                                    if (r is ApiResult.Success) {
+                                        quickAddText = ""
+                                        feedbackMsg = AppStrings.t("✨ AI đã tạo sự kiện vào Calendar!")
+                                    } else if (r is ApiResult.Error) {
+                                        feedbackMsg = r.message
+                                    }
+                                }
+                            }
+                        ) { Text("AI") }
+                    }
+                    OutlinedButton(
+                        enabled = !aiBusy,
+                        onClick = {
+                            aiBusy = true
+                            scope.launch {
+                                val r = repository.aiSyncTkbToCalendar(0, true)
+                                aiBusy = false
+                                feedbackMsg = when (r) {
+                                    is ApiResult.Success -> AppStrings.tpl("Đã đồng bộ TKB → GCal (+${r.data.created} sự kiện)")
+                                    is ApiResult.Error -> r.message
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(AppStrings.t("AI Auto-Sync TKB tuần này → Google Calendar"))
                     }
                 }
             }

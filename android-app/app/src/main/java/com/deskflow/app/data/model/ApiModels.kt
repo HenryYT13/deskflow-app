@@ -2,6 +2,8 @@ package com.deskflow.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class PairRequest(
@@ -263,7 +265,9 @@ data class SpotifyStatusDto(
     @SerialName("lyric_next") val nextLyric: String? = null,
     @SerialName("lyrics_window") val lyricsWindow: List<String> = emptyList(),
     @SerialName("active_lyric_index") val activeLyricIndex: Int = 2,
-    @SerialName("cover_url") val coverUrl: String? = null
+    @SerialName("cover_url") val coverUrl: String? = null,
+    @SerialName("ambient_color") val ambientColor: String? = null,
+    @SerialName("bpm") val bpm: Double? = null
 )
 
 @Serializable
@@ -357,7 +361,20 @@ data class StationSettingsDto(
     @SerialName("battery_low_thresh") val batteryLowThresh: Int = 30,
     @SerialName("battery_high_thresh") val batteryHighThresh: Int = 80,
     @SerialName("quote_schedules") val quoteSchedules: List<String> = listOf("06:30", "12:00", "20:00"),
-    @SerialName("clock_style") val clockStyle: String = "modern"
+    @SerialName("clock_style") val clockStyle: String = "modern",
+    @SerialName("led_effect") val ledEffect: String = "solid",
+    @SerialName("led_speed") val ledSpeed: Int = 50,
+    @SerialName("led_rgb") val ledRgb: Boolean = false,
+    @SerialName("lamp_color") val lampColor: String = "#FFFFFF",
+    @SerialName("lamp_color2") val lampColor2: String = "#000000",
+    @SerialName("led_gradient") val ledGradient: Boolean = false,
+    @SerialName("ambient_sync_enabled") val ambientSyncEnabled: Boolean = false,
+    @SerialName("bpm_sync_enabled") val bpmSyncEnabled: Boolean = false,
+    @SerialName("anti_oversleep_enabled") val antiOversleepEnabled: Boolean = true,
+    @SerialName("anti_oversleep_delay_sec") val antiOversleepDelaySec: Int = 300,
+    @SerialName("ntfy_topic") val ntfyTopic: String = "",
+    @SerialName("tkb_auto_sync_gcal") val tkbAutoSyncGcal: Boolean = false,
+    @SerialName("active_mini_game") val activeMiniGame: Int = 0
 )
 
 @Serializable
@@ -589,7 +606,8 @@ data class MelodyPlayRequest(
     @SerialName("preset_id") val presetId: String? = null,
     @SerialName("midi_base64") val midiBase64: String? = null,
     @SerialName("title") val title: String? = null,
-    @SerialName("filename") val filename: String? = null
+    @SerialName("filename") val filename: String? = null,
+    @SerialName("notes") val notes: List<List<Int>>? = null
 )
 
 // --- Google Calendar Models ---
@@ -598,7 +616,8 @@ data class GoogleCalendarSummaryDto(
     @SerialName("id") val id: String = "primary",
     @SerialName("summary") val summary: String = "Primary",
     @SerialName("primary") val primary: Boolean = false,
-    @SerialName("access_role") val accessRole: String = "reader"
+    @SerialName("access_role") val accessRole: String = "reader",
+    @SerialName("background_color") val backgroundColor: String? = null
 )
 
 @Serializable
@@ -614,7 +633,9 @@ data class CalendarEventDto(
     @SerialName("location") val location: String = "",
     @SerialName("source") val source: String = "ical",
     @SerialName("can_delete") val canDelete: Boolean = false,
-    @SerialName("calendar_id") val calendarId: String = "primary"
+    @SerialName("calendar_id") val calendarId: String = "primary",
+    @SerialName("color") val color: String? = null,
+    @SerialName("calendar_name") val calendarName: String? = null
 )
 
 @Serializable
@@ -629,6 +650,7 @@ data class CalendarStatusDto(
     @SerialName("google_redirect_uri") val googleRedirectUri: String = "https://df.api.thetechdude.io.vn/api/app/calendar/oauth/callback",
     @SerialName("connected_email") val connectedEmail: String = "",
     @SerialName("selected_calendar_id") val selectedCalendarId: String = "primary",
+    @SerialName("selected_calendar_ids") val selectedCalendarIds: List<String> = emptyList(),
     @SerialName("selected_calendar_name") val selectedCalendarName: String = "Primary",
     @SerialName("calendars") val calendars: List<GoogleCalendarSummaryDto> = emptyList(),
     @SerialName("last_error") val lastError: String? = null,
@@ -642,7 +664,8 @@ data class CalendarConfigRequest(
     @SerialName("google_client_id") val googleClientId: String? = null,
     @SerialName("google_client_secret") val googleClientSecret: String? = null,
     @SerialName("google_redirect_uri") val googleRedirectUri: String? = null,
-    @SerialName("selected_calendar_id") val selectedCalendarId: String? = null
+    @SerialName("selected_calendar_id") val selectedCalendarId: String? = null,
+    @SerialName("selected_calendar_ids") val selectedCalendarIds: List<String>? = null
 )
 
 @Serializable
@@ -660,5 +683,185 @@ data class CalendarOAuthStartResponse(
     @SerialName("success") val success: Boolean = false,
     @SerialName("auth_url") val authUrl: String? = null,
     @SerialName("redirect_uri") val redirectUri: String? = null
+)
+
+// --- Web Parity v2.2 Models (RGB/Gradient, OTA, Briefing, Melody Library, Persistent Alarms, Spotify Stats, Copilot, Backup) ---
+
+@Serializable
+data class LampEffectRequest(
+    @SerialName("effect") val effect: String,
+    @SerialName("speed") val speed: Int? = null,
+    @SerialName("color") val color: String? = null,
+    @SerialName("rgb") val rgb: Boolean? = null,
+    @SerialName("color2") val color2: String? = null,
+    @SerialName("gradient") val gradient: Boolean? = null
+)
+
+@Serializable
+data class BootLogoRequest(
+    @SerialName("title") val title: String,
+    @SerialName("sub") val sub: String,
+    @SerialName("bitmap") val bitmap: String = ""
+)
+
+@Serializable
+data class GameModeRequest(
+    @SerialName("mode") val mode: Int
+)
+
+@Serializable
+data class EnabledToggleRequest(
+    @SerialName("enabled") val enabled: Boolean
+)
+
+@Serializable
+data class OtaStatusDto(
+    @SerialName("has_firmware") val hasFirmware: Boolean = false,
+    @SerialName("version") val version: String? = null,
+    @SerialName("size_bytes") val sizeBytes: Long = 0L,
+    @SerialName("station_fw_version") val stationFwVersion: String = "2.2.1",
+    @SerialName("station_online") val stationOnline: Boolean = false,
+    @SerialName("station_progress") val stationProgress: String? = null
+)
+
+@Serializable
+data class OtaStatusResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("data") val data: OtaStatusDto? = null
+)
+
+@Serializable
+data class OtaCheckUpdateRequest(
+    @SerialName("auto_pull") val autoPull: Boolean = true,
+    @SerialName("auto_flash") val autoFlash: Boolean = true,
+    @SerialName("force") val force: Boolean = false
+)
+
+@Serializable
+data class OtaCheckUpdateResponse(
+    @SerialName("success") val success: Boolean = false,
+    @SerialName("latest_version") val latestVersion: String = "",
+    @SerialName("current_esp_version") val currentEspVersion: String = "",
+    @SerialName("tag_name") val tagName: String = "",
+    @SerialName("asset_name") val assetName: String? = null,
+    @SerialName("update_available") val updateAvailable: Boolean = false,
+    @SerialName("pulled") val pulled: Boolean = false,
+    @SerialName("flashed") val flashed: Boolean = false
+)
+
+@Serializable
+data class PersistentAlarmDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("time") val time: String = "06:00",
+    @SerialName("label") val label: String = "",
+    @SerialName("enabled") val enabled: Boolean = true
+)
+
+@Serializable
+data class PersistentAlarmsResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("alarms") val alarms: List<PersistentAlarmDto> = emptyList()
+)
+
+@Serializable
+data class CreatePersistentAlarmRequest(
+    @SerialName("time") val time: String,
+    @SerialName("label") val label: String,
+    @SerialName("enabled") val enabled: Boolean = true
+)
+
+@Serializable
+data class SavedMelodyItemDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("name") val name: String = "",
+    @SerialName("source") val source: String = "custom",
+    @SerialName("note_count") val noteCount: Int = 0,
+    @SerialName("duration_ms") val durationMs: Long = 0L
+)
+
+@Serializable
+data class SavedMelodiesResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("items") val items: List<SavedMelodyItemDto> = emptyList()
+)
+
+@Serializable
+data class SaveMelodyRequest(
+    @SerialName("name") val name: String,
+    @SerialName("notes") val notes: List<List<Int>>,
+    @SerialName("source") val source: String = "piano"
+)
+
+@Serializable
+data class MorningBriefingResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("tts_text") val ttsText: String = "",
+    @SerialName("date") val date: String = "",
+    @SerialName("weather") val weather: String = ""
+)
+
+@Serializable
+data class SpotifyStatEntryDto(
+    @SerialName("name") val name: String = "",
+    @SerialName("count") val count: Int = 0
+)
+
+@Serializable
+data class SpotifyStatsResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("total_plays") val totalPlays: Int = 0,
+    @SerialName("estimated_minutes") val estimatedMinutes: Int = 0,
+    @SerialName("top_tracks") val topTracks: List<SpotifyStatEntryDto> = emptyList(),
+    @SerialName("top_artists") val topArtists: List<SpotifyStatEntryDto> = emptyList()
+)
+
+@Serializable
+data class AiChatRequest(
+    @SerialName("message") val message: String
+)
+
+@Serializable
+data class AiChatResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("reply") val reply: String = "",
+    @SerialName("action") val action: String = "none"
+)
+
+@Serializable
+data class QuickAddCalendarRequest(
+    @SerialName("text") val text: String
+)
+
+@Serializable
+data class AiSyncTkbRequest(
+    @SerialName("week_offset") val weekOffset: Int = 0,
+    @SerialName("use_ai") val useAi: Boolean = true
+)
+
+@Serializable
+data class AiSyncTkbResponse(
+    @SerialName("success") val success: Boolean = false,
+    @SerialName("created") val created: Int = 0,
+    @SerialName("skipped") val skipped: Int = 0
+)
+
+@Serializable
+data class BackupRestoreRequest(
+    @SerialName("backup") val backup: JsonObject
+)
+
+@Serializable
+data class BackupExportResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("backup") val backup: JsonElement? = null
+)
+
+@Serializable
+data class PublicStatusResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("online") val online: Boolean = false,
+    @SerialName("version") val version: String = "",
+    @SerialName("weather") val weather: String = "",
+    @SerialName("spotify_track") val spotifyTrack: String = ""
 )
 

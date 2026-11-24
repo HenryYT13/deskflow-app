@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.2.1"
+#define DESKFLOW_FW_VERSION "2.2.2"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -77,11 +77,17 @@ enum MenuState {
   MENU_ADJUST_LED = 1,
   MENU_BUZZER_CONFIG = 2,
   MENU_VOLUME = 3,
-  MENU_LED_COLOR = 4
+  MENU_LED_COLOR = 4,
+  MENU_PAIR_DEVICE = 5
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 8;
+const int MENU_MAIN_ITEM_COUNT = 9;
+String pairCodeValue = "";
+String pairQrBits = "";
+int pairQrSize = 0;
+bool pairCodeLoading = false;
+unsigned long pairCodeFetchedAt = 0;
 // 4 entries per page keeps the 240x320 panel readable; moving past the last
 // entry flips to the next page instead of squeezing all rows together.
 const int MENU_ROWS_PER_PAGE = 4;
@@ -1421,6 +1427,10 @@ void drawSettingsMenu() {
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Đổi VI <-> EN", "PLAY: Switch VI <-> EN"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 7) {
+        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("LIÊN KẾT THIẾT BỊ", "PAIR NEW DEVICE"));
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("Hiện QR & Mã Full Access", "Show Full Access QR & Code"), 1, COL_MUTED, COL_CARD, 196);
+      } else if (i == 8) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THOÁT CÀI ĐẶT", "EXIT SETTINGS"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY hoặc giữ >>/<<", "PLAY or hold >>/<<"), 1, COL_MUTED, COL_CARD, 196);
@@ -1572,6 +1582,50 @@ void drawSettingsMenu() {
 
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
     printCenteredText(tr("PREV/NEXT: Chọn | PLAY: Chọn", "PREV/NEXT: Select | PLAY: Activate"), 304, 1, COL_MUTED, COL_BG);
+  } else if (menuState == MENU_PAIR_DEVICE) {
+    printCenteredText(tr("LIÊN KẾT THIẾT BỊ (FULL)", "PAIR DEVICE (FULL ACCESS)"), 46, 1, COL_CYAN, COL_BG);
+
+    if (pairCodeLoading || pairCodeValue.length() == 0) {
+      tft->fillRoundRect(20, 74, 200, 172, 10, COL_CARD);
+      tft->drawRoundRect(20, 74, 200, 172, 10, COL_BORDER);
+      printCenteredText(pairCodeLoading ? tr("Đang tạo mã QR...", "Generating QR...") : tr("Chưa nhận được mã", "No pairing code"), 148, 1, COL_AMBER, COL_CARD);
+      printCenteredText(tr("NEXT/PREV: Thử lại", "NEXT/PREV: Retry"), 170, 1, COL_MUTED, COL_CARD);
+    } else {
+      int qrArea = 152;
+      int cell = max(2, min(5, qrArea / max(1, pairQrSize)));
+      int drawSz = pairQrSize * cell;
+      int boxPad = 6;
+      int boxX = (240 - drawSz) / 2 - boxPad;
+      int boxY = 62;
+      tft->fillRoundRect(boxX, boxY, drawSz + boxPad * 2, drawSz + boxPad * 2, 6, 0xFFFF);
+      int startX = boxX + boxPad;
+      int startY = boxY + boxPad;
+      int totalBits = pairQrSize * pairQrSize;
+      for (int b = 0; b < totalBits; b++) {
+        int hexIdx = b >> 2;
+        if (hexIdx >= (int)pairQrBits.length()) break;
+        char hc = pairQrBits.charAt(hexIdx);
+        int nib = (hc >= '0' && hc <= '9') ? (hc - '0') : ((hc >= 'A' && hc <= 'F') ? (hc - 'A' + 10) : ((hc >= 'a' && hc <= 'f') ? (hc - 'a' + 10) : 0));
+        bool on = (nib >> (3 - (b & 3))) & 1;
+        if (on) {
+          tft->fillRect(startX + (b % pairQrSize) * cell, startY + (b / pairQrSize) * cell, cell, cell, 0x0000);
+        }
+      }
+
+      int codeY = boxY + drawSz + boxPad * 2 + 8;
+      tft->fillRoundRect(22, codeY, 196, 42, 8, COL_CARD);
+      tft->drawRoundRect(22, codeY, 196, 42, 8, COL_GREEN);
+      tft->setTextSize(3);
+      tft->setTextColor(COL_WHITE, COL_CARD);
+      int cw = pairCodeValue.length() * 18;
+      tft->setCursor(max(26, (240 - cw) / 2), codeY + 9);
+      tft->print(pairCodeValue);
+      tft->setTextSize(1);
+      printCenteredText(tr("FULL ACCESS • 10 PHÚT • DÙNG 1 LẦN", "FULL ACCESS • 10 MIN • ONE-TIME"), codeY + 50, 1, COL_GREEN, COL_BG);
+    }
+
+    tft->drawFastHLine(10, 294, 220, COL_BORDER);
+    printCenteredText(tr("PLAY: Quay lại  |  NEXT: Mã mới", "PLAY: Back  |  NEXT: New code"), 304, 1, COL_MUTED, COL_BG);
   }
 }
 
@@ -3374,6 +3428,18 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       pendingOtaVersion = doc["version"] | DESKFLOW_FW_VERSION;
       addLog("OTA", "Queued OTA v" + pendingOtaVersion);
     }
+    else if (topicStr == "deskflow/display" && action == "pair_code_result") {
+      pairCodeValue = doc["code"] | "";
+      pairQrSize = doc["qr_size"] | 0;
+      pairQrBits = doc["qr_bits"] | "";
+      pairCodeLoading = false;
+      pairCodeFetchedAt = millis();
+      if (inSettingsMenu && menuState == MENU_PAIR_DEVICE) {
+        screenNeedUpdate = true;
+        triggerBuzz(45);
+      }
+      addLog("PAIR", "Received Full Access pair code + QR (" + String(pairQrSize) + "x" + String(pairQrSize) + ")");
+    }
     else if ((topicStr == "deskflow/display" || topicStr == "deskflow/hardware") && (action == "dim" || action == "lamp_dim")) {
       int b = -1;
       if (doc.containsKey("led_bright")) b = doc["led_bright"].as<int>();
@@ -4270,6 +4336,16 @@ void handleApiLogs() { server.send(200, "text/plain; charset=utf-8", serverLogs)
 void handleClearLogs() { serverLogs = "[SYSTEM] Log cleared.\n"; server.send(200, "text/plain", "OK"); }
 
 // ================= XỬ LÝ 3 NÚT BẤM VẬT LÝ TRÊN MẶT TRẠM =================
+void triggerPairCodeRequestFromMenu() {
+  pairCodeLoading = true;
+  pairCodeValue = "";
+  pairQrBits = "";
+  pairQrSize = 0;
+  mqtt.publish("deskflow/pair_request", "{\"action\":\"request_pair_code\",\"full_access\":true}");
+  screenNeedUpdate = true;
+  triggerBuzz(30);
+}
+
 void handleMenuPlay() {
   if (menuState == MENU_MAIN) {
     if (menuCurrentItem == 0) {
@@ -4320,6 +4396,10 @@ void handleMenuPlay() {
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
     } else if (menuCurrentItem == 7) {
+      menuState = MENU_PAIR_DEVICE;
+      triggerPairCodeRequestFromMenu();
+      addLog("PAIR", "Requested Full Access pair code & QR from backend");
+    } else if (menuCurrentItem == 8) {
       inSettingsMenu = false;
       menuState = MENU_MAIN;
       lastRenderedView = "";
@@ -4386,6 +4466,10 @@ void handleMenuPlay() {
       screenNeedUpdate = true;
       triggerBuzz(35);
     }
+  } else if (menuState == MENU_PAIR_DEVICE) {
+    menuState = MENU_MAIN;
+    screenNeedUpdate = true;
+    triggerBuzz(35);
   }
 }
 
@@ -4396,6 +4480,8 @@ void handleMenuNext() {
     menuPage = menuCurrentItem / MENU_ROWS_PER_PAGE;
     screenNeedUpdate = true;
     triggerBuzz(20);
+  } else if (menuState == MENU_PAIR_DEVICE) {
+    triggerPairCodeRequestFromMenu();
   } else if (menuState == MENU_ADJUST_LED) {
     ledBrightness = min(100, ledBrightness + 5);
     bool oldState = ledState;
@@ -4453,6 +4539,8 @@ void handleMenuPrev() {
     buzzerCurrentItem = (buzzerCurrentItem - 1 + MENU_BUZZER_ITEM_COUNT) % MENU_BUZZER_ITEM_COUNT;
     screenNeedUpdate = true;
     triggerBuzz(20);
+  } else if (menuState == MENU_PAIR_DEVICE) {
+    triggerPairCodeRequestFromMenu();
   }
 }
 

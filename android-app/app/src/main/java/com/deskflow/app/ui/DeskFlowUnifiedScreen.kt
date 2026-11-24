@@ -35,6 +35,7 @@ import com.deskflow.app.data.local.ActivityStore
 import com.deskflow.app.data.local.SecurePreferences
 import com.deskflow.app.data.repository.FocusRepository
 import com.deskflow.app.ui.activity.ActivityScreen
+import com.deskflow.app.ui.control.AiCopilotDialog
 import com.deskflow.app.ui.control.ControlScreen
 import com.deskflow.app.ui.dashboard.DashboardScreen
 import com.deskflow.app.ui.focus.FocusScreen
@@ -76,6 +77,7 @@ fun DeskFlowUnifiedScreen(
     var selectedTab by rememberSaveable { mutableStateOf(AppScreens.ROUTE_HOME) }
     var showBackBlockedDialog by remember { mutableStateOf(false) }
     var showScreenSwitcher by remember { mutableStateOf(false) }
+    var showAiCopilot by remember { mutableStateOf(false) }
 
     val focusState by repository.focusState.collectAsState()
     val navBarPos by securePreferences.navBarPositionFlow.collectAsState()
@@ -142,9 +144,23 @@ fun DeskFlowUnifiedScreen(
         )
     }
 
-    // Global bottom-right screen-switcher FAB has been removed per Section 4.
-    // Screen switching is preserved via the TopBar grid button and the 5-tab Material 3 NavigationBar.
+    if (showAiCopilot) {
+        AiCopilotDialog(
+            repository = repository,
+            onDismiss = { showAiCopilot = false }
+        )
+    }
+
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showAiCopilot = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(imageVector = Icons.Default.SmartToy, contentDescription = "AI Copilot")
+            }
+        },
         topBar = {
             if (isTopNav) {
                 WaterdropNavigationBar(

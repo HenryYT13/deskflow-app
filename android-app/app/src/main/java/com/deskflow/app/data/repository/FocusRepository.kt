@@ -1501,4 +1501,110 @@ class FocusRepository(
             ApiResult.Error("network_error", e.message ?: "Failed to delete event")
         }
     }
+
+    private suspend inline fun <T> executeCall(
+        errFallback: String,
+        crossinline block: suspend () -> Response<T>
+    ): ApiResult<T> {
+        return try {
+            val res = block()
+            val body = res.body()
+            if (res.isSuccessful && body != null) {
+                ApiResult.Success(body)
+            } else {
+                parseError(res)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("network_error", e.message ?: errFallback)
+        }
+    }
+
+    suspend fun setLampEffect(
+        effect: String,
+        speed: Int? = null,
+        color: String? = null,
+        rgb: Boolean? = null,
+        color2: String? = null,
+        gradient: Boolean? = null
+    ): ApiResult<ActionSuccessResponse> = executeCall("Failed to set LED effect") {
+        apiService.setLampEffect(LampEffectRequest(effect, speed, color, rgb, color2, gradient))
+    }
+
+    suspend fun setAmbientSync(enabled: Boolean): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to toggle ambient sync") { apiService.setAmbientSync(EnabledToggleRequest(enabled)) }
+
+    suspend fun setBpmSync(enabled: Boolean): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to toggle BPM sync") { apiService.setBpmSync(EnabledToggleRequest(enabled)) }
+
+    suspend fun setBootLogo(title: String, sub: String, bitmap: String = ""): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to update boot logo") { apiService.setBootLogo(BootLogoRequest(title, sub, bitmap)) }
+
+    suspend fun setGameMode(mode: Int): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to switch mini-game") { apiService.setGameMode(GameModeRequest(mode)) }
+
+    suspend fun getOtaStatus(): ApiResult<OtaStatusResponse> =
+        executeCall("Failed to fetch OTA status") { apiService.getOtaStatus() }
+
+    suspend fun checkAndPullOta(autoPull: Boolean = true, autoFlash: Boolean = true, force: Boolean = false): ApiResult<OtaCheckUpdateResponse> =
+        executeCall("Failed to check OTA update") { apiService.checkAndPullOta(OtaCheckUpdateRequest(autoPull, autoFlash, force)) }
+
+    suspend fun flashOta(): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to flash OTA") { apiService.flashOta() }
+
+    suspend fun getPersistentAlarms(): ApiResult<PersistentAlarmsResponse> =
+        executeCall("Failed to load alarms") { apiService.getPersistentAlarms() }
+
+    suspend fun createPersistentAlarm(time: String, label: String): ApiResult<PersistentAlarmsResponse> =
+        executeCall("Failed to add alarm") { apiService.createPersistentAlarm(CreatePersistentAlarmRequest(time, label, true)) }
+
+    suspend fun togglePersistentAlarm(id: String, enabled: Boolean): ApiResult<PersistentAlarmsResponse> =
+        executeCall("Failed to toggle alarm") { apiService.togglePersistentAlarm(id, EnabledToggleRequest(enabled)) }
+
+    suspend fun deletePersistentAlarm(id: String): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to delete alarm") { apiService.deletePersistentAlarm(id) }
+
+    suspend fun playMelodyNotes(title: String, notes: List<List<Int>>): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to play notes") { apiService.playMelody(MelodyPlayRequest(title = title, notes = notes)) }
+
+    suspend fun getMelodyLibrary(): ApiResult<SavedMelodiesResponse> =
+        executeCall("Failed to load melody library") { apiService.getMelodyLibrary() }
+
+    suspend fun saveMelodyToLibrary(name: String, notes: List<List<Int>>, source: String = "piano"): ApiResult<SavedMelodiesResponse> =
+        executeCall("Failed to save melody") { apiService.saveMelodyToLibrary(SaveMelodyRequest(name, notes, source)) }
+
+    suspend fun deleteSavedMelody(id: String): ApiResult<SavedMelodiesResponse> =
+        executeCall("Failed to delete melody") { apiService.deleteSavedMelody(id) }
+
+    suspend fun playSavedMelody(id: String): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to play saved melody") { apiService.playSavedMelody(id) }
+
+    suspend fun getMorningBriefing(): ApiResult<MorningBriefingResponse> =
+        executeCall("Failed to load morning briefing") { apiService.getMorningBriefing() }
+
+    suspend fun getSpotifyStats(): ApiResult<SpotifyStatsResponse> =
+        executeCall("Failed to load Spotify stats") { apiService.getSpotifyStats() }
+
+    suspend fun quickAddCalendarEvent(text: String): ApiResult<CalendarStatusDto> {
+        val res = executeCall("Failed to AI quick-add event") { apiService.quickAddCalendarEvent(QuickAddCalendarRequest(text)) }
+        if (res is ApiResult.Success) _calendarState.value = res.data
+        return res
+    }
+
+    suspend fun aiSyncTkbToCalendar(weekOffset: Int = 0, useAi: Boolean = true): ApiResult<AiSyncTkbResponse> =
+        executeCall("Failed to AI sync TKB") { apiService.aiSyncTkbToCalendar(AiSyncTkbRequest(weekOffset, useAi)) }
+
+    suspend fun sendAiCopilotChat(message: String): ApiResult<AiChatResponse> =
+        executeCall("AI Copilot unreachable") { apiService.sendAiCopilotChat(AiChatRequest(message)) }
+
+    suspend fun sendTestNotification(): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to send test push") { apiService.sendTestNotification() }
+
+    suspend fun exportBackup(): ApiResult<BackupExportResponse> =
+        executeCall("Failed to export backup") { apiService.exportBackup() }
+
+    suspend fun restoreBackup(backup: kotlinx.serialization.json.JsonObject): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to restore backup") { apiService.restoreBackup(BackupRestoreRequest(backup)) }
+
+    suspend fun getPublicStatus(): ApiResult<PublicStatusResponse> =
+        executeCall("Failed to fetch public status") { apiService.getPublicStatus() }
 }

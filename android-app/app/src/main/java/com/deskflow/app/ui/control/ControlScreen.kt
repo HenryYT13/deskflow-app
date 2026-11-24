@@ -854,6 +854,13 @@ fun ControlScreen(
                                         }
                                     }
                                 )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                ShopeeRgbEffectsCard(
+                                    repository = repository,
+                                    settingsState = settingsState,
+                                    coroutineScope = coroutineScope,
+                                    onFeedback = { showFeedback(it) }
+                                )
                             }
 
                             // Hardware > Display & Watchface
@@ -906,6 +913,12 @@ fun ControlScreen(
                                             clockConfigSaving = false
                                         }
                                     }
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                MiniGamesAndBootLogoCard(
+                                    repository = repository,
+                                    coroutineScope = coroutineScope,
+                                    onFeedback = { showFeedback(it) }
                                 )
                             }
 
@@ -964,6 +977,12 @@ fun ControlScreen(
                                     coroutineScope = coroutineScope,
                                     onShowMessage = { showFeedback(it) }
                                 )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                SavedMelodyAndMiniPianoCard(
+                                    repository = repository,
+                                    coroutineScope = coroutineScope,
+                                    onFeedback = { showFeedback(it) }
+                                )
                             }
 
                             // Alarms > Active Math Alarm
@@ -1020,6 +1039,13 @@ fun ControlScreen(
                                             }
                                         }
                                     }
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                PersistentAlarmsAndBriefingCard(
+                                    repository = repository,
+                                    settingsState = settingsState,
+                                    coroutineScope = coroutineScope,
+                                    onFeedback = { showFeedback(it) }
                                 )
                             }
 
@@ -1186,6 +1212,12 @@ fun ControlScreen(
                                             }
                                         }
                                     }
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                OtaFirmwareCard(
+                                    repository = repository,
+                                    coroutineScope = coroutineScope,
+                                    onFeedback = { showFeedback(it) }
                                 )
                             }
                         }

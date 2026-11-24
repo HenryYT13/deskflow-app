@@ -1,8 +1,13 @@
 package com.deskflow.app.ui.settings
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -1312,6 +1317,147 @@ fun SettingsScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { deviceToRename = null }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            // ================= 5B. PUSH NOTIFICATIONS, PUBLIC BADGE (#78) & BACKUP/RESTORE (#80) =================
+            val clipboard = LocalClipboardManager.current
+            var ntfyInput by remember { mutableStateOf("") }
+            var showRestoreDialog by remember { mutableStateOf(false) }
+            var restoreJsonInput by remember { mutableStateOf("") }
+
+            LaunchedEffect(Unit) {
+                val stRes = repository.refreshSettings()
+                if (stRes is ApiResult.Success) {
+                    ntfyInput = stRes.data.data?.ntfyTopic ?: ""
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = AppStrings.t("Thông báo ntfy.sh, Public Badge & Backup JSON"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = ntfyInput,
+                            onValueChange = { ntfyInput = it },
+                            label = { Text("ntfy.sh topic") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(onClick = {
+                            coroutineScope.launch {
+                                val curr = (repository.refreshSettings() as? ApiResult.Success)?.data?.data
+                                    ?: com.deskflow.app.data.model.StationSettingsDto()
+                                val r = repository.updateSettings(curr.copy(ntfyTopic = ntfyInput.trim()))
+                                Toast.makeText(
+                                    context,
+                                    if (r is ApiResult.Success) "Đã lưu ntfy topic!" else "Lỗi lưu topic",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }) { Text(AppStrings.t("Lưu")) }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val r = repository.sendTestNotification()
+                                    Toast.makeText(
+                                        context,
+                                        if (r is ApiResult.Success) "Đã bắn thông báo test!" else "Lỗi test push",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text(AppStrings.t("Test Push ĐT")) }
+
+                        OutlinedButton(
+                            onClick = {
+                                val md = "[![DeskFlow Live](https://df.api.thetechdude.io.vn/api/public/badge.svg)](https://deskflow.thetechdude.io.vn)"
+                                clipboard.setText(AnnotatedString(md))
+                                Toast.makeText(context, "Đã copy GitHub Badge Markdown!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Copy Badge (#78)") }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val r = repository.exportBackup()
+                                    if (r is ApiResult.Success && r.data.backup != null) {
+                                        val txt = r.data.backup.toString()
+                                        clipboard.setText(AnnotatedString(txt))
+                                        Toast.makeText(context, "Đã copy Backup JSON vào Clipboard!", Toast.LENGTH_SHORT).show()
+                                        val send = Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(Intent.EXTRA_TEXT, txt)
+                                        }
+                                        context.startActivity(Intent.createChooser(send, "Export DeskFlow Backup JSON"))
+                                    } else {
+                                        Toast.makeText(context, "Không thể xuất backup!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text(AppStrings.t("Xuất Backup (#80)")) }
+
+                        OutlinedButton(
+                            onClick = { showRestoreDialog = true },
+                            modifier = Modifier.weight(1f)
+                        ) { Text(AppStrings.t("Khôi phục JSON")) }
+                    }
+                }
+            }
+
+            if (showRestoreDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRestoreDialog = false },
+                    title = { Text(AppStrings.t("Khôi phục cấu hình JSON (#80)")) },
+                    text = {
+                        OutlinedTextField(
+                            value = restoreJsonInput,
+                            onValueChange = { restoreJsonInput = it },
+                            label = { Text("Dán nội dung Backup JSON...") },
+                            minLines = 4,
+                            maxLines = 8,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            coroutineScope.launch {
+                                runCatching {
+                                    val obj = Json.parseToJsonElement(restoreJsonInput.trim()).jsonObject
+                                    repository.restoreBackup(obj)
+                                }.onSuccess { res ->
+                                    showRestoreDialog = false
+                                    Toast.makeText(
+                                        context,
+                                        if (res is ApiResult.Success) "Đã khôi phục toàn bộ cài đặt!" else "Lỗi khôi phục!",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }.onFailure {
+                                    Toast.makeText(context, "JSON không hợp lệ!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }) { Text(AppStrings.t("Khôi phục")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRestoreDialog = false }) { Text("Cancel") }
                     }
                 )
             }

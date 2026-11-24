@@ -90,7 +90,7 @@ class DeskFlowApiClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "DeskFlow-Linux-GTK4/2.2.1",
+            "User-Agent": "DeskFlow-Linux-GTK4/2.2.2",
         }
         token = self.config_store.config.device_token
         if authenticated and token:
@@ -320,7 +320,7 @@ class DeskFlowApiClient:
                 "code": clean_code,
                 "device_name": name,
                 "platform": "linux",
-                "client_version": "2.2.1",
+                "client_version": "2.2.2",
             },
             authenticated=False,
         )

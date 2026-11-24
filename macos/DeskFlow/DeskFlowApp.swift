@@ -17,7 +17,7 @@ struct DeskFlowApp: App {
     init() {
         let args = CommandLine.arguments
         if args.contains("--version") {
-            print("Deskflow macOS (Swift + SwiftUI) v2.2.1")
+            print("Deskflow macOS (Swift + SwiftUI) v2.2.2")
             exit(0)
         }
         if args.contains("--run-tests") {

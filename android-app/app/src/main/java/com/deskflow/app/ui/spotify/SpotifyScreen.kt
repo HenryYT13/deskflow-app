@@ -711,6 +711,54 @@ fun SpotifyScreen(
                 }
             }
 
+            // #54 Dynamic BPM LED Pulse & #58 Listening Stats Digest
+            var statsState by remember { mutableStateOf<com.deskflow.app.data.model.SpotifyStatsResponse?>(null) }
+            var bpmSyncOn by remember { mutableStateOf(false) }
+            LaunchedEffect(spotifyState.track) {
+                val r = repository.getSpotifyStats()
+                if (r is ApiResult.Success) statsState = r.data
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (spotifyState.bpm != null) "BPM: ${spotifyState.bpm?.roundToInt()}" else "BPM LED Sync (#54)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        FilterChip(
+                            selected = bpmSyncOn,
+                            onClick = {
+                                val next = !bpmSyncOn
+                                bpmSyncOn = next
+                                coroutineScope.launch { repository.setBpmSync(next) }
+                            },
+                            label = { Text(if (bpmSyncOn) "BPM Sync: ON" else "Đồng bộ BPM LED") }
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    Text(
+                        text = "📊 Thống kê nghe nhạc (#58): ${statsState?.totalPlays ?: 0} lượt • ~${statsState?.estimatedMinutes ?: 0} phút",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    statsState?.topTracks?.take(5)?.forEach { item ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(item.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text("${item.count}x", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
