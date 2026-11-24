@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.1.0"
+#define DESKFLOW_FW_VERSION "2.2.0"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -38,7 +38,7 @@ Adafruit_ST7789* tft = nullptr;
 #define BTN_PREV    26
 #define LED_PIN     2
 #define BUZZER_PIN  32
-#define NUM_LEDS    64
+#define NUM_LEDS    24
 
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -260,6 +260,7 @@ struct ServerStats {
   bool hasCountdown = false;
   String countdownId = "";
   String lampColor = "#FFFFFF";
+  String lampColor2 = "#A855F7";
 } srvStats;
 
 void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
@@ -311,6 +312,7 @@ void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
 
 String ledEffect = "solid"; // solid, breathing, chase, police, sparkle, fire, strobe, ambient
 bool ledRgbMode = false; // Orthogonal RGB color wheel combinable with any effect
+bool ledGradientMode = false; // Dual-color gradient (lampColor -> lampColor2)
 int ledSpeed = 50; // 5 - 100
 unsigned long lastLedEffectFrame = 0;
 uint16_t ledEffectStep = 0;
@@ -318,21 +320,48 @@ bool isWakeupCheckActive = false;
 unsigned long wakeupCheckDeadlineMs = 0;
 String pendingOtaUrl = "";
 String pendingOtaVersion = "";
+String customBootTitle = "DeskFlow Station";
+String customBootSub = "v" DESKFLOW_FW_VERSION;
+String customBootBmp = ""; // 16x16 1-bit bitmap encoded as 64 hex chars (or 32x32 as 256 hex chars)
 
-// Dino Runner Minigame state
-bool dinoRunning = true;
-bool dinoGameOver = false;
+// Minigame Suite (0 = Dino Runner, 1 = Flappy Bird, 2 = Snake)
+int activeMiniGame = 0;
+bool gameOver = false;
+unsigned long gameOverAtMs = 0;
+int gameScore = 0;
+int gameHighScores[3] = {0, 0, 0};
+int gameLastDrawnScore = -999;
+
+// Dino state (height dinoY >= 0 above ground)
 float dinoY = 0;
 float dinoVel = 0;
 bool dinoDuck = false;
 int dinoObsX = 240;
-int dinoObsW = 12;
+int dinoObsW = 14;
 int dinoObsH = 22;
-int dinoScore = 0;
-int dinoHighScore = 0;
-float dinoLastDrawnY = -1;
+float dinoLastDrawnY = 0;
 int dinoLastDrawnObsX = -999;
-int dinoLastDrawnScore = -1;
+int dinoLastDrawnObsW = 14;
+
+// Flappy state
+float flappyY = 140;
+float flappyVel = 0;
+int flappyPipeX = 240;
+int flappyGapY = 145;
+float flappyLastY = 140;
+int flappyLastPipeX = -999;
+
+// Snake state (16x16 grid in playfield x=[16..224], y=[72..264], cell=12px -> 17x16)
+const int SNAKE_COLS = 17;
+const int SNAKE_ROWS = 16;
+const int SNAKE_X0 = 18;
+const int SNAKE_Y0 = 74;
+const int SNAKE_CELL = 12;
+int snakeX[80], snakeY[80];
+int snakeLen = 4;
+int snakeDir = 0; // 0=R, 1=D, 2=L, 3=U
+int foodX = 10, foodY = 8;
+unsigned long lastSnakeTick = 0;
 
 void triggerBuzz(unsigned long durationMs, bool force);
 
@@ -356,21 +385,37 @@ uint32_t wheelColor(byte pos, int brightPct) {
   return strip.Color(r, g, b);
 }
 
+void getPixelRgbForIndex(int idx, uint16_t phase, uint8_t& r, uint8_t& g, uint8_t& b) {
+  if (ledRgbMode) {
+    wheelRgb(((idx * 256 / max(1, NUM_LEDS)) + phase) & 255, r, g, b);
+    return;
+  }
+  uint8_t r1 = 255, g1 = 255, b1 = 255;
+  parseHexColor(srvStats.lampColor, r1, g1, b1);
+  if (!ledGradientMode) {
+    r = r1; g = g1; b = b1;
+    return;
+  }
+  uint8_t r2 = 168, g2 = 85, b2 = 247;
+  parseHexColor(srvStats.lampColor2, r2, g2, b2);
+  float angle = ((idx * 256 / max(1, NUM_LEDS) + phase) & 255) / 255.0f;
+  float t = (angle <= 0.5f) ? (angle * 2.0f) : ((1.0f - angle) * 2.0f);
+  r = (uint8_t)(r1 + (r2 - r1) * t);
+  g = (uint8_t)(g1 + (g2 - g1) * t);
+  b = (uint8_t)(b1 + (b2 - b1) * t);
+}
+
 void updateLampLed() {
   if (!ledState || ledBrightness <= 0) {
     strip.clear();
     strip.show();
     return;
   }
-  if ((ledEffect != "solid" && ledEffect != "ambient") || (ledRgbMode && ledEffect == "solid")) {
+  if ((ledEffect != "solid" && ledEffect != "ambient") || (ledRgbMode && ledEffect == "solid") || (ledGradientMode && ledEffect == "solid")) {
     return; // Driven continuously by updateLedEffects()
   }
   uint8_t r = 255, g = 255, b = 255;
-  if (ledRgbMode) {
-    wheelRgb((millis() / 20) & 255, r, g, b);
-  } else {
-    parseHexColor(srvStats.lampColor, r, g, b);
-  }
+  parseHexColor(srvStats.lampColor, r, g, b);
   uint8_t scaledR = (uint16_t)r * ledBrightness / 100;
   uint8_t scaledG = (uint16_t)g * ledBrightness / 100;
   uint8_t scaledB = (uint16_t)b * ledBrightness / 100;
@@ -383,50 +428,40 @@ void updateLampLed() {
 
 void updateLedEffects() {
   if (!ledState || ledBrightness <= 0 || isAlarmActive || ledBlinkMode) return;
-  bool isContinuousSolidRgb = (ledEffect == "solid" && ledRgbMode);
-  if (!isContinuousSolidRgb && (ledEffect == "solid" || ledEffect == "ambient")) return;
+  bool isContinuousWave = (ledEffect == "solid" && (ledRgbMode || ledGradientMode));
+  if (!isContinuousWave && (ledEffect == "solid" || ledEffect == "ambient")) return;
 
   unsigned long interval = map(constrain(ledSpeed, 5, 100), 5, 100, 95, 16);
   if (millis() - lastLedEffectFrame < interval) return;
   lastLedEffectFrame = millis();
   ledEffectStep++;
 
-  uint8_t baseR = 255, baseG = 255, baseB = 255;
-  if (!ledRgbMode) {
-    parseHexColor(srvStats.lampColor, baseR, baseG, baseB);
-  }
   strip.setBrightness(255);
 
-  if (ledEffect == "rainbow" || isContinuousSolidRgb) {
+  if (ledEffect == "rainbow" || isContinuousWave) {
     for (int i = 0; i < NUM_LEDS; i++) {
-      strip.setPixelColor(i, wheelColor(((i * 256 / NUM_LEDS) + ledEffectStep * 3) & 255, ledBrightness));
+      uint8_t rr, rg, rb;
+      getPixelRgbForIndex(i, ledEffectStep * 3, rr, rg, rb);
+      strip.setPixelColor(i, strip.Color((uint16_t)rr * ledBrightness / 100, (uint16_t)rg * ledBrightness / 100, (uint16_t)rb * ledBrightness / 100));
     }
   } else if (ledEffect == "breathing") {
     float wave = (sin(ledEffectStep * 0.14f) + 1.0f) * 0.5f;
     float factor = (0.08f + wave * 0.92f) * (ledBrightness / 100.0f);
-    if (ledRgbMode) {
-      for (int i = 0; i < NUM_LEDS; i++) {
-        uint8_t rr, rg, rb;
-        wheelRgb(((i * 256 / NUM_LEDS) + ledEffectStep * 2) & 255, rr, rg, rb);
-        strip.setPixelColor(i, strip.Color((uint8_t)(rr * factor), (uint8_t)(rg * factor), (uint8_t)(rb * factor)));
-      }
-    } else {
-      uint8_t sr = (uint8_t)(baseR * factor), sg = (uint8_t)(baseG * factor), sb = (uint8_t)(baseB * factor);
-      for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, strip.Color(sr, sg, sb));
+    for (int i = 0; i < NUM_LEDS; i++) {
+      uint8_t rr, rg, rb;
+      getPixelRgbForIndex(i, ledEffectStep * 2, rr, rg, rb);
+      strip.setPixelColor(i, strip.Color((uint8_t)(rr * factor), (uint8_t)(rg * factor), (uint8_t)(rb * factor)));
     }
   } else if (ledEffect == "chase") {
     int head = ledEffectStep % NUM_LEDS;
+    int tailLen = max(4, NUM_LEDS / 3);
     for (int i = 0; i < NUM_LEDS; i++) {
       int dist = (head - i + NUM_LEDS) % NUM_LEDS;
-      float tail = (dist < 12) ? (1.0f - dist / 12.0f) : 0.0f;
+      float tail = (dist < tailLen) ? (1.0f - (float)dist / tailLen) : 0.0f;
       float k = tail * (ledBrightness / 100.0f);
-      if (ledRgbMode) {
-        uint8_t rr, rg, rb;
-        wheelRgb(((i * 256 / NUM_LEDS) + ledEffectStep * 4) & 255, rr, rg, rb);
-        strip.setPixelColor(i, strip.Color((uint8_t)(rr * k), (uint8_t)(rg * k), (uint8_t)(rb * k)));
-      } else {
-        strip.setPixelColor(i, strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k)));
-      }
+      uint8_t rr, rg, rb;
+      getPixelRgbForIndex(i, ledEffectStep * 4, rr, rg, rb);
+      strip.setPixelColor(i, strip.Color((uint8_t)(rr * k), (uint8_t)(rg * k), (uint8_t)(rb * k)));
     }
   } else if (ledEffect == "police") {
     bool leftRed = ((ledEffectStep / 4) % 2) == 0;
@@ -444,17 +479,18 @@ void updateLedEffects() {
       strip.setPixelColor(i, strip.Color(r, g, b));
     }
     int px = random(NUM_LEDS);
-    if (ledRgbMode) {
-      strip.setPixelColor(px, wheelColor(random(255), ledBrightness));
-    } else {
-      float k = ledBrightness / 100.0f;
-      strip.setPixelColor(px, strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k)));
-    }
+    uint8_t rr, rg, rb;
+    getPixelRgbForIndex(px, random(255), rr, rg, rb);
+    float k = ledBrightness / 100.0f;
+    strip.setPixelColor(px, strip.Color((uint8_t)(rr * k), (uint8_t)(rg * k), (uint8_t)(rb * k)));
   } else if (ledEffect == "fire") {
     for (int i = 0; i < NUM_LEDS; i++) {
       int flicker = random(65, 255);
-      if (ledRgbMode) {
-        strip.setPixelColor(i, wheelColor(((i * 8) + ledEffectStep * 3) & 255, (flicker * ledBrightness) / 255));
+      if (ledRgbMode || ledGradientMode) {
+        uint8_t rr, rg, rb;
+        getPixelRgbForIndex(i, ledEffectStep * 3, rr, rg, rb);
+        float k = (flicker / 255.0f) * (ledBrightness / 100.0f);
+        strip.setPixelColor(i, strip.Color((uint8_t)(rr * k), (uint8_t)(rg * k), (uint8_t)(rb * k)));
       } else {
         uint8_t r = (uint16_t)flicker * ledBrightness / 100;
         uint8_t g = (uint16_t)(flicker / 4) * ledBrightness / 100;
@@ -464,16 +500,16 @@ void updateLedEffects() {
     }
   } else if (ledEffect == "strobe") {
     bool on = (ledEffectStep % 2) == 0;
-    uint32_t col = 0;
-    if (on) {
-      if (ledRgbMode) {
-        col = wheelColor((ledEffectStep * 29) & 255, ledBrightness);
+    for (int i = 0; i < NUM_LEDS; i++) {
+      if (!on) {
+        strip.setPixelColor(i, 0);
       } else {
+        uint8_t rr, rg, rb;
+        getPixelRgbForIndex(i, ledEffectStep * 29, rr, rg, rb);
         float k = ledBrightness / 100.0f;
-        col = strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k));
+        strip.setPixelColor(i, strip.Color((uint8_t)(rr * k), (uint8_t)(rg * k), (uint8_t)(rb * k)));
       }
     }
-    for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, col);
   }
   strip.show();
 }
@@ -2069,108 +2105,290 @@ void screenNeedsUpdateAfterLanguage() {
   screenNeedUpdate = true;
 }
 
-void resetDinoGame() {
-  dinoGameOver = false;
-  dinoRunning = true;
+void drawCustomBootLogo() {
+  if (!tft) return;
+  tft->fillScreen(COL_BG);
+  if (customBootBmp.length() >= 64) {
+    // Draw 16x16 bitmap (64 hex chars = 256 bits) scaled 4x4 -> 64x64 centered at (88, 72)
+    int scale = (customBootBmp.length() >= 256) ? 2 : 4;
+    int dim = (customBootBmp.length() >= 256) ? 32 : 16;
+    int ox = (240 - dim * scale) / 2;
+    int oy = 66;
+    for (int y = 0; y < dim; y++) {
+      int rowHexIdx = y * (dim / 4);
+      for (int bIdx = 0; bIdx < dim / 4; bIdx++) {
+        char ch = customBootBmp[rowHexIdx + bIdx];
+        int nib = (ch >= '0' && ch <= '9') ? (ch - '0') : (ch >= 'a' && ch <= 'f') ? (ch - 'a' + 10) : (ch >= 'A' && ch <= 'F') ? (ch - 'A' + 10) : 0;
+        for (int bit = 0; bit < 4; bit++) {
+          if (nib & (8 >> bit)) {
+            int x = bIdx * 4 + bit;
+            tft->fillRect(ox + x * scale, oy + y * scale, scale, scale, COL_WHITE);
+          }
+        }
+      }
+    }
+  } else {
+    // Default crisp vector DeskFlow ring mark
+    tft->fillRoundRect(92, 68, 56, 56, 14, COL_WHITE);
+    tft->drawCircle(120, 96, 17, COL_BG);
+    tft->drawCircle(120, 96, 16, COL_BG);
+    tft->drawLine(120, 96, 120, 84, COL_BG);
+    tft->drawLine(120, 96, 129, 102, COL_BG);
+  }
+  printCenteredText(customBootTitle, 142, 2, COL_CYAN, COL_BG);
+  printCenteredText(customBootSub, 172, 1, COL_MUTED, COL_BG);
+}
+
+void spawnSnakeFood() {
+  for (int tries = 0; tries < 40; tries++) {
+    int fx = random(0, SNAKE_COLS);
+    int fy = random(0, SNAKE_ROWS);
+    bool hit = false;
+    for (int i = 0; i < snakeLen; i++) {
+      if (snakeX[i] == fx && snakeY[i] == fy) { hit = true; break; }
+    }
+    if (!hit) { foodX = fx; foodY = fy; return; }
+  }
+}
+
+void resetActiveGame() {
+  gameOver = false;
+  gameOverAtMs = 0;
+  gameScore = 0;
+  gameLastDrawnScore = -999;
+
+  // Dino reset (y >= 0 upward!)
   dinoY = 0;
   dinoVel = 0;
   dinoDuck = false;
-  dinoObsX = 245;
-  dinoObsW = 12;
+  dinoObsX = 240;
+  dinoObsW = 14;
   dinoObsH = 22;
-  dinoScore = 0;
-  dinoLastDrawnY = -1;
+  dinoLastDrawnY = 0;
   dinoLastDrawnObsX = -999;
-  dinoLastDrawnScore = -1;
+  dinoLastDrawnObsW = 14;
+
+  // Flappy reset
+  flappyY = 140;
+  flappyVel = 0;
+  flappyPipeX = 240;
+  flappyGapY = random(95, 200);
+  flappyLastY = 140;
+  flappyLastPipeX = -999;
+
+  // Snake reset
+  snakeLen = 4;
+  snakeDir = 0;
+  for (int i = 0; i < snakeLen; i++) {
+    snakeX[i] = 6 - i;
+    snakeY[i] = 8;
+  }
+  spawnSnakeFood();
+  lastSnakeTick = millis();
+}
+
+void triggerGameOver() {
+  gameOver = true;
+  gameOverAtMs = millis();
+  if (gameScore > gameHighScores[activeMiniGame]) {
+    gameHighScores[activeMiniGame] = gameScore;
+    prefs.putInt(("game_hi_" + String(activeMiniGame)).c_str(), gameScore);
+  }
+  if (buzzerEnabled) triggerBuzz(120, false);
+}
+
+void drawGameHeaderBanner() {
+  tft->fillRect(0, 26, 240, 268, COL_BG);
+  const char* titles[] = {"DINO RUNNER (PLAY=JUMP)", "FLAPPY BIRD (PLAY=FLAP)", "SNAKE (<< / >> = TURN)"};
+  printCenteredText(titles[activeMiniGame], 32, 1, COL_CYAN, COL_BG);
+  if (activeMiniGame == 0) {
+    tft->drawFastHLine(10, 250, 220, COL_BORDER);
+  } else if (activeMiniGame == 1) {
+    tft->drawFastHLine(10, 68, 220, COL_BORDER);
+    tft->drawFastHLine(10, 262, 220, COL_BORDER);
+  } else {
+    tft->drawRect(SNAKE_X0 - 2, SNAKE_Y0 - 2, SNAKE_COLS * SNAKE_CELL + 4, SNAKE_ROWS * SNAKE_CELL + 4, COL_BORDER);
+    tft->fillCircle(SNAKE_X0 + foodX * SNAKE_CELL + SNAKE_CELL / 2, SNAKE_Y0 + foodY * SNAKE_CELL + SNAKE_CELL / 2, 4, 0xF800);
+    for (int i = 0; i < snakeLen; i++) {
+      tft->fillRoundRect(SNAKE_X0 + snakeX[i] * SNAKE_CELL + 1, SNAKE_Y0 + snakeY[i] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2, 2, i == 0 ? COL_WHITE : COL_GREEN);
+    }
+  }
+  printCenteredText(tr("Giữ << để thoát • >> đổi game (GameOver)", "Hold << exit • >> switch game on Over"), 276, 1, COL_MUTED, COL_BG);
 }
 
 void drawGameView(bool viewChanged) {
-  const int GROUND_Y = 250;
-  const int DINO_X = 36;
-  const int DINO_W = 18;
-  const int DINO_H = 22;
-
   if (viewChanged) {
-    resetDinoGame();
-    tft->fillRect(0, 26, 240, 268, COL_BG);
-    printCenteredText(tr("DINO RUNNER (PLAY = NHẢY)", "DINO RUNNER (PLAY = JUMP)"), 32, 1, COL_CYAN, COL_BG);
-    tft->drawFastHLine(10, GROUND_Y, 220, COL_BORDER);
-    printCenteredText(tr("Giữ << để đổi màn hình", "Hold << to exit game"), 272, 1, COL_MUTED, COL_BG);
+    resetActiveGame();
+    drawGameHeaderBanner();
   }
 
-  if (dinoGameOver) {
-    if (dinoLastDrawnScore != -2) {
-      dinoLastDrawnScore = -2;
-      tft->fillRoundRect(30, 100, 180, 76, 8, COL_CARD);
-      tft->drawRoundRect(30, 100, 180, 76, 8, 0xF800);
-      printCenteredText("GAME OVER!", 112, 2, 0xF800, COL_CARD);
-      printCenteredText("Score: " + String(dinoScore) + "  Hi: " + String(dinoHighScore), 138, 1, COL_WHITE, COL_CARD);
-      printCenteredText(tr("Bấm PLAY để chơi lại", "Press PLAY to retry"), 156, 1, COL_CYAN, COL_CARD);
+  if (gameOver) {
+    if (gameLastDrawnScore != -2) {
+      gameLastDrawnScore = -2;
+      tft->fillRoundRect(26, 98, 188, 90, 8, COL_CARD);
+      tft->drawRoundRect(26, 98, 188, 90, 8, 0xF800);
+      printCenteredText("GAME OVER!", 108, 2, 0xF800, COL_CARD);
+      printCenteredText("Score: " + String(gameScore) + "  Hi: " + String(gameHighScores[activeMiniGame]), 135, 1, COL_WHITE, COL_CARD);
+      printCenteredText("PLAY: Retry   >>: Next Game", 156, 1, COL_CYAN, COL_CARD);
+      printCenteredText(tr("Giữ << thoát", "Hold << exit"), 172, 1, COL_MUTED, COL_CARD);
     }
     return;
   }
 
-  // Physics step (~30fps)
-  dinoY += dinoVel;
-  if (dinoY < 0) {
-    dinoVel += dinoDuck ? 1.9f : 0.92f;
-    if (dinoY >= 0) {
-      dinoY = 0;
-      dinoVel = 0;
+  if (activeMiniGame == 0) {
+    // --- 0. DINO RUNNER (Fixed upward Y kinematics) ---
+    const int GROUND_Y = 250;
+    const int DINO_X = 36;
+    const int DINO_W = 18;
+    const int DINO_H = 22;
+
+    if (dinoY > 0 || dinoVel > 0) {
+      dinoY += dinoVel;
+      dinoVel -= dinoDuck ? 2.1f : 0.92f;
+      if (dinoY <= 0) {
+        dinoY = 0;
+        dinoVel = 0;
+      }
     }
-  }
-  int speedPx = 5 + min(7, dinoScore / 150);
-  dinoObsX -= speedPx;
-  if (dinoObsX + dinoObsW < 8) {
-    dinoObsX = 240 + random(0, 55);
-    dinoObsW = random(10, 18);
-    dinoObsH = random(18, 32);
-    dinoScore += 10;
-    if (dinoScore > dinoHighScore) {
-      dinoHighScore = dinoScore;
-      prefs.putInt("game_hi", dinoHighScore);
+
+    int speedPx = 5 + min(7, gameScore / 150);
+    dinoObsX -= speedPx;
+    if (dinoObsX + dinoObsW < 10) {
+      dinoObsX = 240 + random(15, 70);
+      dinoObsW = random(11, 18);
+      dinoObsH = random(18, 32);
+      gameScore += 10;
+    } else {
+      gameScore++;
+    }
+    if (gameScore > gameHighScores[0]) gameHighScores[0] = gameScore;
+
+    // Erase only moved bounding boxes (never touch GROUND_Y or Score!)
+    int oldH = (dinoDuck && dinoLastDrawnY <= 0.5f) ? 13 : DINO_H;
+    int oldTop = GROUND_Y - oldH - (int)dinoLastDrawnY;
+    tft->fillRect(DINO_X - 2, min(oldTop - 2, GROUND_Y - DINO_H - 4), DINO_W + 6, DINO_H + 5, COL_BG);
+    tft->drawFastHLine(10, GROUND_Y, 220, COL_BORDER);
+
+    if (dinoLastDrawnObsX > -40 && dinoLastDrawnObsX < 245) {
+      tft->fillRect(max(10, dinoLastDrawnObsX - 2), GROUND_Y - 36, dinoLastDrawnObsW + 6, 35, COL_BG);
+    }
+
+    int hNow = (dinoDuck && dinoY <= 0.5f) ? 13 : DINO_H;
+    int topNow = GROUND_Y - hNow - (int)dinoY;
+    tft->fillRoundRect(DINO_X, topNow, DINO_W, hNow, 3, COL_WHITE);
+    tft->fillRect(DINO_X + 12, topNow + 3, 3, 3, COL_BG);
+    dinoLastDrawnY = dinoY;
+
+    if (dinoObsX < 238) {
+      int drawW = min(dinoObsW, 240 - max(10, dinoObsX));
+      if (drawW > 0) tft->fillRoundRect(max(10, dinoObsX), GROUND_Y - dinoObsH, drawW, dinoObsH, 2, COL_GREEN);
+    }
+    dinoLastDrawnObsX = dinoObsX;
+    dinoLastDrawnObsW = dinoObsW;
+
+    if (dinoObsX < DINO_X + DINO_W - 3 && dinoObsX + dinoObsW > DINO_X + 3) {
+      if (topNow + hNow > GROUND_Y - dinoObsH + 2) triggerGameOver();
+    }
+  } else if (activeMiniGame == 1) {
+    // --- 1. FLAPPY BIRD ---
+    const int BIRD_X = 56;
+    const int PIPE_W = 24;
+    const int GAP_H = 68;
+    const int TOP_Y = 70;
+    const int BOT_Y = 260;
+
+    flappyVel += 0.72f;
+    if (flappyVel > 6.5f) flappyVel = 6.5f;
+    flappyY += flappyVel;
+
+    flappyPipeX -= 4;
+    if (flappyPipeX + PIPE_W < 10) {
+      flappyPipeX = 242;
+      flappyGapY = random(108, 215);
+      gameScore += 10;
+      if (gameScore > gameHighScores[1]) gameHighScores[1] = gameScore;
+    }
+
+    // Erase previous bird & pipe strips
+    tft->fillRect(BIRD_X - 7, (int)flappyLastY - 7, 16, 16, COL_BG);
+    if (flappyLastPipeX > 4 && flappyLastPipeX < 244) {
+      tft->fillRect(max(10, flappyLastPipeX), TOP_Y, PIPE_W + 6, BOT_Y - TOP_Y, COL_BG);
+    }
+
+    // Draw pipe
+    if (flappyPipeX < 236) {
+      int px = max(10, flappyPipeX);
+      int pw = min(PIPE_W, 240 - px);
+      if (pw > 0) {
+        int upperH = (flappyGapY - GAP_H / 2) - TOP_Y;
+        int lowerY = flappyGapY + GAP_H / 2;
+        int lowerH = BOT_Y - lowerY;
+        if (upperH > 0) tft->fillRect(px, TOP_Y, pw, upperH, COL_GREEN);
+        if (lowerH > 0) tft->fillRect(px, lowerY, pw, lowerH, COL_GREEN);
+      }
+    }
+    flappyLastPipeX = flappyPipeX;
+
+    // Draw bird
+    tft->fillCircle(BIRD_X, (int)flappyY, 6, COL_AMBER);
+    tft->fillCircle(BIRD_X + 3, (int)flappyY - 2, 2, COL_BG);
+    flappyLastY = flappyY;
+
+    if (flappyY - 6 <= TOP_Y || flappyY + 6 >= BOT_Y) {
+      triggerGameOver();
+    } else if (flappyPipeX < BIRD_X + 6 && flappyPipeX + PIPE_W > BIRD_X - 6) {
+      if (flappyY - 6 < flappyGapY - GAP_H / 2 || flappyY + 6 > flappyGapY + GAP_H / 2) {
+        triggerGameOver();
+      }
     }
   } else {
-    dinoScore++;
-    if (dinoScore > dinoHighScore) {
-      dinoHighScore = dinoScore;
+    // --- 2. SNAKE ---
+    unsigned long stepMs = max(95UL, 210UL - (unsigned long)(gameScore / 2));
+    if (millis() - lastSnakeTick >= stepMs) {
+      lastSnakeTick = millis();
+      int nx = snakeX[0] + (snakeDir == 0 ? 1 : (snakeDir == 2 ? -1 : 0));
+      int ny = snakeY[0] + (snakeDir == 1 ? 1 : (snakeDir == 3 ? -1 : 0));
+
+      if (nx < 0 || nx >= SNAKE_COLS || ny < 0 || ny >= SNAKE_ROWS) {
+        triggerGameOver();
+      } else {
+        for (int i = 0; i < snakeLen - 1; i++) {
+          if (snakeX[i] == nx && snakeY[i] == ny) { triggerGameOver(); break; }
+        }
+      }
+
+      if (!gameOver) {
+        bool ate = (nx == foodX && ny == foodY);
+        if (!ate) {
+          int tx = snakeX[snakeLen - 1], ty = snakeY[snakeLen - 1];
+          tft->fillRect(SNAKE_X0 + tx * SNAKE_CELL, SNAKE_Y0 + ty * SNAKE_CELL, SNAKE_CELL, SNAKE_CELL, COL_BG);
+        }
+        for (int i = min(snakeLen, 79); i > 0; i--) {
+          snakeX[i] = snakeX[i - 1];
+          snakeY[i] = snakeY[i - 1];
+        }
+        snakeX[0] = nx;
+        snakeY[0] = ny;
+        if (ate) {
+          if (snakeLen < 78) snakeLen++;
+          gameScore += 10;
+          if (gameScore > gameHighScores[2]) gameHighScores[2] = gameScore;
+          if (buzzerEnabled) triggerBuzz(25, false);
+          spawnSnakeFood();
+          tft->fillCircle(SNAKE_X0 + foodX * SNAKE_CELL + SNAKE_CELL / 2, SNAKE_Y0 + foodY * SNAKE_CELL + SNAKE_CELL / 2, 4, 0xF800);
+        }
+        tft->fillRoundRect(SNAKE_X0 + snakeX[0] * SNAKE_CELL + 1, SNAKE_Y0 + snakeY[0] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2, 2, COL_WHITE);
+        if (snakeLen > 1) {
+          tft->fillRoundRect(SNAKE_X0 + snakeX[1] * SNAKE_CELL + 1, SNAKE_Y0 + snakeY[1] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2, 2, COL_GREEN);
+        }
+      }
     }
   }
 
-  // Erase previous dino & obstacle
-  if (dinoLastDrawnY >= 0) {
-    int oldTop = GROUND_Y - DINO_H - (int)dinoLastDrawnY;
-    tft->fillRect(DINO_X - 2, oldTop - 2, DINO_W + 6, DINO_H + 4, COL_BG);
-  }
-  if (dinoLastDrawnObsX > -50) {
-    tft->fillRect(dinoLastDrawnObsX - 2, GROUND_Y - 36, dinoObsW + 6, 35, COL_BG);
-  }
-
-  // Draw Dino
-  int hNow = (dinoDuck && dinoY >= 0) ? 13 : DINO_H;
-  int topNow = GROUND_Y - hNow - (int)dinoY;
-  tft->fillRoundRect(DINO_X, topNow, DINO_W, hNow, 3, COL_WHITE);
-  tft->fillRect(DINO_X + 12, topNow + 3, 3, 3, COL_BG); // eye
-  dinoLastDrawnY = dinoY;
-
-  // Draw Cactus
-  tft->fillRoundRect(dinoObsX, GROUND_Y - dinoObsH, dinoObsW, dinoObsH, 2, COL_GREEN);
-  dinoLastDrawnObsX = dinoObsX;
-
-  // Collision check
-  if (dinoObsX < DINO_X + DINO_W - 3 && dinoObsX + dinoObsW > DINO_X + 3) {
-    if (topNow + hNow > GROUND_Y - dinoObsH + 2) {
-      dinoGameOver = true;
-      prefs.putInt("game_hi", dinoHighScore);
-      if (buzzerEnabled) triggerBuzz(120, false);
-    }
-  }
-
-  // Score header refresh
-  if (dinoScore / 5 != dinoLastDrawnScore) {
-    dinoLastDrawnScore = dinoScore / 5;
-    tft->fillRect(14, 52, 212, 16, COL_BG);
-    drawUtf8Text(16, 54, "SCORE: " + String(dinoScore) + "   HI: " + String(dinoHighScore), 1, COL_AMBER, COL_BG, 210);
+  if (!gameOver && (gameScore / 5 != gameLastDrawnScore)) {
+    gameLastDrawnScore = gameScore / 5;
+    tft->fillRect(14, 48, 212, 16, COL_BG);
+    drawUtf8Text(16, 50, "SCORE: " + String(gameScore) + "   HI: " + String(gameHighScores[activeMiniGame]), 1, COL_AMBER, COL_BG, 210);
   }
 }
 
@@ -3054,7 +3272,15 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       srvStats.lampColor = hexCol;
       prefs.putString("lamp_col", hexCol);
       ledRgbMode = false;
+      ledGradientMode = false;
       prefs.putBool("led_rgb", false);
+      prefs.putBool("led_grad", false);
+      if (doc.containsKey("hex2")) {
+        srvStats.lampColor2 = doc["hex2"].as<String>();
+        prefs.putString("lamp_col2", srvStats.lampColor2);
+        ledGradientMode = true;
+        prefs.putBool("led_grad", true);
+      }
       for (int i = 0; i < LED_PRESET_COUNT; i++) {
         if (hexCol.equalsIgnoreCase(LED_PRESETS[i])) { ledPresetIndex = i; break; }
       }
@@ -3078,14 +3304,25 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       if (eff == "rainbow") {
         ledEffect = "solid";
         ledRgbMode = true;
+        ledGradientMode = false;
       } else {
         ledEffect = eff;
         if (doc.containsKey("rgb")) {
           ledRgbMode = doc["rgb"].as<bool>();
+          if (ledRgbMode) ledGradientMode = false;
+        }
+        if (doc.containsKey("gradient")) {
+          ledGradientMode = doc["gradient"].as<bool>();
+          if (ledGradientMode) ledRgbMode = false;
+        }
+        if (doc.containsKey("hex2")) {
+          srvStats.lampColor2 = doc["hex2"].as<String>();
+          prefs.putString("lamp_col2", srvStats.lampColor2);
         }
       }
       prefs.putString("led_eff", ledEffect);
       prefs.putBool("led_rgb", ledRgbMode);
+      prefs.putBool("led_grad", ledGradientMode);
       if (doc.containsKey("speed")) {
         ledSpeed = constrain((int)doc["speed"], 5, 100);
         prefs.putInt("led_spd", ledSpeed);
@@ -3094,7 +3331,29 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       ledBlinkMode = false;
       prefs.putBool("led_state", true);
       updateLampLed();
-      addLog("LED", "Strip effect -> " + ledEffect + (ledRgbMode ? " +RGB" : "") + " (spd=" + String(ledSpeed) + ")");
+      addLog("LED", "Strip effect -> " + ledEffect + (ledRgbMode ? " +RGB" : (ledGradientMode ? " +GRAD" : "")));
+    }
+    else if (topicStr == "deskflow/display" && action == "boot_logo") {
+      if (doc.containsKey("title")) {
+        customBootTitle = doc["title"].as<String>();
+        prefs.putString("boot_title", customBootTitle);
+      }
+      if (doc.containsKey("sub")) {
+        customBootSub = doc["sub"].as<String>();
+        prefs.putString("boot_sub", customBootSub);
+      }
+      if (doc.containsKey("bitmap")) {
+        customBootBmp = doc["bitmap"].as<String>();
+        prefs.putString("boot_bmp", customBootBmp);
+      }
+      addLog("BOOT", "Custom boot logo updated in NVS");
+    }
+    else if (topicStr == "deskflow/display" && action == "game_mode") {
+      int m = doc["mode"] | 0;
+      activeMiniGame = constrain(m, 0, 2);
+      srvStats.activeView = "game";
+      lastRenderedView = "";
+      screenNeedUpdate = true;
     }
     else if (topicStr == "deskflow/display" && action == "ota_update") {
       pendingOtaUrl = doc["url"] | "";
@@ -4220,26 +4479,58 @@ void handleHardwareButtons() {
     return;
   }
 
-  // Minigame instant jump/duck button controls (short press; long hold PREV still opens view menu)
+  // Minigame suite edge-triggered button controls (hold << >= 700ms exits cleanly)
   if (!inSettingsMenu && !inViewMenu && srvStats.activeView == "game") {
+    static bool prevPlayLow = false;
+    static bool prevNextLow = false;
     static bool gamePrevWasLow = false;
     static unsigned long gamePrevDownAt = 0;
     static bool gamePrevHoldSent = false;
-    if (curPlay == LOW || curNext == LOW) {
-      if (dinoGameOver) {
-        resetDinoGame();
-        screenNeedUpdate = true;
-      } else if (dinoY >= -0.5f) {
-        dinoVel = -9.8f;
-        if (buzzerEnabled) triggerBuzz(20, false);
+
+    bool playEdge = (curPlay == LOW && !prevPlayLow);
+    bool nextEdge = (curNext == LOW && !prevNextLow);
+    prevPlayLow = (curPlay == LOW);
+    prevNextLow = (curNext == LOW);
+
+    if (gameOver) {
+      if (millis() - gameOverAtMs >= 450) {
+        if (playEdge) {
+          resetActiveGame();
+          drawGameHeaderBanner();
+          screenNeedUpdate = true;
+        } else if (nextEdge) {
+          activeMiniGame = (activeMiniGame + 1) % 3;
+          resetActiveGame();
+          drawGameHeaderBanner();
+          screenNeedUpdate = true;
+        }
+      }
+    } else {
+      if (activeMiniGame == 0) {
+        if ((playEdge || nextEdge) && dinoY <= 1.0f) {
+          dinoVel = 10.2f;
+          if (buzzerEnabled) triggerBuzz(18, false);
+        }
+        dinoDuck = (curPrev == LOW);
+      } else if (activeMiniGame == 1) {
+        if (playEdge || nextEdge) {
+          flappyVel = -6.8f;
+          if (buzzerEnabled) triggerBuzz(16, false);
+        }
+      } else {
+        if (nextEdge) { snakeDir = (snakeDir + 1) % 4; }
+        if (playEdge && buzzerEnabled) triggerBuzz(15, false);
       }
     }
+
     if (curPrev == LOW) {
-      dinoDuck = true;
       if (!gamePrevWasLow) {
         gamePrevWasLow = true;
         gamePrevDownAt = millis();
         gamePrevHoldSent = false;
+        if (!gameOver && activeMiniGame == 2) {
+          snakeDir = (snakeDir + 3) % 4; // Turn left 90° immediately on Snake
+        }
       } else if (!gamePrevHoldSent && millis() - gamePrevDownAt >= 700) {
         gamePrevHoldSent = true;
         triggerBuzz(80, false);
@@ -4457,13 +4748,17 @@ void setup() {
 
   SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
   tft = new Adafruit_ST7789(&SPI, TFT_CS, TFT_DC, TFT_RST);
+  prefs.begin("deskflow", false);
+  customBootTitle = prefs.getString("boot_title", "DeskFlow Station");
+  customBootSub = prefs.getString("boot_sub", "v" DESKFLOW_FW_VERSION);
+  customBootBmp = prefs.getString("boot_bmp", "");
+
   if (tft) {
     tft->init(240, 320);
     tft->setSPISpeed(80000000);
     tft->invertDisplay(false);
     tft->setRotation(0);
-    tft->fillScreen(COL_BG);
-    printCenteredText("DeskFlow Booting...", 150, 2, COL_CYAN, COL_BG);
+    drawCustomBootLogo();
   }
 
   WiFi.mode(WIFI_AP_STA);
@@ -4476,7 +4771,6 @@ void setup() {
 
   configTime(25200, 0, "pool.ntp.org", "time.google.com");
 
-  prefs.begin("deskflow", false);
   wifiListJson = prefs.getString("wifi_array", "[]");
   loadStationLanguage();
   loadPendingLocalLangSync();
@@ -4496,10 +4790,14 @@ void setup() {
   buzzerEnabled = prefs.getBool("buzz_en", true);
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
   srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
+  srvStats.lampColor2 = prefs.getString("lamp_col2", "#A855F7");
   ledEffect = prefs.getString("led_eff", "solid");
   ledRgbMode = prefs.getBool("led_rgb", false);
+  ledGradientMode = prefs.getBool("led_grad", false);
   ledSpeed = prefs.getInt("led_spd", 50);
-  dinoHighScore = prefs.getInt("game_hi", 0);
+  for (int gi = 0; gi < 3; gi++) {
+    gameHighScores[gi] = prefs.getInt(("game_hi_" + String(gi)).c_str(), 0);
+  }
   ledPresetIndex = prefs.getInt("led_color_idx", 0);
   if (ledPresetIndex < 0 || ledPresetIndex >= LED_PRESET_COUNT) ledPresetIndex = 0;
   for (int i = 0; i < LED_PRESET_COUNT; i++) {

@@ -53,6 +53,43 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".service.DeskFlowWidgetProvider"
+            android:exported="true"
+            android:label="DeskFlow Quick Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.deskflow.app.widget.ACTION_TOGGLE_LED" />
+                <action android:name="com.deskflow.app.widget.ACTION_START_FOCUS_25" />
+                <action android:name="com.deskflow.app.widget.ACTION_REFRESH_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/deskflow_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".service.DeskFlowLampTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_lamp"
+            android:label="DeskFlow LED"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".service.DeskFlowFocusTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_focus"
+            android:label="DeskFlow Focus 25m"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>
