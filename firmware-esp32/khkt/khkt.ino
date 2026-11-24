@@ -309,7 +309,8 @@ void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
   }
 }
 
-String ledEffect = "solid"; // solid, rainbow, breathing, chase, police, sparkle, fire, strobe, ambient
+String ledEffect = "solid"; // solid, breathing, chase, police, sparkle, fire, strobe, ambient
+bool ledRgbMode = false; // Orthogonal RGB color wheel combinable with any effect
 int ledSpeed = 50; // 5 - 100
 unsigned long lastLedEffectFrame = 0;
 uint16_t ledEffectStep = 0;
@@ -335,9 +336,8 @@ int dinoLastDrawnScore = -1;
 
 void triggerBuzz(unsigned long durationMs, bool force);
 
-uint32_t wheelColor(byte pos, int brightPct) {
+void wheelRgb(byte pos, uint8_t& r, uint8_t& g, uint8_t& b) {
   pos = 255 - pos;
-  uint8_t r = 0, g = 0, b = 0;
   if (pos < 85) {
     r = 255 - pos * 3; g = 0; b = pos * 3;
   } else if (pos < 170) {
@@ -345,6 +345,11 @@ uint32_t wheelColor(byte pos, int brightPct) {
   } else {
     pos -= 170; r = pos * 3; g = 255 - pos * 3; b = 0;
   }
+}
+
+uint32_t wheelColor(byte pos, int brightPct) {
+  uint8_t r = 0, g = 0, b = 0;
+  wheelRgb(pos, r, g, b);
   r = (uint16_t)r * brightPct / 100;
   g = (uint16_t)g * brightPct / 100;
   b = (uint16_t)b * brightPct / 100;
@@ -357,11 +362,15 @@ void updateLampLed() {
     strip.show();
     return;
   }
-  if (ledEffect != "solid" && ledEffect != "ambient") {
+  if ((ledEffect != "solid" && ledEffect != "ambient") || (ledRgbMode && ledEffect == "solid")) {
     return; // Driven continuously by updateLedEffects()
   }
   uint8_t r = 255, g = 255, b = 255;
-  parseHexColor(srvStats.lampColor, r, g, b);
+  if (ledRgbMode) {
+    wheelRgb((millis() / 20) & 255, r, g, b);
+  } else {
+    parseHexColor(srvStats.lampColor, r, g, b);
+  }
   uint8_t scaledR = (uint16_t)r * ledBrightness / 100;
   uint8_t scaledG = (uint16_t)g * ledBrightness / 100;
   uint8_t scaledB = (uint16_t)b * ledBrightness / 100;
@@ -374,7 +383,8 @@ void updateLampLed() {
 
 void updateLedEffects() {
   if (!ledState || ledBrightness <= 0 || isAlarmActive || ledBlinkMode) return;
-  if (ledEffect == "solid" || ledEffect == "ambient") return;
+  bool isContinuousSolidRgb = (ledEffect == "solid" && ledRgbMode);
+  if (!isContinuousSolidRgb && (ledEffect == "solid" || ledEffect == "ambient")) return;
 
   unsigned long interval = map(constrain(ledSpeed, 5, 100), 5, 100, 95, 16);
   if (millis() - lastLedEffectFrame < interval) return;
@@ -382,25 +392,41 @@ void updateLedEffects() {
   ledEffectStep++;
 
   uint8_t baseR = 255, baseG = 255, baseB = 255;
-  parseHexColor(srvStats.lampColor, baseR, baseG, baseB);
+  if (!ledRgbMode) {
+    parseHexColor(srvStats.lampColor, baseR, baseG, baseB);
+  }
   strip.setBrightness(255);
 
-  if (ledEffect == "rainbow") {
+  if (ledEffect == "rainbow" || isContinuousSolidRgb) {
     for (int i = 0; i < NUM_LEDS; i++) {
       strip.setPixelColor(i, wheelColor(((i * 256 / NUM_LEDS) + ledEffectStep * 3) & 255, ledBrightness));
     }
   } else if (ledEffect == "breathing") {
     float wave = (sin(ledEffectStep * 0.14f) + 1.0f) * 0.5f;
     float factor = (0.08f + wave * 0.92f) * (ledBrightness / 100.0f);
-    uint8_t sr = (uint8_t)(baseR * factor), sg = (uint8_t)(baseG * factor), sb = (uint8_t)(baseB * factor);
-    for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, strip.Color(sr, sg, sb));
+    if (ledRgbMode) {
+      for (int i = 0; i < NUM_LEDS; i++) {
+        uint8_t rr, rg, rb;
+        wheelRgb(((i * 256 / NUM_LEDS) + ledEffectStep * 2) & 255, rr, rg, rb);
+        strip.setPixelColor(i, strip.Color((uint8_t)(rr * factor), (uint8_t)(rg * factor), (uint8_t)(rb * factor)));
+      }
+    } else {
+      uint8_t sr = (uint8_t)(baseR * factor), sg = (uint8_t)(baseG * factor), sb = (uint8_t)(baseB * factor);
+      for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, strip.Color(sr, sg, sb));
+    }
   } else if (ledEffect == "chase") {
     int head = ledEffectStep % NUM_LEDS;
     for (int i = 0; i < NUM_LEDS; i++) {
       int dist = (head - i + NUM_LEDS) % NUM_LEDS;
-      float tail = (dist < 10) ? (1.0f - dist / 10.0f) : 0.0f;
+      float tail = (dist < 12) ? (1.0f - dist / 12.0f) : 0.0f;
       float k = tail * (ledBrightness / 100.0f);
-      strip.setPixelColor(i, strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k)));
+      if (ledRgbMode) {
+        uint8_t rr, rg, rb;
+        wheelRgb(((i * 256 / NUM_LEDS) + ledEffectStep * 4) & 255, rr, rg, rb);
+        strip.setPixelColor(i, strip.Color((uint8_t)(rr * k), (uint8_t)(rg * k), (uint8_t)(rb * k)));
+      } else {
+        strip.setPixelColor(i, strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k)));
+      }
     }
   } else if (ledEffect == "police") {
     bool leftRed = ((ledEffectStep / 4) % 2) == 0;
@@ -418,18 +444,35 @@ void updateLedEffects() {
       strip.setPixelColor(i, strip.Color(r, g, b));
     }
     int px = random(NUM_LEDS);
-    strip.setPixelColor(px, wheelColor(random(255), ledBrightness));
+    if (ledRgbMode) {
+      strip.setPixelColor(px, wheelColor(random(255), ledBrightness));
+    } else {
+      float k = ledBrightness / 100.0f;
+      strip.setPixelColor(px, strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k)));
+    }
   } else if (ledEffect == "fire") {
     for (int i = 0; i < NUM_LEDS; i++) {
       int flicker = random(65, 255);
-      uint8_t r = (uint16_t)flicker * ledBrightness / 100;
-      uint8_t g = (uint16_t)(flicker / 4) * ledBrightness / 100;
-      uint8_t b = (uint16_t)(flicker / 20) * ledBrightness / 100;
-      strip.setPixelColor(i, strip.Color(r, g, b));
+      if (ledRgbMode) {
+        strip.setPixelColor(i, wheelColor(((i * 8) + ledEffectStep * 3) & 255, (flicker * ledBrightness) / 255));
+      } else {
+        uint8_t r = (uint16_t)flicker * ledBrightness / 100;
+        uint8_t g = (uint16_t)(flicker / 4) * ledBrightness / 100;
+        uint8_t b = (uint16_t)(flicker / 20) * ledBrightness / 100;
+        strip.setPixelColor(i, strip.Color(r, g, b));
+      }
     }
   } else if (ledEffect == "strobe") {
     bool on = (ledEffectStep % 2) == 0;
-    uint32_t col = on ? wheelColor((ledEffectStep * 17) & 255, ledBrightness) : 0;
+    uint32_t col = 0;
+    if (on) {
+      if (ledRgbMode) {
+        col = wheelColor((ledEffectStep * 29) & 255, ledBrightness);
+      } else {
+        float k = ledBrightness / 100.0f;
+        col = strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k));
+      }
+    }
     for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, col);
   }
   strip.show();
@@ -3010,6 +3053,8 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       String hexCol = doc["hex"] | "#FFFFFF";
       srvStats.lampColor = hexCol;
       prefs.putString("lamp_col", hexCol);
+      ledRgbMode = false;
+      prefs.putBool("led_rgb", false);
       for (int i = 0; i < LED_PRESET_COUNT; i++) {
         if (hexCol.equalsIgnoreCase(LED_PRESETS[i])) { ledPresetIndex = i; break; }
       }
@@ -3030,8 +3075,17 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     else if ((topicStr == "deskflow/display" || topicStr == "deskflow/hardware") && action == "led_effect") {
       String eff = doc["effect"] | "solid";
       eff.toLowerCase();
-      ledEffect = eff;
+      if (eff == "rainbow") {
+        ledEffect = "solid";
+        ledRgbMode = true;
+      } else {
+        ledEffect = eff;
+        if (doc.containsKey("rgb")) {
+          ledRgbMode = doc["rgb"].as<bool>();
+        }
+      }
       prefs.putString("led_eff", ledEffect);
+      prefs.putBool("led_rgb", ledRgbMode);
       if (doc.containsKey("speed")) {
         ledSpeed = constrain((int)doc["speed"], 5, 100);
         prefs.putInt("led_spd", ledSpeed);
@@ -3040,7 +3094,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       ledBlinkMode = false;
       prefs.putBool("led_state", true);
       updateLampLed();
-      addLog("LED", "Strip effect -> " + ledEffect + " (spd=" + String(ledSpeed) + ")");
+      addLog("LED", "Strip effect -> " + ledEffect + (ledRgbMode ? " +RGB" : "") + " (spd=" + String(ledSpeed) + ")");
     }
     else if (topicStr == "deskflow/display" && action == "ota_update") {
       pendingOtaUrl = doc["url"] | "";
@@ -4443,6 +4497,7 @@ void setup() {
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
   srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
   ledEffect = prefs.getString("led_eff", "solid");
+  ledRgbMode = prefs.getBool("led_rgb", false);
   ledSpeed = prefs.getInt("led_spd", 50);
   dinoHighScore = prefs.getInt("game_hi", 0);
   ledPresetIndex = prefs.getInt("led_color_idx", 0);
@@ -4549,7 +4604,21 @@ void loop() {
     if (millis() - lastLedBlinkTime >= LED_BLINK_INTERVAL) {
       lastLedBlinkTime = millis();
       ledState = !ledState;
-      updateLampLed();
+      if (!ledState || ledBrightness <= 0) {
+        strip.clear();
+        strip.show();
+      } else {
+        uint8_t br = 255, bg = 255, bb = 255;
+        if (ledRgbMode) {
+          wheelRgb((lastLedBlinkTime / 6) & 255, br, bg, bb);
+        } else {
+          parseHexColor(srvStats.lampColor, br, bg, bb);
+        }
+        uint32_t c = strip.Color((uint16_t)br * ledBrightness / 100, (uint16_t)bg * ledBrightness / 100, (uint16_t)bb * ledBrightness / 100);
+        strip.setBrightness(255);
+        for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, c);
+        strip.show();
+      }
     }
   } else {
     updateLedEffects();
