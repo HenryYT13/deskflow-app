@@ -5,6 +5,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val deskflowVersionFile = file("../../VERSION")
+val syncedVersionName = if (deskflowVersionFile.exists()) deskflowVersionFile.readText().trim().ifBlank { "2.1.0" } else "2.1.0"
+val syncedVersionCode = syncedVersionName.split(".").let { parts ->
+    val maj = parts.getOrNull(0)?.toIntOrNull() ?: 2
+    val min = parts.getOrNull(1)?.toIntOrNull() ?: 1
+    val pat = parts.getOrNull(2)?.toIntOrNull() ?: 0
+    maj * 10000 + min * 100 + pat
+}
+
 android {
     namespace = "com.deskflow.app"
     compileSdk = 35
@@ -13,8 +22,8 @@ android {
         applicationId = "com.deskflow.app.debug"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "2.0.3"
+        versionCode = syncedVersionCode
+        versionName = syncedVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -54,6 +63,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {

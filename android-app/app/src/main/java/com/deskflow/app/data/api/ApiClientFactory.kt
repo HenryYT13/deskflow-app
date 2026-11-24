@@ -29,7 +29,7 @@ object ApiClientFactory {
                 builder.header("Authorization", "Bearer $token")
             }
 
-            builder.header("User-Agent", "DeskFlow-FocusMode-Android/1.0.0")
+            builder.header("User-Agent", "DeskFlow-FocusMode-Android/${com.deskflow.app.BuildConfig.VERSION_NAME}")
             builder.header("Accept", "application/json")
 
             chain.proceed(builder.build())

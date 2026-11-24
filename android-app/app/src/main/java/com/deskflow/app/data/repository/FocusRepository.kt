@@ -532,6 +532,33 @@ class FocusRepository(
         }
     }
 
+    suspend fun confirmAwake(): ApiResult<ActionSuccessResponse> {
+        return try {
+            val response = apiService.confirmAwake()
+            if (response.isSuccessful && response.body() != null) {
+                refreshAlarm()
+                ApiResult.Success(response.body()!!)
+            } else {
+                parseError(response)
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(code = "network_error", message = e.message ?: "Network error")
+        }
+    }
+
+    suspend fun fetchNotifications(since: Double): List<com.deskflow.app.data.model.NotificationItemDto> {
+        return try {
+            val response = apiService.getNotifications(since)
+            if (response.isSuccessful && response.body() != null) {
+                response.body()!!.notifications
+            } else {
+                emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     suspend fun refreshTimetable(): ApiResult<TimetableDataWrapper?> {
         if (!securePreferences.isPaired || !securePreferences.hasScope("control")) {
             return ApiResult.Success(null)

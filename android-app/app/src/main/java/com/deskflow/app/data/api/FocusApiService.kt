@@ -97,6 +97,14 @@ interface FocusApiService {
     @POST("api/app/control/alarm/emergency-stop")
     suspend fun emergencyStop(): Response<ActionSuccessResponse>
 
+    @POST("api/app/control/alarm/confirm-awake")
+    suspend fun confirmAwake(): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/notifications")
+    suspend fun getNotifications(
+        @Query("since") since: Double = 0.0
+    ): Response<NotificationsResponse>
+
     @POST("api/app/control/alarm/buzz")
     suspend fun triggerBuzz(
         @Body request: BuzzRequest

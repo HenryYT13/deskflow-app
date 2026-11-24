@@ -8,7 +8,7 @@ data class PairRequest(
     @SerialName("pairing_code") val pairingCode: String,
     @SerialName("device_name") val deviceName: String,
     @SerialName("platform") val platform: String = "android",
-    @SerialName("client_version") val clientVersion: String = "1.0.0"
+    @SerialName("client_version") val clientVersion: String = com.deskflow.app.BuildConfig.VERSION_NAME
 )
 
 @Serializable
@@ -176,7 +176,25 @@ data class AlarmActiveDto(
     @SerialName("created_at") val createdAt: Double? = null,
     @SerialName("failed_attempts") val failedAttempts: Int = 0,
     @SerialName("cooldown_until") val cooldownUntil: Double = 0.0,
-    @SerialName("is_locked") val isLocked: Boolean = false
+    @SerialName("is_locked") val isLocked: Boolean = false,
+    @SerialName("wakeup_pending") val wakeupPending: Boolean = false,
+    @SerialName("anti_oversleep_enabled") val antiOversleepEnabled: Boolean = true
+)
+
+@Serializable
+data class NotificationItemDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("kind") val kind: String = "",
+    @SerialName("title") val title: String = "",
+    @SerialName("body") val body: String = "",
+    @SerialName("priority") val priority: String = "default",
+    @SerialName("timestamp") val timestamp: Double = 0.0
+)
+
+@Serializable
+data class NotificationsResponse(
+    @SerialName("success") val success: Boolean = false,
+    @SerialName("notifications") val notifications: List<NotificationItemDto> = emptyList()
 )
 
 @Serializable

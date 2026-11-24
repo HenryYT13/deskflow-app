@@ -1331,7 +1331,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = stringResource(R.string.version_label),
+                        text = stringResource(R.string.version_label, com.deskflow.app.BuildConfig.VERSION_NAME),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )

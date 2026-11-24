@@ -1,9 +1,13 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPUpdate.h>
 #include <WebServer.h>
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <time.h>
+
+#define DESKFLOW_FW_VERSION "2.1.0"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -96,7 +100,7 @@ const int MENU_BUZZER_ITEM_COUNT = 4;
 // View Selector Menu State Machine
 bool inViewMenu = false;
 int viewMenuIndex = 0;
-const int VIEW_MENU_COUNT = 10;
+const int VIEW_MENU_COUNT = 11;
 const int VIEW_ROWS_PER_PAGE = 4;
 int viewMenuPage = 0;
 struct ViewMenuItem {
@@ -113,7 +117,8 @@ const ViewMenuItem VIEW_MENU_ITEMS[VIEW_MENU_COUNT] = {
   { "notes",     "7. Ghi chú" },
   { "countdown", "8. Đếm ngược" },
   { "focus",     "9. Tập trung" },
-  { "clock",     "10. Đồng hồ" }
+  { "clock",     "10. Đồng hồ" },
+  { "game",      "11. Mini Game" }
 };
 
 // English mirror used when the station language is EN.
@@ -127,7 +132,8 @@ const char* const VIEW_MENU_TITLES_EN[VIEW_MENU_COUNT] = {
   "7. Notes",
   "8. Countdown",
   "9. Focus",
-  "10. Clock"
+  "10. Clock",
+  "11. Mini Game"
 };
 
 const char* viewMenuTitle(int index) {
@@ -303,21 +309,128 @@ void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
   }
 }
 
+String ledEffect = "solid"; // solid, rainbow, breathing, chase, police, sparkle, fire, strobe, ambient
+int ledSpeed = 50; // 5 - 100
+unsigned long lastLedEffectFrame = 0;
+uint16_t ledEffectStep = 0;
+bool isWakeupCheckActive = false;
+unsigned long wakeupCheckDeadlineMs = 0;
+String pendingOtaUrl = "";
+String pendingOtaVersion = "";
+
+// Dino Runner Minigame state
+bool dinoRunning = true;
+bool dinoGameOver = false;
+float dinoY = 0;
+float dinoVel = 0;
+bool dinoDuck = false;
+int dinoObsX = 240;
+int dinoObsW = 12;
+int dinoObsH = 22;
+int dinoScore = 0;
+int dinoHighScore = 0;
+float dinoLastDrawnY = -1;
+int dinoLastDrawnObsX = -999;
+int dinoLastDrawnScore = -1;
+
+void triggerBuzz(unsigned long durationMs, bool force);
+
+uint32_t wheelColor(byte pos, int brightPct) {
+  pos = 255 - pos;
+  uint8_t r = 0, g = 0, b = 0;
+  if (pos < 85) {
+    r = 255 - pos * 3; g = 0; b = pos * 3;
+  } else if (pos < 170) {
+    pos -= 85; r = 0; g = pos * 3; b = 255 - pos * 3;
+  } else {
+    pos -= 170; r = pos * 3; g = 255 - pos * 3; b = 0;
+  }
+  r = (uint16_t)r * brightPct / 100;
+  g = (uint16_t)g * brightPct / 100;
+  b = (uint16_t)b * brightPct / 100;
+  return strip.Color(r, g, b);
+}
+
 void updateLampLed() {
   if (!ledState || ledBrightness <= 0) {
     strip.clear();
     strip.show();
     return;
   }
+  if (ledEffect != "solid" && ledEffect != "ambient") {
+    return; // Driven continuously by updateLedEffects()
+  }
   uint8_t r = 255, g = 255, b = 255;
   parseHexColor(srvStats.lampColor, r, g, b);
-  // Direct linear brightness scaling without Adafruit lossy multiply roll-over
   uint8_t scaledR = (uint16_t)r * ledBrightness / 100;
   uint8_t scaledG = (uint16_t)g * ledBrightness / 100;
   uint8_t scaledB = (uint16_t)b * ledBrightness / 100;
   strip.setBrightness(255);
   for (int i = 0; i < NUM_LEDS; i++) {
     strip.setPixelColor(i, strip.Color(scaledR, scaledG, scaledB));
+  }
+  strip.show();
+}
+
+void updateLedEffects() {
+  if (!ledState || ledBrightness <= 0 || isAlarmActive || ledBlinkMode) return;
+  if (ledEffect == "solid" || ledEffect == "ambient") return;
+
+  unsigned long interval = map(constrain(ledSpeed, 5, 100), 5, 100, 95, 16);
+  if (millis() - lastLedEffectFrame < interval) return;
+  lastLedEffectFrame = millis();
+  ledEffectStep++;
+
+  uint8_t baseR = 255, baseG = 255, baseB = 255;
+  parseHexColor(srvStats.lampColor, baseR, baseG, baseB);
+  strip.setBrightness(255);
+
+  if (ledEffect == "rainbow") {
+    for (int i = 0; i < NUM_LEDS; i++) {
+      strip.setPixelColor(i, wheelColor(((i * 256 / NUM_LEDS) + ledEffectStep * 3) & 255, ledBrightness));
+    }
+  } else if (ledEffect == "breathing") {
+    float wave = (sin(ledEffectStep * 0.14f) + 1.0f) * 0.5f;
+    float factor = (0.08f + wave * 0.92f) * (ledBrightness / 100.0f);
+    uint8_t sr = (uint8_t)(baseR * factor), sg = (uint8_t)(baseG * factor), sb = (uint8_t)(baseB * factor);
+    for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, strip.Color(sr, sg, sb));
+  } else if (ledEffect == "chase") {
+    int head = ledEffectStep % NUM_LEDS;
+    for (int i = 0; i < NUM_LEDS; i++) {
+      int dist = (head - i + NUM_LEDS) % NUM_LEDS;
+      float tail = (dist < 10) ? (1.0f - dist / 10.0f) : 0.0f;
+      float k = tail * (ledBrightness / 100.0f);
+      strip.setPixelColor(i, strip.Color((uint8_t)(baseR * k), (uint8_t)(baseG * k), (uint8_t)(baseB * k)));
+    }
+  } else if (ledEffect == "police") {
+    bool leftRed = ((ledEffectStep / 4) % 2) == 0;
+    uint8_t amp = (uint8_t)(255 * ledBrightness / 100);
+    for (int i = 0; i < NUM_LEDS; i++) {
+      if (i < NUM_LEDS / 2) strip.setPixelColor(i, leftRed ? strip.Color(amp, 0, 0) : 0);
+      else strip.setPixelColor(i, !leftRed ? strip.Color(0, 0, amp) : 0);
+    }
+  } else if (ledEffect == "sparkle") {
+    for (int i = 0; i < NUM_LEDS; i++) {
+      uint32_t c = strip.getPixelColor(i);
+      uint8_t r = ((c >> 16) & 0xFF) * 3 / 4;
+      uint8_t g = ((c >> 8) & 0xFF) * 3 / 4;
+      uint8_t b = (c & 0xFF) * 3 / 4;
+      strip.setPixelColor(i, strip.Color(r, g, b));
+    }
+    int px = random(NUM_LEDS);
+    strip.setPixelColor(px, wheelColor(random(255), ledBrightness));
+  } else if (ledEffect == "fire") {
+    for (int i = 0; i < NUM_LEDS; i++) {
+      int flicker = random(65, 255);
+      uint8_t r = (uint16_t)flicker * ledBrightness / 100;
+      uint8_t g = (uint16_t)(flicker / 4) * ledBrightness / 100;
+      uint8_t b = (uint16_t)(flicker / 20) * ledBrightness / 100;
+      strip.setPixelColor(i, strip.Color(r, g, b));
+    }
+  } else if (ledEffect == "strobe") {
+    bool on = (ledEffectStep % 2) == 0;
+    uint32_t col = on ? wheelColor((ledEffectStep * 17) & 255, ledBrightness) : 0;
+    for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, col);
   }
   strip.show();
 }
@@ -1913,6 +2026,159 @@ void screenNeedsUpdateAfterLanguage() {
   screenNeedUpdate = true;
 }
 
+void resetDinoGame() {
+  dinoGameOver = false;
+  dinoRunning = true;
+  dinoY = 0;
+  dinoVel = 0;
+  dinoDuck = false;
+  dinoObsX = 245;
+  dinoObsW = 12;
+  dinoObsH = 22;
+  dinoScore = 0;
+  dinoLastDrawnY = -1;
+  dinoLastDrawnObsX = -999;
+  dinoLastDrawnScore = -1;
+}
+
+void drawGameView(bool viewChanged) {
+  const int GROUND_Y = 250;
+  const int DINO_X = 36;
+  const int DINO_W = 18;
+  const int DINO_H = 22;
+
+  if (viewChanged) {
+    resetDinoGame();
+    tft->fillRect(0, 26, 240, 268, COL_BG);
+    printCenteredText(tr("DINO RUNNER (PLAY = NHẢY)", "DINO RUNNER (PLAY = JUMP)"), 32, 1, COL_CYAN, COL_BG);
+    tft->drawFastHLine(10, GROUND_Y, 220, COL_BORDER);
+    printCenteredText(tr("Giữ << để đổi màn hình", "Hold << to exit game"), 272, 1, COL_MUTED, COL_BG);
+  }
+
+  if (dinoGameOver) {
+    if (dinoLastDrawnScore != -2) {
+      dinoLastDrawnScore = -2;
+      tft->fillRoundRect(30, 100, 180, 76, 8, COL_CARD);
+      tft->drawRoundRect(30, 100, 180, 76, 8, 0xF800);
+      printCenteredText("GAME OVER!", 112, 2, 0xF800, COL_CARD);
+      printCenteredText("Score: " + String(dinoScore) + "  Hi: " + String(dinoHighScore), 138, 1, COL_WHITE, COL_CARD);
+      printCenteredText(tr("Bấm PLAY để chơi lại", "Press PLAY to retry"), 156, 1, COL_CYAN, COL_CARD);
+    }
+    return;
+  }
+
+  // Physics step (~30fps)
+  dinoY += dinoVel;
+  if (dinoY < 0) {
+    dinoVel += dinoDuck ? 1.9f : 0.92f;
+    if (dinoY >= 0) {
+      dinoY = 0;
+      dinoVel = 0;
+    }
+  }
+  int speedPx = 5 + min(7, dinoScore / 150);
+  dinoObsX -= speedPx;
+  if (dinoObsX + dinoObsW < 8) {
+    dinoObsX = 240 + random(0, 55);
+    dinoObsW = random(10, 18);
+    dinoObsH = random(18, 32);
+    dinoScore += 10;
+    if (dinoScore > dinoHighScore) {
+      dinoHighScore = dinoScore;
+      prefs.putInt("game_hi", dinoHighScore);
+    }
+  } else {
+    dinoScore++;
+    if (dinoScore > dinoHighScore) {
+      dinoHighScore = dinoScore;
+    }
+  }
+
+  // Erase previous dino & obstacle
+  if (dinoLastDrawnY >= 0) {
+    int oldTop = GROUND_Y - DINO_H - (int)dinoLastDrawnY;
+    tft->fillRect(DINO_X - 2, oldTop - 2, DINO_W + 6, DINO_H + 4, COL_BG);
+  }
+  if (dinoLastDrawnObsX > -50) {
+    tft->fillRect(dinoLastDrawnObsX - 2, GROUND_Y - 36, dinoObsW + 6, 35, COL_BG);
+  }
+
+  // Draw Dino
+  int hNow = (dinoDuck && dinoY >= 0) ? 13 : DINO_H;
+  int topNow = GROUND_Y - hNow - (int)dinoY;
+  tft->fillRoundRect(DINO_X, topNow, DINO_W, hNow, 3, COL_WHITE);
+  tft->fillRect(DINO_X + 12, topNow + 3, 3, 3, COL_BG); // eye
+  dinoLastDrawnY = dinoY;
+
+  // Draw Cactus
+  tft->fillRoundRect(dinoObsX, GROUND_Y - dinoObsH, dinoObsW, dinoObsH, 2, COL_GREEN);
+  dinoLastDrawnObsX = dinoObsX;
+
+  // Collision check
+  if (dinoObsX < DINO_X + DINO_W - 3 && dinoObsX + dinoObsW > DINO_X + 3) {
+    if (topNow + hNow > GROUND_Y - dinoObsH + 2) {
+      dinoGameOver = true;
+      prefs.putInt("game_hi", dinoHighScore);
+      if (buzzerEnabled) triggerBuzz(120, false);
+    }
+  }
+
+  // Score header refresh
+  if (dinoScore / 5 != dinoLastDrawnScore) {
+    dinoLastDrawnScore = dinoScore / 5;
+    tft->fillRect(14, 52, 212, 16, COL_BG);
+    drawUtf8Text(16, 54, "SCORE: " + String(dinoScore) + "   HI: " + String(dinoHighScore), 1, COL_AMBER, COL_BG, 210);
+  }
+}
+
+void drawWakeupCheckView(bool viewChanged) {
+  if (viewChanged) {
+    tft->fillRect(0, 26, 240, 268, COL_BG);
+    tft->fillRoundRect(16, 62, 208, 170, 12, COL_CARD);
+    tft->drawRoundRect(16, 62, 208, 170, 12, COL_AMBER);
+    printCenteredText(tr("BẠN CÒN THỨC CHỨ?", "ARE YOU AWAKE?"), 82, 2, COL_AMBER, COL_CARD);
+    printCenteredText(tr("Bấm nút BẤT KỲ để xác nhận", "Press ANY button to confirm"), 130, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Nếu không báo thức sẽ reo lại!", "Or alarm will ring again!"), 155, 1, COL_MUTED, COL_CARD);
+  }
+  long rem = (wakeupCheckDeadlineMs > millis()) ? (long)((wakeupCheckDeadlineMs - millis()) / 1000) : 0;
+  tft->fillRect(70, 185, 100, 30, COL_CARD);
+  printCenteredText(String(rem) + "s", 190, 2, COL_CYAN, COL_CARD);
+}
+
+void performOtaUpdate(const String& url, const String& ver) {
+  if (!url.length() || WiFi.status() != WL_CONNECTED) return;
+  addLog("OTA", "Starting OTA -> " + ver + " (" + url + ")");
+  if (mqtt.connected()) {
+    mqtt.publish("deskflow/status_update", "{\"action\":\"ota_progress\",\"status\":\"downloading\"}");
+  }
+  if (tft) {
+    tft->fillScreen(COL_BG);
+    printCenteredText("DESKFLOW OTA", 90, 2, COL_CYAN, COL_BG);
+    printCenteredText("Updating v" + ver + "...", 135, 1, COL_WHITE, COL_BG);
+    printCenteredText("Do NOT unplug power!", 165, 1, COL_AMBER, COL_BG);
+  }
+  WiFiClientSecure secClient;
+  secClient.setInsecure();
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  t_httpUpdate_return ret = httpUpdate.update(secClient, url);
+  if (ret == HTTP_UPDATE_FAILED) {
+    String err = httpUpdate.getLastErrorString();
+    addLog("OTA", "Failed: " + err);
+    if (mqtt.connected()) {
+      String p = "{\"action\":\"ota_progress\",\"status\":\"failed:" + err + "\"}";
+      mqtt.publish("deskflow/status_update", p.c_str());
+    }
+    if (tft) {
+      tft->fillScreen(COL_BG);
+      printCenteredText("OTA FAILED", 120, 2, 0xF800, COL_BG);
+      printCenteredText(err.substring(0, 34), 155, 1, COL_WHITE, COL_BG);
+      delay(2500);
+      lastRenderedView = "";
+      screenNeedUpdate = true;
+    }
+  }
+}
+
 void drawPhysicalScreen() {
   if (!tft) return;
 
@@ -2313,6 +2579,14 @@ void drawPhysicalScreen() {
   // 12. VIEW GOOGLE CALENDAR (DEDICATED)
   else if (srvStats.activeView == "calendar") {
     drawCalendarView(viewChanged);
+  }
+  // 13. VIEW DINO RUNNER MINIGAME
+  else if (srvStats.activeView == "game") {
+    drawGameView(viewChanged);
+  }
+  // 14. VIEW WAKEUP VERIFICATION (ANTI-OVERSLEEP)
+  else if (srvStats.activeView == "wakeup_check") {
+    drawWakeupCheckView(viewChanged);
   }
 }
 
@@ -2753,6 +3027,26 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       screenNeedUpdate = true;
       addLog("LED", "Lamp turned off");
     }
+    else if ((topicStr == "deskflow/display" || topicStr == "deskflow/hardware") && action == "led_effect") {
+      String eff = doc["effect"] | "solid";
+      eff.toLowerCase();
+      ledEffect = eff;
+      prefs.putString("led_eff", ledEffect);
+      if (doc.containsKey("speed")) {
+        ledSpeed = constrain((int)doc["speed"], 5, 100);
+        prefs.putInt("led_spd", ledSpeed);
+      }
+      ledState = true;
+      ledBlinkMode = false;
+      prefs.putBool("led_state", true);
+      updateLampLed();
+      addLog("LED", "Strip effect -> " + ledEffect + " (spd=" + String(ledSpeed) + ")");
+    }
+    else if (topicStr == "deskflow/display" && action == "ota_update") {
+      pendingOtaUrl = doc["url"] | "";
+      pendingOtaVersion = doc["version"] | DESKFLOW_FW_VERSION;
+      addLog("OTA", "Queued OTA v" + pendingOtaVersion);
+    }
     else if ((topicStr == "deskflow/display" || topicStr == "deskflow/hardware") && (action == "dim" || action == "lamp_dim")) {
       int b = -1;
       if (doc.containsKey("led_bright")) b = doc["led_bright"].as<int>();
@@ -2844,6 +3138,22 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       srvStats.activeView = "math_alarm";
       screenNeedUpdate = true;
       addLog("ALARM", ">>> MATH ALARM START: KEU LIEN TUC CHO TOI KHI GIAI!");
+    } else if (action == "math_alarm_wakeup_check") {
+      isWakeupCheckActive = true;
+      int toSec = doc["timeout_sec"] | 45;
+      wakeupCheckDeadlineMs = millis() + (unsigned long)toSec * 1000UL;
+      srvStats.activeView = "wakeup_check";
+      lastRenderedView = "";
+      screenNeedUpdate = true;
+      triggerBuzz(120, true);
+      addLog("ALARM", "Wakeup anti-oversleep check triggered (" + String(toSec) + "s)");
+    } else if (action == "wakeup_confirmed") {
+      isWakeupCheckActive = false;
+      if (srvStats.activeView == "wakeup_check") {
+        srvStats.activeView = "main";
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+      }
     } else if (action == "morse_play") {
       String pattern = doc["pattern"] | "";
       unsigned int unitMs = doc["unit_ms"] | 60;
@@ -2941,6 +3251,7 @@ void publishDeviceStatus() {
   doc["battery_pct"] = pct;
   doc["voltage"] = serialized(String(v, 2));
   doc["wifi_rssi"] = WiFi.RSSI();
+  doc["fw_version"] = DESKFLOW_FW_VERSION;
   // Report the screen currently shown so every client can stay in sync.
   doc["active_view"] = srvStats.activeView;
   doc["language"] = stationEnglish ? "en" : "vi";
@@ -3595,6 +3906,8 @@ void cycleNextView() {
     srvStats.activeView = "focus";
   } else if (srvStats.activeView == "focus") {
     srvStats.activeView = "clock";
+  } else if (srvStats.activeView == "clock") {
+    srvStats.activeView = "game";
   } else {
     srvStats.activeView = "main";
   }
@@ -3838,6 +4151,57 @@ void handleHardwareButtons() {
   bool curNext = digitalRead(BTN_NEXT);
   bool curPrev = digitalRead(BTN_PREV);
 
+  // Quick physical acknowledge for Anti-Oversleep Wakeup Check
+  if (isWakeupCheckActive && (curPlay == LOW || curNext == LOW || curPrev == LOW)) {
+    isWakeupCheckActive = false;
+    triggerBuzz(60, true);
+    if (mqtt.connected()) {
+      mqtt.publish("deskflow/status_update", "{\"action\":\"confirm_awake\"}");
+    }
+    srvStats.activeView = "main";
+    lastRenderedView = "";
+    screenNeedUpdate = true;
+    addLog("ALARM", "User pressed button -> Wakeup confirmed!");
+    delay(220);
+    return;
+  }
+
+  // Minigame instant jump/duck button controls (short press; long hold PREV still opens view menu)
+  if (!inSettingsMenu && !inViewMenu && srvStats.activeView == "game") {
+    static bool gamePrevWasLow = false;
+    static unsigned long gamePrevDownAt = 0;
+    static bool gamePrevHoldSent = false;
+    if (curPlay == LOW || curNext == LOW) {
+      if (dinoGameOver) {
+        resetDinoGame();
+        screenNeedUpdate = true;
+      } else if (dinoY >= -0.5f) {
+        dinoVel = -9.8f;
+        if (buzzerEnabled) triggerBuzz(20, false);
+      }
+    }
+    if (curPrev == LOW) {
+      dinoDuck = true;
+      if (!gamePrevWasLow) {
+        gamePrevWasLow = true;
+        gamePrevDownAt = millis();
+        gamePrevHoldSent = false;
+      } else if (!gamePrevHoldSent && millis() - gamePrevDownAt >= 700) {
+        gamePrevHoldSent = true;
+        triggerBuzz(80, false);
+        inViewMenu = true;
+        viewMenuIndex = VIEW_MENU_COUNT - 1;
+        viewMenuPage = viewMenuIndex / VIEW_ROWS_PER_PAGE;
+        lastRenderedView = "";
+        screenNeedUpdate = true;
+      }
+    } else {
+      dinoDuck = false;
+      gamePrevWasLow = false;
+    }
+    if (!inViewMenu) return;
+  }
+
   // 1. PLAY BUTTON (Short = Play/Pause / Select, Long >= 700ms = Cycle View)
   if (curPlay == LOW && !playPressed) {
     playPressed = true;
@@ -3860,7 +4224,7 @@ void handleHardwareButtons() {
         handleMenuPlay();
         addLog("BUTTON", "PLAY hold: activate selected settings item");
       } else {
-        triggerBuzz(80);
+        triggerBuzz(80, false);
         cycleNextView();
         if (srvStats.activeView != "focus") {
           sendButtonAction("hold_play");
@@ -4078,6 +4442,9 @@ void setup() {
   buzzerEnabled = prefs.getBool("buzz_en", true);
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
   srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
+  ledEffect = prefs.getString("led_eff", "solid");
+  ledSpeed = prefs.getInt("led_spd", 50);
+  dinoHighScore = prefs.getInt("game_hi", 0);
   ledPresetIndex = prefs.getInt("led_color_idx", 0);
   if (ledPresetIndex < 0 || ledPresetIndex >= LED_PRESET_COUNT) ledPresetIndex = 0;
   for (int i = 0; i < LED_PRESET_COUNT; i++) {
@@ -4184,6 +4551,15 @@ void loop() {
       ledState = !ledState;
       updateLampLed();
     }
+  } else {
+    updateLedEffects();
+  }
+
+  if (pendingOtaUrl.length() > 0) {
+    String u = pendingOtaUrl;
+    String v = pendingOtaVersion;
+    pendingOtaUrl = "";
+    performOtaUpdate(u, v);
   }
 
   // Recalculate palette immediately when valid NTP time becomes available
@@ -4204,7 +4580,7 @@ void loop() {
     updateThemePalette();
   }
 
-  unsigned long refreshThreshold = isClockAnimationActive() ? 50 : 1000;
+  unsigned long refreshThreshold = (srvStats.activeView == "game") ? 33 : (isClockAnimationActive() ? 50 : 1000);
 
   if (inSettingsMenu || inViewMenu) {
     // While a menu is open, ignore background repaint requests and only redraw
