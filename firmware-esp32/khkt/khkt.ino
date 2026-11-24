@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.2.0"
+#define DESKFLOW_FW_VERSION "2.2.1"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -441,7 +441,7 @@ void updateLedEffects() {
   if (ledEffect == "rainbow" || isContinuousWave) {
     for (int i = 0; i < NUM_LEDS; i++) {
       uint8_t rr, rg, rb;
-      getPixelRgbForIndex(i, ledEffectStep * 3, rr, rg, rb);
+      getPixelRgbForIndex(i, ledEffectStep * 5, rr, rg, rb);
       strip.setPixelColor(i, strip.Color((uint16_t)rr * ledBrightness / 100, (uint16_t)rg * ledBrightness / 100, (uint16_t)rb * ledBrightness / 100));
     }
   } else if (ledEffect == "breathing") {
@@ -2172,7 +2172,7 @@ void resetActiveGame() {
   flappyY = 140;
   flappyVel = 0;
   flappyPipeX = 240;
-  flappyGapY = random(95, 200);
+  flappyGapY = random(108, 215);
   flappyLastY = 140;
   flappyLastPipeX = -999;
 
@@ -2309,16 +2309,29 @@ void drawGameView(bool viewChanged) {
       if (gameScore > gameHighScores[1]) gameHighScores[1] = gameScore;
     }
 
-    // Erase previous bird & pipe strips
-    tft->fillRect(BIRD_X - 7, (int)flappyLastY - 7, 16, 16, COL_BG);
-    if (flappyLastPipeX > 4 && flappyLastPipeX < 244) {
-      tft->fillRect(max(10, flappyLastPipeX), TOP_Y, PIPE_W + 6, BOT_Y - TOP_Y, COL_BG);
+    // Erase previous bird & only uncovered trailing pipe strip (zero flicker, zero ghost pipe)
+    tft->fillRect(BIRD_X - 7, max(TOP_Y, (int)flappyLastY - 7), 16, 16, COL_BG);
+    if (flappyLastPipeX > -PIPE_W && flappyLastPipeX < 244) {
+      int oldLeft = max(10, flappyLastPipeX);
+      int oldRight = min(240, flappyLastPipeX + PIPE_W);
+      if (flappyPipeX > flappyLastPipeX) {
+        // Pipe wrapped to right edge: clear entire previous pipe cleanly
+        if (oldRight > oldLeft) {
+          tft->fillRect(oldLeft, TOP_Y, oldRight - oldLeft, BOT_Y - TOP_Y, COL_BG);
+        }
+      } else {
+        // Pipe slid left: erase newly uncovered columns on its right edge
+        int newRight = max(10, min(240, flappyPipeX + PIPE_W));
+        if (oldRight > newRight) {
+          tft->fillRect(newRight, TOP_Y, oldRight - newRight, BOT_Y - TOP_Y, COL_BG);
+        }
+      }
     }
 
     // Draw pipe
-    if (flappyPipeX < 236) {
+    if (flappyPipeX < 240 && flappyPipeX + PIPE_W > 10) {
       int px = max(10, flappyPipeX);
-      int pw = min(PIPE_W, 240 - px);
+      int pw = min(flappyPipeX + PIPE_W, 240) - px;
       if (pw > 0) {
         int upperH = (flappyGapY - GAP_H / 2) - TOP_Y;
         int lowerY = flappyGapY + GAP_H / 2;
@@ -3272,19 +3285,19 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       srvStats.lampColor = hexCol;
       prefs.putString("lamp_col", hexCol);
       ledRgbMode = false;
-      ledGradientMode = false;
+      bool wantGrad = doc["gradient"] | false;
+      ledGradientMode = wantGrad;
       prefs.putBool("led_rgb", false);
-      prefs.putBool("led_grad", false);
+      prefs.putBool("led_grad", wantGrad);
       if (doc.containsKey("hex2")) {
         srvStats.lampColor2 = doc["hex2"].as<String>();
         prefs.putString("lamp_col2", srvStats.lampColor2);
-        ledGradientMode = true;
-        prefs.putBool("led_grad", true);
       }
       for (int i = 0; i < LED_PRESET_COUNT; i++) {
         if (hexCol.equalsIgnoreCase(LED_PRESETS[i])) { ledPresetIndex = i; break; }
       }
       ledState = true;
+      ledBlinkMode = false;
       prefs.putBool("led_state", true);
       updateLampLed();
       screenNeedUpdate = true;
@@ -3309,11 +3322,12 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
         ledEffect = eff;
         if (doc.containsKey("rgb")) {
           ledRgbMode = doc["rgb"].as<bool>();
-          if (ledRgbMode) ledGradientMode = false;
         }
         if (doc.containsKey("gradient")) {
           ledGradientMode = doc["gradient"].as<bool>();
-          if (ledGradientMode) ledRgbMode = false;
+        }
+        if (ledRgbMode) {
+          ledGradientMode = false;
         }
         if (doc.containsKey("hex2")) {
           srvStats.lampColor2 = doc["hex2"].as<String>();
