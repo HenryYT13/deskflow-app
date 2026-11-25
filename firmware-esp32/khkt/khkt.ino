@@ -1383,6 +1383,8 @@ String getAmPmSuffix() {
   return (timeinfo.tm_hour >= 12) ? "PM" : "AM";
 }
 
+extern String lastMenuSignature;
+
 void drawSettingsMenu() {
   static int lastDrawnState = -1;
   static int lastDrawnPage = -1;
