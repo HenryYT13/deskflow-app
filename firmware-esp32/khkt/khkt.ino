@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.1"
+#define DESKFLOW_FW_VERSION "2.4.2"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -454,7 +454,7 @@ void updateLedEffects() {
   bool isContinuousWave = (ledEffect == "solid" && (ledRgbMode || ledGradientMode));
   if (!isContinuousWave && (ledEffect == "solid" || ledEffect == "ambient")) return;
 
-  unsigned long interval = (ledEffect == "clock") ? 250 : map(constrain(ledSpeed, 5, 100), 5, 100, 95, 16);
+  unsigned long interval = (ledEffect == "clock") ? 16 : map(constrain(ledSpeed, 5, 100), 5, 100, 60, 16);
   if (millis() - lastLedEffectFrame < interval) return;
   lastLedEffectFrame = millis();
   ledEffectStep++;
@@ -4300,32 +4300,47 @@ void triggerPairCodeRequestFromMenu() {
 }
 
 void triggerSelfOtaFromMenu() {
-  if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (tft) {
+      tft->fillScreen(COL_BG);
+      printCenteredText("DESKFLOW OTA", 95, 2, 0xF800, COL_BG);
+      printCenteredText(tr("Chưa kết nối Wi-Fi!", "Wi-Fi not connected!"), 135, 1, COL_WHITE, COL_BG);
+      delay(1800);
+      lastMenuSignature = "";
+      screenNeedUpdate = true;
+    }
+    return;
+  }
   if (tft) {
     tft->fillScreen(COL_BG);
     printCenteredText("DESKFLOW OTA", 95, 2, COL_CYAN, COL_BG);
-    printCenteredText(tr("Đang kiểm tra bản mới...", "Checking latest firmware..."), 135, 1, COL_WHITE, COL_BG);
+    printCenteredText(tr("Đang kéo bản mới từ Server...", "Checking & pulling firmware..."), 135, 1, COL_WHITE, COL_BG);
   }
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/ota-trigger")) {
-    http.setTimeout(15000);
-    int code = http.POST("{}");
-    if (code == 200) {
-      DynamicJsonDocument doc(512);
-      if (deserializeJson(doc, http.getString()) == DeserializationError::Ok) {
-        String ver = doc["version"] | "latest";
-        String binUrl = doc["bin_url"] | "https://df.api.thetechdude.io.vn/api/app/control/ota/firmware.bin";
-        http.end();
-        performOtaUpdate(binUrl, ver);
-        return;
+  // Free MQTT TLS socket RAM before starting HTTPS OTA
+  if (mqtt.connected()) mqtt.disconnect();
+  delay(80);
+  String ver = "latest";
+  String binUrl = "https://df.api.thetechdude.io.vn/api/app/control/ota/firmware.bin";
+  {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/ota-trigger")) {
+      http.setTimeout(25000);
+      int code = http.POST("{}");
+      if (code == 200) {
+        DynamicJsonDocument doc(512);
+        if (deserializeJson(doc, http.getString()) == DeserializationError::Ok) {
+          ver = doc["version"] | "latest";
+          binUrl = doc["bin_url"] | "https://df.api.thetechdude.io.vn/api/app/control/ota/firmware.bin";
+        }
       }
+      http.end();
     }
-    http.end();
   }
-  // Direct fallback if trigger failed
-  performOtaUpdate("https://df.api.thetechdude.io.vn/api/app/control/ota/firmware.bin", "latest");
+  performOtaUpdate(binUrl, ver);
+  lastMenuSignature = "";
+  screenNeedUpdate = true;
 }
 
 void handleMenuPlay() {
@@ -5004,9 +5019,11 @@ void loop() {
     updateThemePalette();
   }
 
-  unsigned long refreshThreshold = (srvStats.activeView == "game" || srvStats.activeView == "matrix" || srvStats.activeView == "vinyl")
-                                     ? 33
-                                     : (isClockAnimationActive() ? 40 : 1000);
+  unsigned long refreshThreshold = (srvStats.activeView == "game" || srvStats.activeView == "matrix" ||
+                                    srvStats.activeView == "vinyl" || srvStats.activeView == "analog" ||
+                                    srvStats.activeView == "stopwatch" || isClockAnimationActive())
+                                     ? 16
+                                     : 1000;
 
   if (pendingScreenshotCapture) {
     pendingScreenshotCapture = false;
