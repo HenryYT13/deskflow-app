@@ -187,7 +187,7 @@ public final class DeskFlowApiClient: ObservableObject {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         req.setValue("no-cache", forHTTPHeaderField: "Pragma")
-        req.setValue("DeskFlow-macOS-SwiftUI/2.4.2", forHTTPHeaderField: "User-Agent")
+        req.setValue("DeskFlow-macOS-SwiftUI/2.4.3", forHTTPHeaderField: "User-Agent")
         let hasAuth = authenticated && !(deviceToken ?? "").isEmpty
         if hasAuth, let token = deviceToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -271,7 +271,7 @@ public final class DeskFlowApiClient: ObservableObject {
                     "code": clean,
                     "device_name": deviceName,
                     "platform": "macos",
-                    "client_version": "2.4.2"
+                    "client_version": "2.4.3"
                 ],
                 authenticated: false
             )

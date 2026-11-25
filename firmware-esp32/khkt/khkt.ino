@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.2"
+#define DESKFLOW_FW_VERSION "2.4.3"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -1384,12 +1384,18 @@ String getAmPmSuffix() {
 }
 
 void drawSettingsMenu() {
-  tft->fillScreen(COL_BG);
-
-  // Header Box
-  tft->fillRoundRect(10, 8, 220, 32, 6, COL_CARD);
-  tft->drawRoundRect(10, 8, 220, 32, 6, COL_CYAN);
-  printCenteredText(tr("CÀI ĐẶT PHẦN CỨNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
+  static int lastDrawnState = -1;
+  static int lastDrawnPage = -1;
+  bool fullClear = (lastMenuSignature.length() == 0) || (lastDrawnState != (int)menuState) || (lastDrawnPage != menuPage);
+  lastDrawnState = (int)menuState;
+  lastDrawnPage = menuPage;
+  if (fullClear) {
+    tft->fillScreen(COL_BG);
+    // Header Box
+    tft->fillRoundRect(10, 8, 220, 32, 6, COL_CARD);
+    tft->drawRoundRect(10, 8, 220, 32, 6, COL_CYAN);
+    printCenteredText(tr("CÀI ĐẶT PHẦN CỨNG", "HARDWARE SETTINGS"), 18, 1, COL_CYAN, COL_CARD);
+  }
 
   if (menuState == MENU_MAIN) {
     // 4 rows per page, large enough to read; PREV/NEXT past the edge pages.
@@ -1671,18 +1677,20 @@ void drawSettingsMenu() {
 }
 
 void drawViewMenu() {
-  // Always repaint: the list is paginated, so stale rows from the previous page
-  // must be cleared even when only the page changed.
-  tft->fillScreen(COL_BG);
-
-  // Header Box
-  tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
-  tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
-  printCenteredText(tr("DANH SÁCH MÀN HÌNH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
-
+  static int lastDrawnViewPage = -1;
+  static int lastDrawnViewIdx = -1;
   int pageCount = (VIEW_MENU_COUNT + VIEW_ROWS_PER_PAGE - 1) / VIEW_ROWS_PER_PAGE;
   if (viewMenuPage >= pageCount) viewMenuPage = pageCount - 1;
   if (viewMenuPage < 0) viewMenuPage = 0;
+
+  bool fullClear = (lastMenuSignature.length() == 0) || (lastDrawnViewPage != viewMenuPage);
+  if (fullClear) {
+    tft->fillScreen(COL_BG);
+    // Header Box
+    tft->fillRoundRect(10, 8, 220, 30, 6, COL_CARD);
+    tft->drawRoundRect(10, 8, 220, 30, 6, COL_CYAN);
+    printCenteredText(tr("DANH SÁCH MÀN HÌNH", "SCREEN LIST"), 16, 1, COL_CYAN, COL_CARD);
+  }
   int firstItem = viewMenuPage * VIEW_ROWS_PER_PAGE;
 
   int startY = 46;
@@ -1694,6 +1702,7 @@ void drawViewMenu() {
   for (int rowIdx = 0; rowIdx < VIEW_ROWS_PER_PAGE; rowIdx++) {
     int i = firstItem + rowIdx;
     if (i >= VIEW_MENU_COUNT) break;
+    if (!fullClear && i != viewMenuIndex && i != lastDrawnViewIdx) continue;
     int col = rowIdx % 2;
     int row = rowIdx / 2;
     int x = 8 + col * (tileW + gapX);
@@ -1735,10 +1744,14 @@ void drawViewMenu() {
     }
   }
 
-  tft->drawFastHLine(10, 288, 220, COL_BORDER);
-  String pageStr = String(viewMenuPage + 1) + "/" + String(pageCount) + "  " +
-                   tr("[Prev/Next]: Tìm  [Play]: Chọn", "[Prev/Next]: Browse  [Play]: Select");
-  printCenteredText(pageStr, 300, 1, COL_MUTED, COL_BG);
+  if (fullClear) {
+    tft->drawFastHLine(10, 288, 220, COL_BORDER);
+    String pageStr = String(viewMenuPage + 1) + "/" + String(pageCount) + "  " +
+                     tr("[Prev/Next]: Tìm  [Play]: Chọn", "[Prev/Next]: Browse  [Play]: Select");
+    printCenteredText(pageStr, 300, 1, COL_MUTED, COL_BG);
+  }
+  lastDrawnViewPage = viewMenuPage;
+  lastDrawnViewIdx = viewMenuIndex;
 }
 
 void drawNotesView() {

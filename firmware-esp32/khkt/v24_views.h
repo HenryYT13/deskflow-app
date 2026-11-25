@@ -34,12 +34,8 @@ inline void flashLedEvent(uint32_t color, int times) {
   }
 }
 
-// #53 View transition effect
+// #53 View transition effect (flicker-free)
 inline void playSlideTransition() {
-  for (int x = 0; x < 240; x += 48) {
-    tft->fillRect(x, 0, 48, 320, COL_BG);
-    delay(8);
-  }
 }
 
 // #3 Analog Clock 60fps smooth sweep
@@ -73,7 +69,6 @@ inline void drawAnalogClockView() {
 inline void drawLunarYearView() {
   struct tm ti;
   if (!getLocalTime(&ti)) return;
-  tft->fillScreen(COL_BG);
   printCenteredText(tr("LỊCH ÂM & NĂM 2026", "LUNAR & YEAR PROGRESS"), 18, 1, COL_CYAN, COL_BG);
 
   // Approximate Lunar day offset for quick glance + Year progress (#33)
@@ -100,7 +95,6 @@ inline void drawLunarYearView() {
 
 // #30 Stopwatch view
 inline void drawStopwatchView() {
-  tft->fillScreen(COL_BG);
   printCenteredText(tr("BẤM GIỜ THỂ THAO (#30)", "STOPWATCH (#30)"), 18, 1, COL_CYAN, COL_BG);
   unsigned long cur = swRunning ? (swElapsedMs + (millis() - swStartMs)) : swElapsedMs;
   unsigned long sec = cur / 1000;
