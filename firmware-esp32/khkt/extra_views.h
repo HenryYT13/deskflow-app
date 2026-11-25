@@ -199,26 +199,28 @@ inline void drawGitHubView(bool viewChanged) {
   printCenteredText("Synced from GitHub API", 268, 1, COL_MUTED, COL_BG);
 }
 
-// (#75) Half-Res Offscreen Screenshot Capture (120x160 RGB565 RLE -> HTTPS Upload)
-class HalfCaptureGFX : public Adafruit_GFX {
+// (#75) Full-Res 240x320 Strip Offscreen Screenshot Capture (2 passes x 240x160 -> RGB565 RLE -> HTTPS Upload)
+class FullStripCaptureGFX : public Adafruit_GFX {
 public:
   uint16_t* buf;
-  HalfCaptureGFX(uint16_t* b) : Adafruit_GFX(240, 320), buf(b) {}
+  int yOffset;
+  int stripH;
+  FullStripCaptureGFX(uint16_t* b, int yOff, int h) : Adafruit_GFX(240, 320), buf(b), yOffset(yOff), stripH(h) {}
   void drawPixel(int16_t x, int16_t y, uint16_t color) override {
-    int hx = x >> 1, hy = y >> 1;
-    if (hx >= 0 && hx < 120 && hy >= 0 && hy < 160) buf[hy * 120 + hx] = color;
+    int ly = y - yOffset;
+    if (x >= 0 && x < 240 && ly >= 0 && ly < stripH) buf[ly * 240 + x] = color;
   }
   void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
-    int x0 = max(0, x >> 1), y0 = max(0, y >> 1);
-    int x1 = min(119, (x + w - 1) >> 1), y1 = min(159, (y + h - 1) >> 1);
+    int x0 = max(0, (int)x), y0 = max(0, (int)y - yOffset);
+    int x1 = min(239, (int)x + w - 1), y1 = min(stripH - 1, (int)y + h - 1 - yOffset);
     for (int yy = y0; yy <= y1; yy++)
       for (int xx = x0; xx <= x1; xx++)
-        buf[yy * 120 + xx] = color;
+        buf[yy * 240 + xx] = color;
   }
   void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) override { fillRect(x, y, w, 1, color); }
   void drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) override { fillRect(x, y, 1, h, color); }
   void fillScreen(uint16_t color) override {
-    for (int i = 0; i < 120 * 160; i++) buf[i] = color;
+    for (int i = 0; i < 240 * stripH; i++) buf[i] = color;
   }
 };
 
@@ -228,41 +230,46 @@ extern void addLog(String tag, String msg);
 
 inline void captureAndUploadScreenshot() {
   if (WiFi.status() != WL_CONNECTED || !hwTft) return;
-  uint16_t* fb = (uint16_t*)calloc(120 * 160, sizeof(uint16_t));
-  if (!fb) { addLog("SHOT", "Out of heap for capture"); return; }
+  const int STRIP_H = 160;
+  uint16_t* fb = (uint16_t*)calloc(240 * STRIP_H, sizeof(uint16_t));
+  if (!fb) { addLog("SHOT", "Out of heap for 240x320 capture"); return; }
 
-  HalfCaptureGFX cap(fb);
+  std::vector<uint8_t> rle;
+  rle.reserve(16384);
+
   Adafruit_GFX* saved = tft;
   String savedLastView = lastRenderedView;
-  tft = &cap;
-  lastRenderedView = "";
-  drawPhysicalScreen();
-  tft = saved;
-  lastRenderedView = savedLastView;
 
-  // Simple RGB565 RLE stream [count_1_255, hi, lo]
-  std::vector<uint8_t> rle;
-  rle.reserve(8192);
-  int total = 120 * 160;
-  int i = 0;
-  while (i < total) {
-    uint16_t px = fb[i];
-    uint8_t cnt = 1;
-    while (i + cnt < total && cnt < 250 && fb[i + cnt] == px) cnt++;
-    rle.push_back(cnt);
-    rle.push_back((uint8_t)(px >> 8));
-    rle.push_back((uint8_t)(px & 0xFF));
-    i += cnt;
+  for (int pass = 0; pass < 2; pass++) {
+    memset(fb, 0, 240 * STRIP_H * sizeof(uint16_t));
+    FullStripCaptureGFX cap(fb, pass * STRIP_H, STRIP_H);
+    tft = &cap;
+    lastRenderedView = "";
+    drawPhysicalScreen();
+    tft = saved;
+
+    int total = 240 * STRIP_H;
+    int i = 0;
+    while (i < total) {
+      uint16_t px = fb[i];
+      uint8_t cnt = 1;
+      while (i + cnt < total && cnt < 250 && fb[i + cnt] == px) cnt++;
+      rle.push_back(cnt);
+      rle.push_back((uint8_t)(px >> 8));
+      rle.push_back((uint8_t)(px & 0xFF));
+      i += cnt;
+    }
   }
+  lastRenderedView = savedLastView;
   free(fb);
 
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
-  if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/screenshot?w=120&h=160")) {
+  if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/screenshot?w=240&h=320")) {
     http.addHeader("Content-Type", "application/octet-stream");
     int code = http.POST(rle.data(), rle.size());
-    addLog("SHOT", "Uploaded " + String(rle.size()) + "B screenshot -> HTTP " + String(code));
+    addLog("SHOT", "Uploaded " + String(rle.size()) + "B 240x320 -> HTTP " + String(code));
     http.end();
   }
 }

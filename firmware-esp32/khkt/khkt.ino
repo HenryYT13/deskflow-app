@@ -1682,9 +1682,9 @@ void drawViewMenu() {
   int firstItem = viewMenuPage * VIEW_ROWS_PER_PAGE;
 
   int startY = 46;
-  int tileW = 104;
+  int tileW = 108;
   int tileH = 74;
-  int gapX = 12;
+  int gapX = 8;
   int gapY = 8;
 
   for (int rowIdx = 0; rowIdx < VIEW_ROWS_PER_PAGE; rowIdx++) {
@@ -1692,7 +1692,7 @@ void drawViewMenu() {
     if (i >= VIEW_MENU_COUNT) break;
     int col = rowIdx % 2;
     int row = rowIdx / 2;
-    int x = 10 + col * (tileW + gapX);
+    int x = 8 + col * (tileW + gapX);
     int y = startY + row * (tileH + gapY);
     bool selected = (viewMenuIndex == i);
     bool isCurrent = (srvStats.activeView == VIEW_MENU_ITEMS[i].id);
@@ -1705,11 +1705,29 @@ void drawViewMenu() {
     tft->drawRoundRect(x, y, tileW, tileH, 8, border);
 
     String idxBadge = String(i + 1) + (isCurrent ? " *" : "");
-    drawUtf8Text(x + 8, y + 8, idxBadge, 1, selected ? COL_BG : COL_CYAN, bg, tileW - 14);
-    drawUtf8Text(x + 8, y + 28, viewMenuTitle(i), 1, textCol, bg, tileW - 14);
+    drawUtf8Text(x + 8, y + 7, idxBadge, 1, selected ? COL_BG : COL_CYAN, bg, tileW - 14);
+
+    // Strip redundant "N. " prefix since tile already displays idxBadge at top-left,
+    // then word-wrap onto 2 lines so no title gets truncated with "..."
+    String title = viewMenuTitle(i);
+    int dotPos = title.indexOf(". ");
+    if (dotPos >= 0 && dotPos <= 3) title = title.substring(dotPos + 2);
+    String line1 = title, line2 = "";
+    if (title.length() > 13) {
+      int sp = title.lastIndexOf(' ', 13);
+      if (sp <= 0) sp = title.indexOf(' ');
+      if (sp > 0) {
+        line1 = title.substring(0, sp);
+        line2 = title.substring(sp + 1);
+      }
+    }
+    drawUtf8Text(x + 8, y + 25, line1, 1, textCol, bg, tileW - 14);
+    if (line2.length() > 0) {
+      drawUtf8Text(x + 8, y + 40, line2, 1, textCol, bg, tileW - 14);
+    }
 
     if (isCurrent) {
-      drawUtf8Text(x + 8, y + 52, tr("ĐANG MỞ", "ACTIVE"), 1, selected ? COL_BG : COL_GREEN, bg, tileW - 14);
+      drawUtf8Text(x + 8, y + 57, tr("ĐANG MỞ", "ACTIVE"), 1, selected ? COL_BG : COL_GREEN, bg, tileW - 14);
     }
   }
 
