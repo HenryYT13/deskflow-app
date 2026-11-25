@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.0"
+#define DESKFLOW_FW_VERSION "2.4.1"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -85,7 +85,7 @@ enum MenuState {
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 9;
+const int MENU_MAIN_ITEM_COUNT = 10;
 String pairCodeValue = "";
 String pairQrBits = "";
 int pairQrSize = 0;
@@ -1468,6 +1468,10 @@ void drawSettingsMenu() {
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("Hiện QR & Mã Full Access", "Show Full Access QR & Code"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 8) {
+        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("CẬP NHẬT OTA", "OTA UPDATE"));
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("PLAY: Kiểm tra & Nạp mới", "PLAY: Check & Flash"), 1, COL_MUTED, COL_CARD, 196);
+      } else if (i == 9) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THOÁT CÀI ĐẶT", "EXIT SETTINGS"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY hoặc giữ >>/<<", "PLAY or hold >>/<<"), 1, COL_MUTED, COL_CARD, 196);
@@ -4295,6 +4299,35 @@ void triggerPairCodeRequestFromMenu() {
   }
 }
 
+void triggerSelfOtaFromMenu() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (tft) {
+    tft->fillScreen(COL_BG);
+    printCenteredText("DESKFLOW OTA", 95, 2, COL_CYAN, COL_BG);
+    printCenteredText(tr("Đang kiểm tra bản mới...", "Checking latest firmware..."), 135, 1, COL_WHITE, COL_BG);
+  }
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/ota-trigger")) {
+    http.setTimeout(15000);
+    int code = http.POST("{}");
+    if (code == 200) {
+      DynamicJsonDocument doc(512);
+      if (deserializeJson(doc, http.getString()) == DeserializationError::Ok) {
+        String ver = doc["version"] | "latest";
+        String binUrl = doc["bin_url"] | "https://df.api.thetechdude.io.vn/api/app/control/ota/firmware.bin";
+        http.end();
+        performOtaUpdate(binUrl, ver);
+        return;
+      }
+    }
+    http.end();
+  }
+  // Direct fallback if trigger failed
+  performOtaUpdate("https://df.api.thetechdude.io.vn/api/app/control/ota/firmware.bin", "latest");
+}
+
 void handleMenuPlay() {
   if (menuState == MENU_MAIN) {
     if (menuCurrentItem == 0) {
@@ -4349,6 +4382,9 @@ void handleMenuPlay() {
       triggerPairCodeRequestFromMenu();
       addLog("PAIR", "Requested Full Access pair code & QR from backend");
     } else if (menuCurrentItem == 8) {
+      triggerBuzz(45);
+      triggerSelfOtaFromMenu();
+    } else if (menuCurrentItem == 9) {
       inSettingsMenu = false;
       menuState = MENU_MAIN;
       lastRenderedView = "";
