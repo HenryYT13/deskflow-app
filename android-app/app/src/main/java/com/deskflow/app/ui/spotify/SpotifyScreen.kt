@@ -747,7 +747,7 @@ fun SpotifyScreen(
                                         type = "text/plain"
                                         putExtra(
                                             android.content.Intent.EXTRA_TEXT,
-                                            "🎵 Now Playing on DeskFlow: ${spotifyState.track} — ${spotifyState.artist}\n${spotifyState.lyricCurr}"
+                                            "🎵 Now Playing on DeskFlow: ${spotifyState.track ?: ""} — ${spotifyState.artist ?: ""}\n${spotifyState.currentLyric ?: ""}"
                                         )
                                     }
                                     ctx.startActivity(android.content.Intent.createChooser(send, "Share Now Playing"))

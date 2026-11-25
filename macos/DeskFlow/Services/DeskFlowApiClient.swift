@@ -1463,8 +1463,8 @@ public final class DeskFlowApiClient: ObservableObject {
         }
         if focusActive {
             menuBarLiveLabel = "Focus ON"
-        } else if !spotifyState.track.isEmpty && spotifyState.isPlaying == true {
-            menuBarLiveLabel = "♪ \(spotifyState.track.prefix(18))"
+        } else if let trk = spotifyState.track, !trk.isEmpty, spotifyState.isPlaying == true {
+            menuBarLiveLabel = "♪ \(trk.prefix(18))"
         } else {
             menuBarLiveLabel = "DeskFlow"
         }
