@@ -226,27 +226,32 @@ public:
 
 extern void drawPhysicalScreen();
 extern String lastRenderedView;
+extern String lastMenuSignature;
+extern PubSubClient mqtt;
 extern void addLog(String tag, String msg);
 
 inline void captureAndUploadScreenshot() {
   if (WiFi.status() != WL_CONNECTED || !hwTft) return;
-  const int STRIP_H = 160;
+  const int STRIP_H = 40; // 8 passes x 240x40 = only 19.2 KB heap (zero OOM crash!)
   uint16_t* fb = (uint16_t*)calloc(240 * STRIP_H, sizeof(uint16_t));
   if (!fb) { addLog("SHOT", "Out of heap for 240x320 capture"); return; }
 
   std::vector<uint8_t> rle;
-  rle.reserve(16384);
+  rle.reserve(8192);
 
   Adafruit_GFX* saved = tft;
   String savedLastView = lastRenderedView;
+  String savedMenuSig = lastMenuSignature;
 
-  for (int pass = 0; pass < 2; pass++) {
+  for (int pass = 0; pass < 8; pass++) {
     memset(fb, 0, 240 * STRIP_H * sizeof(uint16_t));
     FullStripCaptureGFX cap(fb, pass * STRIP_H, STRIP_H);
     tft = &cap;
     lastRenderedView = "";
+    lastMenuSignature = "";
     drawPhysicalScreen();
     tft = saved;
+    yield();
 
     int total = 240 * STRIP_H;
     int i = 0;
@@ -259,18 +264,27 @@ inline void captureAndUploadScreenshot() {
       rle.push_back((uint8_t)(px & 0xFF));
       i += cnt;
     }
+    yield();
   }
   lastRenderedView = savedLastView;
+  lastMenuSignature = savedMenuSig;
   free(fb);
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/screenshot?w=240&h=320")) {
-    http.addHeader("Content-Type", "application/octet-stream");
-    int code = http.POST(rle.data(), rle.size());
-    addLog("SHOT", "Uploaded " + String(rle.size()) + "B 240x320 -> HTTP " + String(code));
-    http.end();
+  // Free MQTT socket/TLS buffers before opening HTTPS upload
+  if (mqtt.connected()) mqtt.disconnect();
+  delay(40);
+
+  {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/screenshot?w=240&h=320")) {
+      http.setTimeout(15000);
+      http.addHeader("Content-Type", "application/octet-stream");
+      int code = http.POST(rle.data(), rle.size());
+      addLog("SHOT", "Uploaded " + String(rle.size()) + "B 240x320 -> HTTP " + String(code));
+      http.end();
+    }
   }
 }
 
