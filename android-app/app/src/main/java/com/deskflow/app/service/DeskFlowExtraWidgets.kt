@@ -6,7 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
-import com.deskflow.app.MainActivity
+import com.deskflow.app.ui.MainActivity
 import com.deskflow.app.R
 import java.text.SimpleDateFormat
 import java.util.Date

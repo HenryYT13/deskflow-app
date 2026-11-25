@@ -4,7 +4,7 @@
 #include <math.h>
 #include <time.h>
 
-extern Arduino_GFX* tft;
+extern Adafruit_ST7789* tft;
 extern PubSubClient mqttClient;
 extern int phoneBattPct;
 extern bool phoneBattCharging;
@@ -121,8 +121,8 @@ inline void drawStopwatchView() {
 // #43 Emergency Restart Backend
 inline void triggerEmergencyBackendRestart() {
   mqttClient.publish("deskflow/system/restart", "{\"source\":\"esp32\"}");
-  tft->fillRoundRect(20, 120, 200, 60, 8, COL_RED);
-  printCenteredText(tr("ĐÃ GỬI LỆNH RESTART VPS!", "VPS RESTART SENT!"), 144, 1, COL_WHITE, COL_RED);
+  tft->fillRoundRect(20, 120, 200, 60, 8, 0xF800);
+  printCenteredText(tr("ĐÃ GỬI LỆNH RESTART VPS!", "VPS RESTART SENT!"), 144, 1, COL_WHITE, 0xF800);
   delay(1200);
 }
 
