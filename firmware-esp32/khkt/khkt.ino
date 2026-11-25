@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.3.0"
+#define DESKFLOW_FW_VERSION "2.4.0"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -112,7 +112,7 @@ const int MENU_BUZZER_ITEM_COUNT = 4;
 bool inViewMenu = false;
 int viewMenuIndex = 0;
 const int VIEW_MENU_COUNT = 15;
-const int VIEW_ROWS_PER_PAGE = 4;
+const int VIEW_ROWS_PER_PAGE = 6;
 int viewMenuPage = 0;
 struct ViewMenuItem {
   const char* id;
@@ -1668,13 +1668,18 @@ void drawViewMenu() {
   int firstItem = viewMenuPage * VIEW_ROWS_PER_PAGE;
 
   int startY = 46;
-  int cardH = 52;
-  int gap = 7;
+  int tileW = 104;
+  int tileH = 74;
+  int gapX = 12;
+  int gapY = 8;
 
   for (int rowIdx = 0; rowIdx < VIEW_ROWS_PER_PAGE; rowIdx++) {
     int i = firstItem + rowIdx;
     if (i >= VIEW_MENU_COUNT) break;
-    int y = startY + rowIdx * (cardH + gap);
+    int col = rowIdx % 2;
+    int row = rowIdx / 2;
+    int x = 10 + col * (tileW + gapX);
+    int y = startY + row * (tileH + gapY);
     bool selected = (viewMenuIndex == i);
     bool isCurrent = (srvStats.activeView == VIEW_MENU_ITEMS[i].id);
 
@@ -1682,14 +1687,15 @@ void drawViewMenu() {
     uint16_t border = selected ? COL_WHITE : (isCurrent ? COL_GREEN : COL_BORDER);
     uint16_t textCol = selected ? COL_BG : (isCurrent ? COL_GREEN : COL_WHITE);
 
-    tft->fillRoundRect(12, y, 216, cardH, 6, bg);
-    tft->drawRoundRect(12, y, 216, cardH, 6, border);
+    tft->fillRoundRect(x, y, tileW, tileH, 8, bg);
+    tft->drawRoundRect(x, y, tileW, tileH, 8, border);
 
-    String rowTitle = String(selected ? "> " : "  ") + viewMenuTitle(i);
-    drawUtf8Text(18, y + 12, rowTitle, 1, textCol, bg, 204);
+    String idxBadge = String(i + 1) + (isCurrent ? " *" : "");
+    drawUtf8Text(x + 8, y + 8, idxBadge, 1, selected ? COL_BG : COL_CYAN, bg, tileW - 14);
+    drawUtf8Text(x + 8, y + 28, viewMenuTitle(i), 1, textCol, bg, tileW - 14);
 
     if (isCurrent) {
-      drawUtf8Text(24, y + 30, tr("[ĐANG MỞ]", "[ACTIVE]"), 1, selected ? COL_BG : COL_GREEN, bg, 196);
+      drawUtf8Text(x + 8, y + 52, tr("ĐANG MỞ", "ACTIVE"), 1, selected ? COL_BG : COL_GREEN, bg, tileW - 14);
     }
   }
 

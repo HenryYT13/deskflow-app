@@ -126,7 +126,7 @@ public sealed class DeskFlowApiClient
         string fullUrl = $"{baseUrl}{path}";
         var req = new HttpRequestMessage(method, fullUrl);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        req.Headers.UserAgent.ParseAdd("DeskFlow-Windows-WinUI3/2.3.0");
+        req.Headers.UserAgent.ParseAdd("DeskFlow-Windows-WinUI3/2.4.0");
 
         bool hasAuth = authenticated && !string.IsNullOrWhiteSpace(Settings.DeviceToken);
         if (hasAuth)
@@ -192,7 +192,7 @@ public sealed class DeskFlowApiClient
                     code = clean,
                     device_name = Settings.DeviceName,
                     platform = "windows",
-                    client_version = "2.3.0"
+                    client_version = "2.4.0"
                 },
                 authenticated: false);
             using var resp = await _http.SendAsync(req).ConfigureAwait(false);
@@ -789,7 +789,7 @@ public sealed class DeskFlowApiClient
             string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
             return (true, FocusLockPolicy.IsFocusActive(body));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return (false, false);
         }

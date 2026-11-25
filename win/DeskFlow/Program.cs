@@ -55,7 +55,7 @@ public static class Program
     {
         if (args.Contains("--version"))
         {
-            Console.WriteLine("DeskFlow Station Windows (C# + WinUI 3) v2.3.0");
+            Console.WriteLine("DeskFlow Station Windows (C# + WinUI 3) v2.4.0");
             Console.Out.Flush();
             return;
         }

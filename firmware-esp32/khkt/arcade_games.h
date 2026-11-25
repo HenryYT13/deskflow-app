@@ -13,7 +13,7 @@ extern bool buzzerEnabled;
 extern const char* tr(const char* vi, const char* en);
 
 // 0..8 mini-games inside the single "game" view
-const int ARCADE_GAME_COUNT = 9;
+const int ARCADE_GAME_COUNT = 10;
 bool inGameLobby = true;
 int arcadeLobbyCursor = 0;
 int activeMiniGame = 0; // 0..8
@@ -92,11 +92,11 @@ bool luckyDirty = true;
 inline const char* arcadeGameTitle(int idx) {
   static const char* VI[ARCADE_GAME_COUNT] = {
     "Dino Runner", "Flappy Bird", "Rắn Săn Mồi", "2048 Mini", "Xếp Gạch (Tetris)",
-    "Bắn Ruồi (Invaders)", "Ping Pong AI", "Đo Phản Xạ (ms)", "Vòng Quay May Mắn"
+    "Bắn Ruồi (Invaders)", "Ping Pong AI", "Đo Phản Xạ (ms)", "Vòng Quay May Mắn", "Cookie Clicker (#133)"
   };
   static const char* EN[ARCADE_GAME_COUNT] = {
     "Dino Runner", "Flappy Bird", "Snake", "2048 Mini", "Tetris Mini",
-    "Space Invaders", "Ping Pong vs AI", "Reaction Tester", "Lucky Toolbox"
+    "Space Invaders", "Ping Pong vs AI", "Reaction Tester", "Lucky Toolbox", "Cookie Clicker"
   };
   int c = constrain(idx, 0, ARCADE_GAME_COUNT - 1);
   return tr(VI[c], EN[c]);
@@ -788,6 +788,32 @@ inline void handleArcadeButtons(int curPlay, int curNext, int curPrev, bool& exi
     if (playEdge) { luckyRolling = true; luckyRollUntil = millis() + 650; }
     else if (nextEdge) { luckyMode = (luckyMode + 1) % 3; luckyDirty = true; }
     else if (prevEdge) { luckyMode = (luckyMode + 2) % 3; luckyDirty = true; }
+  } else if (activeMiniGame == 9) {
+    static unsigned long cookies = 0;
+    static int clickPower = 1;
+    static int upgradeCost = 20;
+    if (playEdge) {
+      cookies += clickPower;
+      if (buzzerEnabled) triggerBuzz(12, false);
+      tft->fillScreen(COL_BG);
+      printCenteredText("COOKIE CLICKER (#133)", 16, 1, COL_AMBER, COL_BG);
+      tft->fillCircle(120, 140, 48, 0xCA60);
+      tft->drawCircle(120, 140, 48, COL_AMBER);
+      tft->fillCircle(104, 126, 5, 0x4100);
+      tft->fillCircle(132, 134, 6, 0x4100);
+      tft->fillCircle(115, 156, 5, 0x4100);
+      printCenteredText(String(cookies) + " cookies", 206, 2, COL_WHITE, COL_BG);
+      printCenteredText("+" + String(clickPower) + "/click | [NEXT] Upgrade (" + String(upgradeCost) + ")", 240, 1, COL_CYAN, COL_BG);
+      printCenteredText("[Giữ PREV 1.5s]: Thoát", 288, 1, COL_MUTED, COL_BG);
+    } else if (nextEdge && cookies >= (unsigned long)upgradeCost) {
+      cookies -= upgradeCost;
+      clickPower += 1;
+      upgradeCost = (upgradeCost * 3) / 2;
+      if (buzzerEnabled) triggerBuzz(35, false);
+      tft->fillRect(10, 200, 220, 56, COL_BG);
+      printCenteredText(String(cookies) + " cookies", 206, 2, COL_WHITE, COL_BG);
+      printCenteredText("+" + String(clickPower) + "/click | [NEXT] Upgrade (" + String(upgradeCost) + ")", 240, 1, COL_GREEN, COL_BG);
+    }
   }
 }
 
