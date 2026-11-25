@@ -111,7 +111,7 @@ const int MENU_BUZZER_ITEM_COUNT = 4;
 // View Selector Menu State Machine
 bool inViewMenu = false;
 int viewMenuIndex = 0;
-const int VIEW_MENU_COUNT = 15;
+const int VIEW_MENU_COUNT = 18;
 const int VIEW_ROWS_PER_PAGE = 6;
 int viewMenuPage = 0;
 struct ViewMenuItem {
@@ -133,7 +133,10 @@ const ViewMenuItem VIEW_MENU_ITEMS[VIEW_MENU_COUNT] = {
   { "matrix",    "12. Màn hình Matrix" },
   { "github",    "13. GitHub CI & Repo" },
   { "formulas",  "14. Công thức & BTH" },
-  { "game",      "15. Arcade Game Hub" }
+  { "game",      "15. Arcade Game Hub" },
+  { "analog",    "16. Đồng hồ Kim" },
+  { "lunar",     "17. Lịch Âm & Năm" },
+  { "stopwatch", "18. Bấm giờ (#30)" }
 };
 
 // English mirror used when the station language is EN.
@@ -152,7 +155,10 @@ const char* const VIEW_MENU_TITLES_EN[VIEW_MENU_COUNT] = {
   "12. Matrix Rain",
   "13. GitHub CI & Repo",
   "14. Formulas & Table",
-  "15. Arcade Game Hub"
+  "15. Arcade Game Hub",
+  "16. Analog Clock",
+  "17. Lunar & Year",
+  "18. Stopwatch (#30)"
 };
 
 const char* viewMenuTitle(int index) {
@@ -359,8 +365,16 @@ bool pendingScreenshotCapture = false;
 unsigned long webhookFlashUntilMs = 0;
 String webhookFlashHex = "#22C55E";
 
+// v2.4.0 state (#315, #317, #52)
+int phoneBattPct = -1;
+bool phoneBattCharging = false;
+String incomingCallCaller = "";
+unsigned long incomingCallUntil = 0;
+int clockFontMode = 0;
+
 #include "arcade_games.h"
 #include "extra_views.h"
+#include "v24_views.h"
 
 void triggerBuzz(unsigned long durationMs, bool force);
 
@@ -2735,10 +2749,23 @@ void drawPhysicalScreen() {
   else if (srvStats.activeView == "formulas") {
     drawFormulasView(viewChanged);
   }
+  else if (srvStats.activeView == "analog") {
+    if (viewChanged) playSlideTransition();
+    drawAnalogClockView();
+  }
+  else if (srvStats.activeView == "lunar") {
+    if (viewChanged) playSlideTransition();
+    drawLunarYearView();
+  }
+  else if (srvStats.activeView == "stopwatch") {
+    if (viewChanged) playSlideTransition();
+    drawStopwatchView();
+  }
   // 18. VIEW WAKEUP VERIFICATION (ANTI-OVERSLEEP)
   else if (srvStats.activeView == "wakeup_check") {
     drawWakeupCheckView(viewChanged);
   }
+  drawIncomingCallOverlay();
 }
 
 void saveNetworkToArray(String ssid, String pass) {
@@ -4542,6 +4569,10 @@ void handleHardwareButtons() {
         addLog("VIEW", "Da chon man hinh: " + srvStats.activeView);
       } else if (srvStats.activeView == "calendar") {
         toggleCalendarSelectOrExit();
+      } else if (srvStats.activeView == "stopwatch") {
+        if (swRunning) { swElapsedMs += millis() - swStartMs; swRunning = false; }
+        else { swStartMs = millis(); swRunning = true; }
+        screenNeedUpdate = true;
       } else if (srvStats.activeView == "formulas") {
         formulaTab = 1 - formulaTab;
         formulaIdx = 0;
@@ -4601,6 +4632,9 @@ void handleHardwareButtons() {
           cycleNextCountdown();
         } else if (srvStats.activeView == "calendar") {
           cycleNextCalendar();
+        } else if (srvStats.activeView == "stopwatch") {
+          if (swLapCount < 4) swLaps[swLapCount++] = swRunning ? (swElapsedMs + (millis() - swStartMs)) : swElapsedMs;
+          screenNeedUpdate = true;
         } else if (srvStats.activeView == "formulas") {
           formulaIdx++;
           screenNeedUpdate = true;
@@ -4665,6 +4699,9 @@ void handleHardwareButtons() {
           cyclePrevCountdown();
         } else if (srvStats.activeView == "calendar") {
           cyclePrevCalendar();
+        } else if (srvStats.activeView == "stopwatch") {
+          swRunning = false; swElapsedMs = 0; swLapCount = 0;
+          screenNeedUpdate = true;
         } else if (srvStats.activeView == "formulas") {
           formulaIdx = (formulaIdx + 11) % 12;
           screenNeedUpdate = true;

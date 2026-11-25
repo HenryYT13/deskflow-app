@@ -1475,4 +1475,20 @@ public final class DeskFlowApiClient: ObservableObject {
         _ = try? await session.data(for: req)
         await fetchMenuBarStatus()
     }
+
+    // #396 Auto-updater check + #397 Changelog
+    public func checkForUpdates() async -> (available: Bool, latest: String, url: String) {
+        guard let url = URL(string: "https://api.github.com/repos/HenryYT13/deskflow-app/releases/latest") else {
+            return (false, "2.4.0", "")
+        }
+        var req = URLRequest(url: url)
+        req.setValue("DeskFlow-macOS", forHTTPHeaderField: "User-Agent")
+        guard let (data, _) = try? await session.data(for: req),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (false, "2.4.0", "")
+        }
+        let tag = ((obj["tag_name"] as? String) ?? "").replacingOccurrences(of: "v", with: "")
+        let html = (obj["html_url"] as? String) ?? ""
+        return (!tag.isEmpty && tag != "2.4.0", tag.isEmpty ? "2.4.0" : tag, html)
+    }
 }

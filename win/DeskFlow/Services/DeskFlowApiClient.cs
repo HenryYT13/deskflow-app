@@ -1516,4 +1516,25 @@ public sealed class DeskFlowApiClient
             return (false, null, ex.Message);
         }
     }
+
+    /// <summary>(#396, #397) Checks GitHub Releases for a newer DeskFlow version.</summary>
+    public async Task<(bool UpdateAvailable, string LatestVersion, string Url)> CheckForUpdatesAsync()
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/HenryYT13/deskflow-app/releases/latest");
+            req.Headers.UserAgent.ParseAdd("DeskFlow-Windows/2.4.0");
+            using var resp = await _http.SendAsync(req).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (false, "2.4.0", "");
+            var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
+            var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? (t.GetString() ?? "").TrimStart('v') : "2.4.0";
+            var url = doc.RootElement.TryGetProperty("html_url", out var u) ? (u.GetString() ?? "") : "";
+            return (!string.IsNullOrEmpty(tag) && tag != "2.4.0", string.IsNullOrEmpty(tag) ? "2.4.0" : tag, url);
+        }
+        catch (Exception)
+        {
+            return (false, "2.4.0", "");
+        }
+    }
 }
