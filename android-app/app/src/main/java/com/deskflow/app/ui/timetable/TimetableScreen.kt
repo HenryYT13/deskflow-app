@@ -166,6 +166,65 @@ fun TimetableScreen(
                 ) {
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    // (#1) Live Period Countdown + (#16) Excel Import + (#17) Stats Card
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    var tkbStats by remember { mutableStateOf<com.deskflow.app.data.model.TimetableStatsResponse?>(null) }
+                    LaunchedEffect(timetableData) {
+                        val r = repository.getTimetableStats()
+                        if (r is com.deskflow.app.data.repository.ApiResult.Success) tkbStats = r.data
+                    }
+                    val excelPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+                    ) { uri ->
+                        if (uri != null) {
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                if (bytes != null && bytes.isNotEmpty()) {
+                                    val r = repository.uploadTimetableExcelBytes(bytes)
+                                    if (r is com.deskflow.app.data.repository.ApiResult.Success) {
+                                        doRefresh()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    ElevatedCard(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            tkbStats?.live?.let { lv ->
+                                Text(
+                                    text = "⏱ ${lv.label}${if (lv.currentSubject.isNotBlank()) ": ${lv.currentSubject} (còn ${lv.minutesLeft}p)" else ""}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (lv.dismissalTime.isNotBlank()) {
+                                    Text(
+                                        text = "Giờ ra về: ${lv.dismissalTime}${if (lv.minutesToDismissal > 0) " (còn ${lv.minutesToDismissal}p)" else ""}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = { excelPicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "*/*")) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Import Excel (#16)")
+                                }
+                                tkbStats?.stats?.let { st ->
+                                    Text(
+                                        text = "${st.totalPeriods}T / ${st.totalHours}h tuần",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.align(Alignment.CenterVertically)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // 1. TODAY AT TOP (MANDATORY REQUIREMENT: TODAY AT THE TOP)
                     DayScheduleCard(
                         title = stringResource(R.string.timetable_today_header),

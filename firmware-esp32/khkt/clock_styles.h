@@ -11,7 +11,7 @@
 #include <math.h>
 
 // Forward declarations of shared globals from khkt.ino
-extern Adafruit_ST7789* tft;
+extern Adafruit_GFX* tft;
 extern Preferences prefs;
 extern PubSubClient mqtt;
 extern void addLog(String tag, String msg);

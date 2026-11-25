@@ -95,6 +95,7 @@ public final class DeskFlowApiClient: ObservableObject {
     @Published public private(set) var esp32Voltage: Double = 4.12
     @Published public private(set) var esp32WifiRssi: Int = -55
     @Published public private(set) var esp32CurrentView: String = "main"
+    @Published public private(set) var menuBarLiveLabel: String = "DeskFlow"
 
     // Published Spotify State
     @Published public private(set) var spotifyState: SpotifyStatusDto = SpotifyStatusDto()
@@ -186,7 +187,7 @@ public final class DeskFlowApiClient: ObservableObject {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         req.setValue("no-cache", forHTTPHeaderField: "Pragma")
-        req.setValue("DeskFlow-macOS-SwiftUI/2.2.2", forHTTPHeaderField: "User-Agent")
+        req.setValue("DeskFlow-macOS-SwiftUI/2.3.0", forHTTPHeaderField: "User-Agent")
         let hasAuth = authenticated && !(deviceToken ?? "").isEmpty
         if hasAuth, let token = deviceToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -270,7 +271,7 @@ public final class DeskFlowApiClient: ObservableObject {
                     "code": clean,
                     "device_name": deviceName,
                     "platform": "macos",
-                    "client_version": "2.2.2"
+                    "client_version": "2.3.0"
                 ],
                 authenticated: false
             )
@@ -1437,5 +1438,41 @@ public final class DeskFlowApiClient: ObservableObject {
         } else {
             errorBannerMessage = appLanguage == "vi" ? "Không thể cập nhật theme ESP32. Vui lòng kiểm tra kết nối." : "Failed to update ESP32 theme."
         }
+    }
+
+    // MARK: - (#191) Live macOS Menu Bar Label (Timetable Period / Focus / Track)
+
+    public func fetchMenuBarStatus() async {
+        if !(deviceToken ?? "").isEmpty,
+           let req = try? buildRequest(path: "/api/app/control/timetable/stats", authenticated: true),
+           let (data, res) = try? await session.data(for: req),
+           let http = res as? HTTPURLResponse, http.statusCode == 200,
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let live = obj["live"] as? [String: Any] {
+            let state = (live["state"] as? String) ?? ""
+            let label = (live["label"] as? String) ?? ""
+            let subj = (live["current_subject"] as? String) ?? ""
+            let mins = (live["minutes_left"] as? Int) ?? 0
+            if state == "class" && !subj.isEmpty {
+                menuBarLiveLabel = "\(subj) (\(mins)p)"
+                return
+            } else if state == "break" || state == "prep" || state == "arrive" {
+                menuBarLiveLabel = "\(label) (\(mins)p)"
+                return
+            }
+        }
+        if focusActive {
+            menuBarLiveLabel = "Focus ON"
+        } else if !spotifyState.track.isEmpty && spotifyState.isPlaying == true {
+            menuBarLiveLabel = "♪ \(spotifyState.track.prefix(18))"
+        } else {
+            menuBarLiveLabel = "DeskFlow"
+        }
+    }
+
+    public func quickMenuAction(path: String, body: [String: Any]) async {
+        guard let req = try? buildRequest(path: path, method: "POST", body: body, authenticated: true) else { return }
+        _ = try? await session.data(for: req)
+        await fetchMenuBarStatus()
     }
 }

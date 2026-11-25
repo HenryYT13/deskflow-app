@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 
 sealed class ApiResult<out T> {
@@ -1607,4 +1609,43 @@ class FocusRepository(
 
     suspend fun getPublicStatus(): ApiResult<PublicStatusResponse> =
         executeCall("Failed to fetch public status") { apiService.getPublicStatus() }
+
+    suspend fun inspectMidiBytes(filename: String, bytes: ByteArray): ApiResult<MidiInspectResponse> =
+        executeCall("Failed to inspect MIDI") {
+            apiService.inspectMidiFile(filename, bytes.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
+        }
+
+    suspend fun playCustomMidiTracks(base64: String, filename: String, title: String?, selectedTracks: List<Int>?): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to play MIDI") {
+            apiService.playMelody(MelodyPlayRequest(midiBase64 = base64, filename = filename, title = title, selectedTracks = selectedTracks))
+        }
+
+    suspend fun shakeDismissAlarm(shakes: Int = 20): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to shake-dismiss") { apiService.shakeDismissAlarm(ShakeDismissRequest(shakes)) }
+
+    suspend fun getSpotifyQueue(): ApiResult<SpotifyQueueResponse> =
+        executeCall("Failed to load queue") { apiService.getSpotifyQueue() }
+
+    suspend fun getSpotifyDevices(): ApiResult<SpotifyDevicesResponse> =
+        executeCall("Failed to load devices") { apiService.getSpotifyDevices() }
+
+    suspend fun transferSpotifyDevice(deviceId: String): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to transfer device") { apiService.transferSpotifyDevice(SpotifyTransferRequest(deviceId)) }
+
+    suspend fun toggleCalendarHoliday(date: String, isHoliday: Boolean? = null): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to toggle holiday") { apiService.toggleCalendarHoliday(HolidayToggleRequest(date, isHoliday)) }
+
+    suspend fun getTimetableStats(): ApiResult<TimetableStatsResponse> =
+        executeCall("Failed to load TKB stats") { apiService.getTimetableStats() }
+
+    suspend fun uploadTimetableExcelBytes(bytes: ByteArray): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to upload Excel") {
+            apiService.uploadTimetableExcel(bytes.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
+        }
+
+    suspend fun captureStationScreenshot(): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to request screenshot") { apiService.captureStationScreenshot() }
+
+    suspend fun syncGithubStats(username: String): ApiResult<ActionSuccessResponse> =
+        executeCall("Failed to sync GitHub") { apiService.syncGithubStats(GithubSyncRequest(username)) }
 }

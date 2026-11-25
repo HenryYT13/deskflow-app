@@ -712,12 +712,19 @@ fun SpotifyScreen(
                 }
             }
 
-            // #54 Dynamic BPM LED Pulse & #58 Listening Stats Digest
+            // #54 Dynamic BPM LED Pulse, #58/#138 Wrapped Mini, #132 Queue, #140 Devices, #137 Share Card
+            val ctx = androidx.compose.ui.platform.LocalContext.current
             var statsState by remember { mutableStateOf<com.deskflow.app.data.model.SpotifyStatsResponse?>(null) }
+            var queueItems by remember { mutableStateOf<List<com.deskflow.app.data.model.SpotifyQueueItemDto>>(emptyList()) }
+            var spDevices by remember { mutableStateOf<List<com.deskflow.app.data.model.SpotifyDeviceDto>>(emptyList()) }
             var bpmSyncOn by remember { mutableStateOf(false) }
             LaunchedEffect(spotifyState.track) {
                 val r = repository.getSpotifyStats()
                 if (r is ApiResult.Success) statsState = r.data
+                val q = repository.getSpotifyQueue()
+                if (q is ApiResult.Success) queueItems = q.data.queue
+                val d = repository.getSpotifyDevices()
+                if (d is ApiResult.Success) spDevices = d.data.devices
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -733,21 +740,65 @@ fun SpotifyScreen(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
-                        FilterChip(
-                            selected = bpmSyncOn,
-                            onClick = {
-                                val next = !bpmSyncOn
-                                bpmSyncOn = next
-                                coroutineScope.launch { repository.setBpmSync(next) }
-                            },
-                            label = { Text(if (bpmSyncOn) "BPM Sync: ON" else "Đồng bộ BPM LED") }
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(
+                                            android.content.Intent.EXTRA_TEXT,
+                                            "🎵 Now Playing on DeskFlow: ${spotifyState.track} — ${spotifyState.artist}\n${spotifyState.lyricCurr}"
+                                        )
+                                    }
+                                    ctx.startActivity(android.content.Intent.createChooser(send, "Share Now Playing"))
+                                }
+                            ) {
+                                Text("Share (#137)", style = MaterialTheme.typography.labelSmall)
+                            }
+                            FilterChip(
+                                selected = bpmSyncOn,
+                                onClick = {
+                                    val next = !bpmSyncOn
+                                    bpmSyncOn = next
+                                    coroutineScope.launch { repository.setBpmSync(next) }
+                                },
+                                label = { Text(if (bpmSyncOn) "BPM ON" else "BPM LED") }
+                            )
+                        }
+                    }
+
+                    if (spDevices.isNotEmpty()) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        Text("🔊 Thiết bị Spotify Connect (#140):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            spDevices.take(3).forEach { dev ->
+                                FilterChip(
+                                    selected = dev.isActive,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            repository.transferSpotifyDevice(dev.id)
+                                            val dr = repository.getSpotifyDevices()
+                                            if (dr is ApiResult.Success) spDevices = dr.data.devices
+                                        }
+                                    },
+                                    label = { Text(dev.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (queueItems.isNotEmpty()) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        Text("📜 Tiếp theo trong Hàng chờ (#132):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        queueItems.take(4).forEachIndexed { idx, qi ->
+                            Text("${idx + 1}. ${qi.name} — ${qi.artist}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                     Text(
-                        text = "📊 Thống kê nghe nhạc (#58): ${statsState?.totalPlays ?: 0} lượt • ~${statsState?.estimatedMinutes ?: 0} phút",
+                        text = "📊 Wrapped Mini (#58/#138): ${statsState?.totalPlays ?: 0} lượt • ~${statsState?.estimatedMinutes ?: 0} phút",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )

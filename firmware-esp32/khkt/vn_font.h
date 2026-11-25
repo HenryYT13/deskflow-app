@@ -2,7 +2,7 @@
 #define VN_FONT_H
 
 #include <Arduino.h>
-#include <Adafruit_ST7789.h>
+#include <Adafruit_GFX.h>
 
 struct VnGlyph {
   uint16_t codepoint;
@@ -1996,7 +1996,7 @@ static inline uint16_t vnBlend565(uint16_t fg, uint16_t bg, uint8_t alpha4) {
   return (r << 11) | (g << 5) | b;
 }
 
-static inline void vnDrawText(Adafruit_ST7789* tft, const VnFont& f, int x, int y, const char* s, uint16_t fg, uint16_t bg) {
+static inline void vnDrawText(Adafruit_GFX* tft, const VnFont& f, int x, int y, const char* s, uint16_t fg, uint16_t bg) {
   if (!tft || !s) return;
   uint16_t pixBuf[24 * 24];
   int curX = x;

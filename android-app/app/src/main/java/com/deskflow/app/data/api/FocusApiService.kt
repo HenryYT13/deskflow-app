@@ -396,4 +396,38 @@ interface FocusApiService {
 
     @GET("api/public/status")
     suspend fun getPublicStatus(): Response<PublicStatusResponse>
+
+    // --- v2.3.0 Extensions (#1, #16, #17, #18, #57, #75, #103, #112, #132, #140) ---
+    @POST("api/app/control/melody/inspect")
+    suspend fun inspectMidiFile(
+        @Header("X-Filename") filename: String,
+        @Body body: okhttp3.RequestBody
+    ): Response<MidiInspectResponse>
+
+    @POST("api/app/control/alarm/shake-dismiss")
+    suspend fun shakeDismissAlarm(@Body request: ShakeDismissRequest): Response<ActionSuccessResponse>
+
+    @GET("api/app/spotify/queue")
+    suspend fun getSpotifyQueue(): Response<SpotifyQueueResponse>
+
+    @GET("api/app/spotify/devices")
+    suspend fun getSpotifyDevices(): Response<SpotifyDevicesResponse>
+
+    @POST("api/app/spotify/transfer")
+    suspend fun transferSpotifyDevice(@Body request: SpotifyTransferRequest): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/calendar/holiday")
+    suspend fun toggleCalendarHoliday(@Body request: HolidayToggleRequest): Response<ActionSuccessResponse>
+
+    @GET("api/app/control/timetable/stats")
+    suspend fun getTimetableStats(): Response<TimetableStatsResponse>
+
+    @POST("api/app/control/timetable/upload-excel")
+    suspend fun uploadTimetableExcel(@Body body: okhttp3.RequestBody): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/screenshot/capture")
+    suspend fun captureStationScreenshot(): Response<ActionSuccessResponse>
+
+    @POST("api/app/control/github/sync")
+    suspend fun syncGithubStats(@Body request: GithubSyncRequest): Response<ActionSuccessResponse>
 }

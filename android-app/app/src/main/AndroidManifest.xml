@@ -55,17 +55,28 @@
 
         <receiver
             android:name=".service.DeskFlowWidgetProvider"
+            android:enabled="true"
             android:exported="true"
-            android:label="DeskFlow Quick Widget">
+            android:label="@string/widget_quick_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.deskflow.app.widget.ACTION_TOGGLE_LED" />
-                <action android:name="com.deskflow.app.widget.ACTION_START_FOCUS_25" />
-                <action android:name="com.deskflow.app.widget.ACTION_REFRESH_WIDGET" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/deskflow_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".service.DeskFlowTkbWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_tkb_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/deskflow_tkb_widget_info" />
         </receiver>
 
         <service

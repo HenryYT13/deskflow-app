@@ -739,12 +739,16 @@ void drawFlipClock(int x, int y, int w, int h, const struct tm& t, bool fullScre
       tft->print(curChar);
     }
 
-    // Animation visual shade
+    // Animation visual flip shutter wipe
     int midY = startY + cardH / 2;
     if (flipState.flipProgress[i] == 1) {
-      tft->drawFastHLine(dx + 2, midY - 2, cardW - 4, COL_BORDER);
+      tft->drawFastHLine(dx + 2, midY - 3, cardW - 4, COL_AMBER);
     } else if (flipState.flipProgress[i] == 2) {
-      tft->drawFastHLine(dx + 2, midY + 2, cardW - 4, COL_BORDER);
+      tft->drawFastHLine(dx + 2, midY - 3, cardW - 4, COL_CARD);
+      tft->drawFastHLine(dx + 2, midY + 2, cardW - 4, COL_CYAN);
+    } else if (flipState.flipProgress[i] == 3) {
+      tft->drawFastHLine(dx + 2, midY + 2, cardW - 4, COL_CARD);
+      tft->drawFastHLine(dx, midY, cardW, COL_BG);
     }
   }
 

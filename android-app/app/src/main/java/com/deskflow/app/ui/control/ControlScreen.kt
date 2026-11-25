@@ -1017,6 +1017,13 @@ fun ControlScreen(
                                     onEmergencyStop = { showEmergencyConfirm = true },
                                     focusManager = focusManager
                                 )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                ShakeAlarmDismissCard(
+                                    alarmActive = alarmState.active,
+                                    repository = repository,
+                                    coroutineScope = coroutineScope,
+                                    onDismissed = { showFeedback(it) }
+                                )
                             }
 
                             // Alarms > Alarm Scheduling

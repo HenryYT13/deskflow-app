@@ -1,13 +1,15 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <WebServer.h>
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.2.2"
+#define DESKFLOW_FW_VERSION "2.3.0"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -30,7 +32,8 @@
 #define TFT_MOSI 23
 #define TFT_SCLK 18
 
-Adafruit_ST7789* tft = nullptr;
+Adafruit_ST7789* hwTft = nullptr;
+Adafruit_GFX* tft = nullptr;
 
 #define PIN_BATTERY 34
 #define BTN_PLAY    14
@@ -87,7 +90,9 @@ String pairCodeValue = "";
 String pairQrBits = "";
 int pairQrSize = 0;
 bool pairCodeLoading = false;
+bool pairFetchFailed = false;
 unsigned long pairCodeFetchedAt = 0;
+unsigned long pairReqStartedAt = 0;
 // 4 entries per page keeps the 240x320 panel readable; moving past the last
 // entry flips to the next page instead of squeezing all rows together.
 const int MENU_ROWS_PER_PAGE = 4;
@@ -106,7 +111,7 @@ const int MENU_BUZZER_ITEM_COUNT = 4;
 // View Selector Menu State Machine
 bool inViewMenu = false;
 int viewMenuIndex = 0;
-const int VIEW_MENU_COUNT = 11;
+const int VIEW_MENU_COUNT = 15;
 const int VIEW_ROWS_PER_PAGE = 4;
 int viewMenuPage = 0;
 struct ViewMenuItem {
@@ -118,13 +123,17 @@ const ViewMenuItem VIEW_MENU_ITEMS[VIEW_MENU_COUNT] = {
   { "stats",     "2. Thông số máy" },
   { "tkb",       "3. Thời khóa biểu" },
   { "calendar",  "4. Lịch Google" },
-  { "weather",   "5. Thời tiết" },
+  { "weather",   "5. Thời tiết & AQI" },
   { "lyrics",    "6. Lời bài hát" },
-  { "notes",     "7. Ghi chú" },
-  { "countdown", "8. Đếm ngược" },
-  { "focus",     "9. Tập trung" },
-  { "clock",     "10. Đồng hồ" },
-  { "game",      "11. Mini Game" }
+  { "vinyl",     "7. Đĩa than Spotify" },
+  { "notes",     "8. Ghi chú" },
+  { "countdown", "9. Đếm ngược" },
+  { "focus",     "10. Tập trung" },
+  { "clock",     "11. Đồng hồ" },
+  { "matrix",    "12. Màn hình Matrix" },
+  { "github",    "13. GitHub CI & Repo" },
+  { "formulas",  "14. Công thức & BTH" },
+  { "game",      "15. Arcade Game Hub" }
 };
 
 // English mirror used when the station language is EN.
@@ -133,13 +142,17 @@ const char* const VIEW_MENU_TITLES_EN[VIEW_MENU_COUNT] = {
   "2. System stats",
   "3. Timetable",
   "4. Google Calendar",
-  "5. Weather",
+  "5. Weather & AQI",
   "6. Lyrics",
-  "7. Notes",
-  "8. Countdown",
-  "9. Focus",
-  "10. Clock",
-  "11. Mini Game"
+  "7. Spotify Vinyl",
+  "8. Notes",
+  "9. Countdown",
+  "10. Focus",
+  "11. Clock",
+  "12. Matrix Rain",
+  "13. GitHub CI & Repo",
+  "14. Formulas & Table",
+  "15. Arcade Game Hub"
 };
 
 const char* viewMenuTitle(int index) {
@@ -245,6 +258,10 @@ struct ServerStats {
   String lyricNext = "";
   String weatherText = "28*C";
   String weatherCity = "Ha Long";
+  int weatherAqi = 2;
+  String weatherAqiLabel = "Kha";
+  float weatherUv = 4.0;
+  String weatherUvLabel = "TB";
   String quoteText = "Kien tri hom nay, thanh cong ngay mai!";
 
   String tkbDay = "Hom nay";
@@ -252,6 +269,11 @@ struct ServerStats {
   bool tkbHasAfternoon = false;
   String tkbAfternoon = "";
   String tkbUniform = "Ao trang";
+  String liveLabel = "";
+  String liveSubject = "";
+  int liveMinsLeft = 0;
+  String dismissalTime = "";
+  int minsToDismissal = 0;
 
   String tkbTomDay = "Ngay mai";
   String tkbTomMorning = "Van, Dia, GDCD, Mi thuat, Anh";
@@ -316,7 +338,7 @@ void parseHexColor(const String& hex, uint8_t& r, uint8_t& g, uint8_t& b) {
   }
 }
 
-String ledEffect = "solid"; // solid, breathing, chase, police, sparkle, fire, strobe, ambient
+String ledEffect = "solid"; // solid, breathing, chase, police, sparkle, fire, strobe, ambient, clock
 bool ledRgbMode = false; // Orthogonal RGB color wheel combinable with any effect
 bool ledGradientMode = false; // Dual-color gradient (lampColor -> lampColor2)
 int ledSpeed = 50; // 5 - 100
@@ -330,44 +352,15 @@ String customBootTitle = "DeskFlow Station";
 String customBootSub = "v" DESKFLOW_FW_VERSION;
 String customBootBmp = ""; // 16x16 1-bit bitmap encoded as 64 hex chars (or 32x32 as 256 hex chars)
 
-// Minigame Suite (0 = Dino Runner, 1 = Flappy Bird, 2 = Snake)
-int activeMiniGame = 0;
-bool gameOver = false;
-unsigned long gameOverAtMs = 0;
-int gameScore = 0;
-int gameHighScores[3] = {0, 0, 0};
-int gameLastDrawnScore = -999;
+// (#67) Live notification ticker + (#75) Screenshot + (#157) Webhook LED flash
+String notifTickerText = "";
+unsigned long notifTickerUntilMs = 0;
+bool pendingScreenshotCapture = false;
+unsigned long webhookFlashUntilMs = 0;
+String webhookFlashHex = "#22C55E";
 
-// Dino state (height dinoY >= 0 above ground)
-float dinoY = 0;
-float dinoVel = 0;
-bool dinoDuck = false;
-int dinoObsX = 240;
-int dinoObsW = 14;
-int dinoObsH = 22;
-float dinoLastDrawnY = 0;
-int dinoLastDrawnObsX = -999;
-int dinoLastDrawnObsW = 14;
-
-// Flappy state
-float flappyY = 140;
-float flappyVel = 0;
-int flappyPipeX = 240;
-int flappyGapY = 145;
-float flappyLastY = 140;
-int flappyLastPipeX = -999;
-
-// Snake state (16x16 grid in playfield x=[16..224], y=[72..264], cell=12px -> 17x16)
-const int SNAKE_COLS = 17;
-const int SNAKE_ROWS = 16;
-const int SNAKE_X0 = 18;
-const int SNAKE_Y0 = 74;
-const int SNAKE_CELL = 12;
-int snakeX[80], snakeY[80];
-int snakeLen = 4;
-int snakeDir = 0; // 0=R, 1=D, 2=L, 3=U
-int foodX = 10, foodY = 8;
-unsigned long lastSnakeTick = 0;
+#include "arcade_games.h"
+#include "extra_views.h"
 
 void triggerBuzz(unsigned long durationMs, bool force);
 
@@ -433,16 +426,46 @@ void updateLampLed() {
 }
 
 void updateLedEffects() {
+  if (webhookFlashUntilMs > millis()) {
+    uint8_t wr = 34, wg = 197, wb = 94;
+    parseHexColor(webhookFlashHex, wr, wg, wb);
+    bool pulseOn = ((millis() / 180) % 2) == 0;
+    strip.setBrightness(255);
+    uint32_t wc = pulseOn ? strip.Color((uint16_t)wr * ledBrightness / 100, (uint16_t)wg * ledBrightness / 100, (uint16_t)wb * ledBrightness / 100) : 0;
+    for (int i = 0; i < NUM_LEDS; i++) strip.setPixelColor(i, wc);
+    strip.show();
+    return;
+  }
   if (!ledState || ledBrightness <= 0 || isAlarmActive || ledBlinkMode) return;
   bool isContinuousWave = (ledEffect == "solid" && (ledRgbMode || ledGradientMode));
   if (!isContinuousWave && (ledEffect == "solid" || ledEffect == "ambient")) return;
 
-  unsigned long interval = map(constrain(ledSpeed, 5, 100), 5, 100, 95, 16);
+  unsigned long interval = (ledEffect == "clock") ? 250 : map(constrain(ledSpeed, 5, 100), 5, 100, 95, 16);
   if (millis() - lastLedEffectFrame < interval) return;
   lastLedEffectFrame = millis();
   ledEffectStep++;
 
   strip.setBrightness(255);
+
+  if (ledEffect == "clock") {
+    // (#76) 24-LED Analog Ring Clock (12 even hour ticks, hour=Amber, min=Cyan, sec=Green)
+    struct tm tInfo;
+    float k = ledBrightness / 100.0f;
+    for (int i = 0; i < NUM_LEDS; i++) {
+      if ((i % 2) == 0) strip.setPixelColor(i, strip.Color((uint8_t)(18 * k), (uint8_t)(18 * k), (uint8_t)(24 * k)));
+      else strip.setPixelColor(i, 0);
+    }
+    if (getLocalTime(&tInfo, 5)) {
+      int hIdx = ((tInfo.tm_hour % 12) * 2 + (tInfo.tm_min >= 30 ? 1 : 0)) % NUM_LEDS;
+      int mIdx = (tInfo.tm_min * NUM_LEDS / 60) % NUM_LEDS;
+      int sIdx = (tInfo.tm_sec * NUM_LEDS / 60) % NUM_LEDS;
+      strip.setPixelColor(sIdx, strip.Color((uint8_t)(30 * k), (uint8_t)(220 * k), (uint8_t)(110 * k)));
+      strip.setPixelColor(mIdx, strip.Color(0, (uint8_t)(220 * k), (uint8_t)(255 * k)));
+      strip.setPixelColor(hIdx, strip.Color((uint8_t)(255 * k), (uint8_t)(150 * k), 0));
+    }
+    strip.show();
+    return;
+  }
 
   if (ledEffect == "rainbow" || isContinuousWave) {
     for (int i = 0; i < NUM_LEDS; i++) {
@@ -1502,7 +1525,7 @@ void drawSettingsMenu() {
         tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 9, COL_AMBER);
       }
 
-      tft->fillCircle(x + cellW / 2, y + 32, 20, tft->color565(r, g, b));
+      tft->fillCircle(x + cellW / 2, y + 32, 20, hwTft->color565(r, g, b));
 
       const char* name = stationEnglish ? LED_PRESET_NAMES_EN[i] : LED_PRESET_NAMES[i];
       uint16_t nameCol = selected ? COL_AMBER : COL_WHITE;
@@ -2193,271 +2216,7 @@ void drawCustomBootLogo() {
   printCenteredText(customBootSub, 172, 1, COL_MUTED, COL_BG);
 }
 
-void spawnSnakeFood() {
-  for (int tries = 0; tries < 40; tries++) {
-    int fx = random(0, SNAKE_COLS);
-    int fy = random(0, SNAKE_ROWS);
-    bool hit = false;
-    for (int i = 0; i < snakeLen; i++) {
-      if (snakeX[i] == fx && snakeY[i] == fy) { hit = true; break; }
-    }
-    if (!hit) { foodX = fx; foodY = fy; return; }
-  }
-}
-
-void resetActiveGame() {
-  gameOver = false;
-  gameOverAtMs = 0;
-  gameScore = 0;
-  gameLastDrawnScore = -999;
-
-  // Dino reset (y >= 0 upward!)
-  dinoY = 0;
-  dinoVel = 0;
-  dinoDuck = false;
-  dinoObsX = 240;
-  dinoObsW = 14;
-  dinoObsH = 22;
-  dinoLastDrawnY = 0;
-  dinoLastDrawnObsX = -999;
-  dinoLastDrawnObsW = 14;
-
-  // Flappy reset
-  flappyY = 140;
-  flappyVel = 0;
-  flappyPipeX = 240;
-  flappyGapY = random(108, 215);
-  flappyLastY = 140;
-  flappyLastPipeX = -999;
-
-  // Snake reset
-  snakeLen = 4;
-  snakeDir = 0;
-  for (int i = 0; i < snakeLen; i++) {
-    snakeX[i] = 6 - i;
-    snakeY[i] = 8;
-  }
-  spawnSnakeFood();
-  lastSnakeTick = millis();
-}
-
-void triggerGameOver() {
-  gameOver = true;
-  gameOverAtMs = millis();
-  if (gameScore > gameHighScores[activeMiniGame]) {
-    gameHighScores[activeMiniGame] = gameScore;
-    prefs.putInt(("game_hi_" + String(activeMiniGame)).c_str(), gameScore);
-  }
-  if (buzzerEnabled) triggerBuzz(120, false);
-}
-
-void drawGameHeaderBanner() {
-  tft->fillRect(0, 26, 240, 268, COL_BG);
-  const char* titles[] = {"DINO RUNNER (PLAY=JUMP)", "FLAPPY BIRD (PLAY=FLAP)", "SNAKE (<< / >> = TURN)"};
-  printCenteredText(titles[activeMiniGame], 32, 1, COL_CYAN, COL_BG);
-  if (activeMiniGame == 0) {
-    tft->drawFastHLine(10, 250, 220, COL_BORDER);
-  } else if (activeMiniGame == 1) {
-    tft->drawFastHLine(10, 68, 220, COL_BORDER);
-    tft->drawFastHLine(10, 262, 220, COL_BORDER);
-  } else {
-    tft->drawRect(SNAKE_X0 - 2, SNAKE_Y0 - 2, SNAKE_COLS * SNAKE_CELL + 4, SNAKE_ROWS * SNAKE_CELL + 4, COL_BORDER);
-    tft->fillCircle(SNAKE_X0 + foodX * SNAKE_CELL + SNAKE_CELL / 2, SNAKE_Y0 + foodY * SNAKE_CELL + SNAKE_CELL / 2, 4, 0xF800);
-    for (int i = 0; i < snakeLen; i++) {
-      tft->fillRoundRect(SNAKE_X0 + snakeX[i] * SNAKE_CELL + 1, SNAKE_Y0 + snakeY[i] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2, 2, i == 0 ? COL_WHITE : COL_GREEN);
-    }
-  }
-  printCenteredText(tr("Giữ << để thoát • >> đổi game (GameOver)", "Hold << exit • >> switch game on Over"), 276, 1, COL_MUTED, COL_BG);
-}
-
-void drawGameView(bool viewChanged) {
-  if (viewChanged) {
-    resetActiveGame();
-    drawGameHeaderBanner();
-  }
-
-  if (gameOver) {
-    if (gameLastDrawnScore != -2) {
-      gameLastDrawnScore = -2;
-      tft->fillRoundRect(26, 98, 188, 90, 8, COL_CARD);
-      tft->drawRoundRect(26, 98, 188, 90, 8, 0xF800);
-      printCenteredText("GAME OVER!", 108, 2, 0xF800, COL_CARD);
-      printCenteredText("Score: " + String(gameScore) + "  Hi: " + String(gameHighScores[activeMiniGame]), 135, 1, COL_WHITE, COL_CARD);
-      printCenteredText("PLAY: Retry   >>: Next Game", 156, 1, COL_CYAN, COL_CARD);
-      printCenteredText(tr("Giữ << thoát", "Hold << exit"), 172, 1, COL_MUTED, COL_CARD);
-    }
-    return;
-  }
-
-  if (activeMiniGame == 0) {
-    // --- 0. DINO RUNNER (Fixed upward Y kinematics) ---
-    const int GROUND_Y = 250;
-    const int DINO_X = 36;
-    const int DINO_W = 18;
-    const int DINO_H = 22;
-
-    if (dinoY > 0 || dinoVel > 0) {
-      dinoY += dinoVel;
-      dinoVel -= dinoDuck ? 2.1f : 0.92f;
-      if (dinoY <= 0) {
-        dinoY = 0;
-        dinoVel = 0;
-      }
-    }
-
-    int speedPx = 5 + min(7, gameScore / 150);
-    dinoObsX -= speedPx;
-    if (dinoObsX + dinoObsW < 10) {
-      dinoObsX = 240 + random(15, 70);
-      dinoObsW = random(11, 18);
-      dinoObsH = random(18, 32);
-      gameScore += 10;
-    } else {
-      gameScore++;
-    }
-    if (gameScore > gameHighScores[0]) gameHighScores[0] = gameScore;
-
-    // Erase only moved bounding boxes (never touch GROUND_Y or Score!)
-    int oldH = (dinoDuck && dinoLastDrawnY <= 0.5f) ? 13 : DINO_H;
-    int oldTop = GROUND_Y - oldH - (int)dinoLastDrawnY;
-    tft->fillRect(DINO_X - 2, min(oldTop - 2, GROUND_Y - DINO_H - 4), DINO_W + 6, DINO_H + 5, COL_BG);
-    tft->drawFastHLine(10, GROUND_Y, 220, COL_BORDER);
-
-    if (dinoLastDrawnObsX > -40 && dinoLastDrawnObsX < 245) {
-      tft->fillRect(max(10, dinoLastDrawnObsX - 2), GROUND_Y - 36, dinoLastDrawnObsW + 6, 35, COL_BG);
-    }
-
-    int hNow = (dinoDuck && dinoY <= 0.5f) ? 13 : DINO_H;
-    int topNow = GROUND_Y - hNow - (int)dinoY;
-    tft->fillRoundRect(DINO_X, topNow, DINO_W, hNow, 3, COL_WHITE);
-    tft->fillRect(DINO_X + 12, topNow + 3, 3, 3, COL_BG);
-    dinoLastDrawnY = dinoY;
-
-    if (dinoObsX < 238) {
-      int drawW = min(dinoObsW, 240 - max(10, dinoObsX));
-      if (drawW > 0) tft->fillRoundRect(max(10, dinoObsX), GROUND_Y - dinoObsH, drawW, dinoObsH, 2, COL_GREEN);
-    }
-    dinoLastDrawnObsX = dinoObsX;
-    dinoLastDrawnObsW = dinoObsW;
-
-    if (dinoObsX < DINO_X + DINO_W - 3 && dinoObsX + dinoObsW > DINO_X + 3) {
-      if (topNow + hNow > GROUND_Y - dinoObsH + 2) triggerGameOver();
-    }
-  } else if (activeMiniGame == 1) {
-    // --- 1. FLAPPY BIRD ---
-    const int BIRD_X = 56;
-    const int PIPE_W = 24;
-    const int GAP_H = 68;
-    const int TOP_Y = 70;
-    const int BOT_Y = 260;
-
-    flappyVel += 0.72f;
-    if (flappyVel > 6.5f) flappyVel = 6.5f;
-    flappyY += flappyVel;
-
-    flappyPipeX -= 4;
-    if (flappyPipeX + PIPE_W < 10) {
-      flappyPipeX = 242;
-      flappyGapY = random(108, 215);
-      gameScore += 10;
-      if (gameScore > gameHighScores[1]) gameHighScores[1] = gameScore;
-    }
-
-    // Erase previous bird & only uncovered trailing pipe strip (zero flicker, zero ghost pipe)
-    tft->fillRect(BIRD_X - 7, max(TOP_Y, (int)flappyLastY - 7), 16, 16, COL_BG);
-    if (flappyLastPipeX > -PIPE_W && flappyLastPipeX < 244) {
-      int oldLeft = max(10, flappyLastPipeX);
-      int oldRight = min(240, flappyLastPipeX + PIPE_W);
-      if (flappyPipeX > flappyLastPipeX) {
-        // Pipe wrapped to right edge: clear entire previous pipe cleanly
-        if (oldRight > oldLeft) {
-          tft->fillRect(oldLeft, TOP_Y, oldRight - oldLeft, BOT_Y - TOP_Y, COL_BG);
-        }
-      } else {
-        // Pipe slid left: erase newly uncovered columns on its right edge
-        int newRight = max(10, min(240, flappyPipeX + PIPE_W));
-        if (oldRight > newRight) {
-          tft->fillRect(newRight, TOP_Y, oldRight - newRight, BOT_Y - TOP_Y, COL_BG);
-        }
-      }
-    }
-
-    // Draw pipe
-    if (flappyPipeX < 240 && flappyPipeX + PIPE_W > 10) {
-      int px = max(10, flappyPipeX);
-      int pw = min(flappyPipeX + PIPE_W, 240) - px;
-      if (pw > 0) {
-        int upperH = (flappyGapY - GAP_H / 2) - TOP_Y;
-        int lowerY = flappyGapY + GAP_H / 2;
-        int lowerH = BOT_Y - lowerY;
-        if (upperH > 0) tft->fillRect(px, TOP_Y, pw, upperH, COL_GREEN);
-        if (lowerH > 0) tft->fillRect(px, lowerY, pw, lowerH, COL_GREEN);
-      }
-    }
-    flappyLastPipeX = flappyPipeX;
-
-    // Draw bird
-    tft->fillCircle(BIRD_X, (int)flappyY, 6, COL_AMBER);
-    tft->fillCircle(BIRD_X + 3, (int)flappyY - 2, 2, COL_BG);
-    flappyLastY = flappyY;
-
-    if (flappyY - 6 <= TOP_Y || flappyY + 6 >= BOT_Y) {
-      triggerGameOver();
-    } else if (flappyPipeX < BIRD_X + 6 && flappyPipeX + PIPE_W > BIRD_X - 6) {
-      if (flappyY - 6 < flappyGapY - GAP_H / 2 || flappyY + 6 > flappyGapY + GAP_H / 2) {
-        triggerGameOver();
-      }
-    }
-  } else {
-    // --- 2. SNAKE ---
-    unsigned long stepMs = max(95UL, 210UL - (unsigned long)(gameScore / 2));
-    if (millis() - lastSnakeTick >= stepMs) {
-      lastSnakeTick = millis();
-      int nx = snakeX[0] + (snakeDir == 0 ? 1 : (snakeDir == 2 ? -1 : 0));
-      int ny = snakeY[0] + (snakeDir == 1 ? 1 : (snakeDir == 3 ? -1 : 0));
-
-      if (nx < 0 || nx >= SNAKE_COLS || ny < 0 || ny >= SNAKE_ROWS) {
-        triggerGameOver();
-      } else {
-        for (int i = 0; i < snakeLen - 1; i++) {
-          if (snakeX[i] == nx && snakeY[i] == ny) { triggerGameOver(); break; }
-        }
-      }
-
-      if (!gameOver) {
-        bool ate = (nx == foodX && ny == foodY);
-        if (!ate) {
-          int tx = snakeX[snakeLen - 1], ty = snakeY[snakeLen - 1];
-          tft->fillRect(SNAKE_X0 + tx * SNAKE_CELL, SNAKE_Y0 + ty * SNAKE_CELL, SNAKE_CELL, SNAKE_CELL, COL_BG);
-        }
-        for (int i = min(snakeLen, 79); i > 0; i--) {
-          snakeX[i] = snakeX[i - 1];
-          snakeY[i] = snakeY[i - 1];
-        }
-        snakeX[0] = nx;
-        snakeY[0] = ny;
-        if (ate) {
-          if (snakeLen < 78) snakeLen++;
-          gameScore += 10;
-          if (gameScore > gameHighScores[2]) gameHighScores[2] = gameScore;
-          if (buzzerEnabled) triggerBuzz(25, false);
-          spawnSnakeFood();
-          tft->fillCircle(SNAKE_X0 + foodX * SNAKE_CELL + SNAKE_CELL / 2, SNAKE_Y0 + foodY * SNAKE_CELL + SNAKE_CELL / 2, 4, 0xF800);
-        }
-        tft->fillRoundRect(SNAKE_X0 + snakeX[0] * SNAKE_CELL + 1, SNAKE_Y0 + snakeY[0] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2, 2, COL_WHITE);
-        if (snakeLen > 1) {
-          tft->fillRoundRect(SNAKE_X0 + snakeX[1] * SNAKE_CELL + 1, SNAKE_Y0 + snakeY[1] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2, 2, COL_GREEN);
-        }
-      }
-    }
-  }
-
-  if (!gameOver && (gameScore / 5 != gameLastDrawnScore)) {
-    gameLastDrawnScore = gameScore / 5;
-    tft->fillRect(14, 48, 212, 16, COL_BG);
-    drawUtf8Text(16, 50, "SCORE: " + String(gameScore) + "   HI: " + String(gameHighScores[activeMiniGame]), 1, COL_AMBER, COL_BG, 210);
-  }
-}
+// Arcade game implementation moved to arcade_games.h
 
 void drawWakeupCheckView(bool viewChanged) {
   if (viewChanged) {
@@ -2528,6 +2287,19 @@ void drawPhysicalScreen() {
     tft->drawFastHLine(10, 24, 220, COL_BORDER);
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
     printCenteredText("DeskFlow Station OS", 304, 1, COL_MUTED, COL_BG);
+  }
+
+  // (#67) Live bottom notification ticker
+  static String lastFooterMsg = "";
+  String footerNow = (notifTickerText.length() > 0 && millis() < notifTickerUntilMs) ? notifTickerText : "DeskFlow Station OS";
+  if (viewChanged || footerNow != lastFooterMsg) {
+    lastFooterMsg = footerNow;
+    tft->fillRect(6, 299, 228, 19, COL_BG);
+    if (footerNow != "DeskFlow Station OS") {
+      drawUtf8Text(10, 303, String("! ") + footerNow, 1, COL_AMBER, COL_BG, 220);
+    } else {
+      printCenteredText("DeskFlow Station OS", 304, 1, COL_MUTED, COL_BG);
+    }
   }
 
   // 1. HEADER
@@ -2631,7 +2403,7 @@ void drawPhysicalScreen() {
     // Render active synchronized Clock Style in main banner
     drawClockArea(0, 48, 240, 68, false);
 
-    String wStr = srvStats.weatherCity + " . " + srvStats.weatherText;
+    String wStr = srvStats.weatherCity + " . " + srvStats.weatherText + " . AQI " + String(srvStats.weatherAqi) + " UV " + String(srvStats.weatherUv, 0);
     if (viewChanged || wStr != lastMainWeather) {
       tft->fillRect(0, 118, 240, 18, COL_BG);
       printCenteredText(wStr, 120, 1, COL_MUTED, COL_BG);
@@ -2753,8 +2525,24 @@ void drawPhysicalScreen() {
   }
   // 4. VIEW TKB
   else if (srvStats.activeView == "tkb") {
-    if (viewChanged) {
-      printCenteredText(tr("THỜI KHÓA BIỂU", "TIMETABLE"), 32, 2, COL_AMBER, COL_BG);
+    static String lastLiveSig = "";
+    String liveSig = srvStats.liveLabel + "|" + srvStats.liveSubject + "|" + String(srvStats.liveMinsLeft) + "|" + srvStats.dismissalTime + "|" + String(srvStats.minsToDismissal);
+    if (viewChanged || liveSig != lastLiveSig) {
+      lastLiveSig = liveSig;
+      if (viewChanged) {
+        printCenteredText(tr("THỜI KHÓA BIỂU", "TIMETABLE"), 30, 2, COL_AMBER, COL_BG);
+      }
+
+      // (#1) Live period & dismissal countdown pill
+      tft->fillRoundRect(10, 52, 220, 24, 5, COL_CARD);
+      tft->drawRoundRect(10, 52, 220, 24, 5, COL_CYAN);
+      String liveBar = srvStats.liveLabel.length() > 0
+        ? (srvStats.liveLabel + (srvStats.liveSubject.length() > 0 ? (": " + srvStats.liveSubject) : "") + " (" + String(srvStats.liveMinsLeft) + "p)")
+        : tr("Hôm nay", "Today");
+      if (srvStats.dismissalTime.length() > 0 && srvStats.minsToDismissal > 0) {
+        liveBar += " • Về " + srvStats.dismissalTime;
+      }
+      drawUtf8Text(16, 58, liveBar, 1, COL_CYAN, COL_CARD, 208);
 
       auto drawTkbRow = [&](int& y, const char* label, uint16_t labelCol, const String& value, uint16_t valCol) {
         if (y > 278) return;
@@ -2764,7 +2552,6 @@ void drawPhysicalScreen() {
         int valX = 14 + lblW;
         int firstMaxW = max(60, 228 - valX);
 
-        // Word-wrap value onto up to 2 lines so subjects/uniform are never cut off
         String v = value;
         v.trim();
         if (v.length() == 0) {
@@ -2779,7 +2566,6 @@ void drawPhysicalScreen() {
           y += 16;
           return;
         }
-        // Split at last space that fits in firstMaxW
         int splitPos = -1;
         for (size_t i = 0; i < v.length(); i++) {
           if (v[i] == ' ' && strWidth(v.substring(0, i)) <= firstMaxW) {
@@ -2802,34 +2588,49 @@ void drawPhysicalScreen() {
         }
       };
 
-      int curY = 60;
-      drawUtf8Text(12, curY, srvStats.tkbDay + ":", 1, COL_CYAN, COL_BG, 216);
-      curY += 17;
-      drawTkbRow(curY, tr("* Sáng: ", "* AM: "), COL_AMBER, srvStats.tkbMorning, COL_WHITE);
-      if (srvStats.tkbHasAfternoon && srvStats.tkbAfternoon.length() > 0) {
-        drawTkbRow(curY, tr("* Chiều: ", "* PM: "), COL_AMBER, srvStats.tkbAfternoon, COL_WHITE);
-      }
-      drawTkbRow(curY, tr("* Đ.phục: ", "* Uniform: "), COL_GREEN, srvStats.tkbUniform, COL_CYAN);
+      if (viewChanged) {
+        int curY = 82;
+        drawUtf8Text(12, curY, srvStats.tkbDay + ":", 1, COL_CYAN, COL_BG, 216);
+        curY += 16;
+        drawTkbRow(curY, tr("* Sáng: ", "* AM: "), COL_AMBER, srvStats.tkbMorning, COL_WHITE);
+        if (srvStats.tkbHasAfternoon && srvStats.tkbAfternoon.length() > 0) {
+          drawTkbRow(curY, tr("* Chiều: ", "* PM: "), COL_AMBER, srvStats.tkbAfternoon, COL_WHITE);
+        }
+        drawTkbRow(curY, tr("* Đ.phục: ", "* Uniform: "), COL_GREEN, srvStats.tkbUniform, COL_CYAN);
 
-      curY += 6;
-      tft->drawFastHLine(12, curY, 216, COL_BORDER);
-      curY += 10;
+        curY += 4;
+        tft->drawFastHLine(12, curY, 216, COL_BORDER);
+        curY += 8;
 
-      drawUtf8Text(12, curY, srvStats.tkbTomDay + ":", 1, COL_CYAN, COL_BG, 216);
-      curY += 17;
-      drawTkbRow(curY, tr("* Sáng: ", "* AM: "), COL_AMBER, srvStats.tkbTomMorning, COL_WHITE);
-      if (srvStats.tkbTomHasAfternoon && srvStats.tkbTomAfternoon.length() > 0) {
-        drawTkbRow(curY, tr("* Chiều: ", "* PM: "), COL_AMBER, srvStats.tkbTomAfternoon, COL_WHITE);
+        drawUtf8Text(12, curY, srvStats.tkbTomDay + ":", 1, COL_CYAN, COL_BG, 216);
+        curY += 16;
+        drawTkbRow(curY, tr("* Sáng: ", "* AM: "), COL_AMBER, srvStats.tkbTomMorning, COL_WHITE);
+        if (srvStats.tkbTomHasAfternoon && srvStats.tkbTomAfternoon.length() > 0) {
+          drawTkbRow(curY, tr("* Chiều: ", "* PM: "), COL_AMBER, srvStats.tkbTomAfternoon, COL_WHITE);
+        }
+        drawTkbRow(curY, tr("* Đ.phục: ", "* Uniform: "), COL_GREEN, srvStats.tkbTomUniform, COL_CYAN);
       }
-      drawTkbRow(curY, tr("* Đ.phục: ", "* Uniform: "), COL_GREEN, srvStats.tkbTomUniform, COL_CYAN);
     }
   }
-  // 5. VIEW WEATHER
+  // 5. VIEW WEATHER (#69 AQI & UV)
   else if (srvStats.activeView == "weather") {
     if (viewChanged) {
-      drawWeatherWebIcon(120, 105);
-      printCenteredText(srvStats.weatherText, 160, 3, COL_AMBER, COL_BG);
-      printCenteredText(srvStats.weatherCity, 200, 1, COL_MUTED, COL_BG);
+      drawWeatherWebIcon(120, 88);
+      printCenteredText(srvStats.weatherText, 142, 3, COL_AMBER, COL_BG);
+      printCenteredText(srvStats.weatherCity, 178, 1, COL_MUTED, COL_BG);
+
+      tft->fillRoundRect(16, 200, 100, 52, 8, COL_CARD);
+      tft->drawRoundRect(16, 200, 100, 52, 8, COL_CYAN);
+      printCenteredText("AQI (" + String(srvStats.weatherAqi) + ")", 208, 1, COL_CYAN, COL_CARD);
+      tft->setCursor(28, 228); tft->setTextSize(1); tft->setTextColor(COL_WHITE, COL_CARD);
+      tft->print(srvStats.weatherAqiLabel);
+
+      tft->fillRoundRect(124, 200, 100, 52, 8, COL_CARD);
+      tft->drawRoundRect(124, 200, 100, 52, 8, COL_AMBER);
+      tft->setCursor(136, 208); tft->setTextSize(1); tft->setTextColor(COL_AMBER, COL_CARD);
+      tft->print("UV: " + String(srvStats.weatherUv, 1));
+      tft->setCursor(136, 228); tft->setTextColor(COL_WHITE, COL_CARD);
+      tft->print(srvStats.weatherUvLabel);
     }
   }
   // 6. VIEW LYRICS
@@ -2908,11 +2709,27 @@ void drawPhysicalScreen() {
   else if (srvStats.activeView == "calendar") {
     drawCalendarView(viewChanged);
   }
-  // 13. VIEW DINO RUNNER MINIGAME
+  // 13. VIEW ARCADE GAME HUB
   else if (srvStats.activeView == "game") {
     drawGameView(viewChanged);
   }
-  // 14. VIEW WAKEUP VERIFICATION (ANTI-OVERSLEEP)
+  // 14. VIEW MATRIX RAIN (#51)
+  else if (srvStats.activeView == "matrix") {
+    drawMatrixRainView(viewChanged);
+  }
+  // 15. VIEW SPOTIFY VINYL (#55)
+  else if (srvStats.activeView == "vinyl") {
+    drawSpotifyVinylView(viewChanged);
+  }
+  // 16. VIEW GITHUB CONTRIBUTIONS & CI (#57)
+  else if (srvStats.activeView == "github") {
+    drawGitHubView(viewChanged);
+  }
+  // 17. VIEW FORMULAS & PERIODIC TABLE (#11)
+  else if (srvStats.activeView == "formulas") {
+    drawFormulasView(viewChanged);
+  }
+  // 18. VIEW WAKEUP VERIFICATION (ANTI-OVERSLEEP)
   else if (srvStats.activeView == "wakeup_check") {
     drawWakeupCheckView(viewChanged);
   }
@@ -3036,6 +2853,11 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   else if (topicStr == "deskflow/weather") {
     srvStats.weatherText = doc["weather"] | "28*C";
     if (doc.containsKey("city")) srvStats.weatherCity = doc["city"].as<String>();
+    if (doc.containsKey("aqi")) srvStats.weatherAqi = doc["aqi"] | 2;
+    if (doc.containsKey("aqi_label")) srvStats.weatherAqiLabel = doc["aqi_label"].as<String>();
+    if (doc.containsKey("uv")) srvStats.weatherUv = doc["uv"] | 4.0f;
+    if (doc.containsKey("uv_label")) srvStats.weatherUvLabel = doc["uv_label"].as<String>();
+    lastRenderedView = "";
     screenNeedUpdate = true;
     addLog("WEATHER", "Cap nhat: " + srvStats.weatherCity + " " + srvStats.weatherText);
   } 
@@ -3418,10 +3240,40 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     }
     else if (topicStr == "deskflow/display" && action == "game_mode") {
       int m = doc["mode"] | 0;
-      activeMiniGame = constrain(m, 0, 2);
+      activeMiniGame = constrain(m, 0, ARCADE_GAME_COUNT - 1);
+      inGameLobby = false;
       srvStats.activeView = "game";
       lastRenderedView = "";
       screenNeedUpdate = true;
+      resetActiveGame();
+      drawGameHeaderBanner();
+    }
+    else if (topicStr == "deskflow/display" && action == "github_stats") {
+      ghUsername = doc["username"] | "HenryYT13";
+      ghRepos = doc["repos"] | 0;
+      ghFollowers = doc["followers"] | 0;
+      ghLatestRepo = doc["latest_repo"] | "deskflow-app";
+      ghCiStatus = doc["ci_status"] | "PASS";
+      ghDirty = true;
+      screenNeedUpdate = true;
+    }
+    else if (topicStr == "deskflow/display" && action == "notif_ticker") {
+      notifTickerText = doc["text"] | "";
+      notifTickerUntilMs = millis() + 25000UL;
+      screenNeedUpdate = true;
+    }
+    else if (topicStr == "deskflow/display" && action == "webhook_flash") {
+      webhookFlashHex = doc["color"] | "#22C55E";
+      webhookFlashUntilMs = millis() + 2600UL;
+      String sum = doc["summary"] | "";
+      if (sum.length() > 0) {
+        notifTickerText = sum;
+        notifTickerUntilMs = millis() + 25000UL;
+      }
+      if (buzzerEnabled) triggerBuzz(65, false);
+    }
+    else if (topicStr == "deskflow/display" && action == "take_screenshot") {
+      pendingScreenshotCapture = true;
     }
     else if (topicStr == "deskflow/display" && action == "ota_update") {
       pendingOtaUrl = doc["url"] | "";
@@ -3502,6 +3354,11 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     if (doc.containsKey("tom_has_afternoon")) srvStats.tkbTomHasAfternoon = doc["tom_has_afternoon"].as<bool>();
     if (doc.containsKey("tom_afternoon")) srvStats.tkbTomAfternoon = doc["tom_afternoon"].as<String>();
     if (doc.containsKey("tom_uniform")) srvStats.tkbTomUniform = doc["tom_uniform"].as<String>();
+    if (doc.containsKey("live_label")) srvStats.liveLabel = doc["live_label"].as<String>();
+    if (doc.containsKey("live_subject")) srvStats.liveSubject = doc["live_subject"].as<String>();
+    if (doc.containsKey("live_mins_left")) srvStats.liveMinsLeft = doc["live_mins_left"] | 0;
+    if (doc.containsKey("dismissal_time")) srvStats.dismissalTime = doc["dismissal_time"].as<String>();
+    if (doc.containsKey("mins_to_dismissal")) srvStats.minsToDismissal = doc["mins_to_dismissal"] | 0;
 
     screenNeedUpdate = true;
   } 
@@ -4336,14 +4193,55 @@ void handleApiLogs() { server.send(200, "text/plain; charset=utf-8", serverLogs)
 void handleClearLogs() { serverLogs = "[SYSTEM] Log cleared.\n"; server.send(200, "text/plain", "OK"); }
 
 // ================= XỬ LÝ 3 NÚT BẤM VẬT LÝ TRÊN MẶT TRẠM =================
+extern String lastMenuSignature;
 void triggerPairCodeRequestFromMenu() {
   pairCodeLoading = true;
+  pairFetchFailed = false;
   pairCodeValue = "";
   pairQrBits = "";
   pairQrSize = 0;
-  mqtt.publish("deskflow/pair_request", "{\"action\":\"request_pair_code\",\"full_access\":true}");
+  pairReqStartedAt = millis();
   screenNeedUpdate = true;
+  drawSettingsMenu();
   triggerBuzz(30);
+
+  if (mqtt.connected()) {
+    mqtt.publish("deskflow/pair_request", "{\"action\":\"request_pair_code\",\"full_access\":true}");
+  }
+
+  // Reliable HTTPS direct fetch (instant, works even if MQTT broker queue drops)
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(6000);
+    if (http.begin(client, "https://df.api.thetechdude.io.vn/api/app/station/pair-code")) {
+      int code = http.GET();
+      if (code == 200) {
+        String body = http.getString();
+        DynamicJsonDocument pdoc(4096);
+        if (!deserializeJson(pdoc, body) && pdoc["success"].as<bool>()) {
+          pairCodeValue = pdoc["code"] | "";
+          pairQrSize = pdoc["qr_size"] | 0;
+          pairQrBits = pdoc["qr_bits"] | "";
+          pairCodeLoading = false;
+          pairFetchFailed = (pairCodeValue.length() == 0);
+          pairCodeFetchedAt = millis();
+          lastMenuSignature = "";
+          screenNeedUpdate = true;
+          triggerBuzz(45);
+          addLog("PAIR", "HTTPS fetched code " + pairCodeValue + " (" + String(pairQrSize) + "x" + String(pairQrSize) + ")");
+        }
+      }
+      http.end();
+    }
+  }
+  if (pairCodeLoading && WiFi.status() != WL_CONNECTED) {
+    pairCodeLoading = false;
+    pairFetchFailed = true;
+    lastMenuSignature = "";
+    screenNeedUpdate = true;
+  }
 }
 
 void handleMenuPlay() {
@@ -4581,72 +4479,18 @@ void handleHardwareButtons() {
     return;
   }
 
-  // Minigame suite edge-triggered button controls (hold << >= 700ms exits cleanly)
+  // Unified Arcade Hub button handler: PREV/NEXT NEVER switch global screens here
   if (!inSettingsMenu && !inViewMenu && srvStats.activeView == "game") {
-    static bool prevPlayLow = false;
-    static bool prevNextLow = false;
-    static bool gamePrevWasLow = false;
-    static unsigned long gamePrevDownAt = 0;
-    static bool gamePrevHoldSent = false;
-
-    bool playEdge = (curPlay == LOW && !prevPlayLow);
-    bool nextEdge = (curNext == LOW && !prevNextLow);
-    prevPlayLow = (curPlay == LOW);
-    prevNextLow = (curNext == LOW);
-
-    if (gameOver) {
-      if (millis() - gameOverAtMs >= 450) {
-        if (playEdge) {
-          resetActiveGame();
-          drawGameHeaderBanner();
-          screenNeedUpdate = true;
-        } else if (nextEdge) {
-          activeMiniGame = (activeMiniGame + 1) % 3;
-          resetActiveGame();
-          drawGameHeaderBanner();
-          screenNeedUpdate = true;
-        }
-      }
-    } else {
-      if (activeMiniGame == 0) {
-        if ((playEdge || nextEdge) && dinoY <= 1.0f) {
-          dinoVel = 10.2f;
-          if (buzzerEnabled) triggerBuzz(18, false);
-        }
-        dinoDuck = (curPrev == LOW);
-      } else if (activeMiniGame == 1) {
-        if (playEdge || nextEdge) {
-          flappyVel = -6.8f;
-          if (buzzerEnabled) triggerBuzz(16, false);
-        }
-      } else {
-        if (nextEdge) { snakeDir = (snakeDir + 1) % 4; }
-        if (playEdge && buzzerEnabled) triggerBuzz(15, false);
-      }
+    bool exitToMain = false;
+    handleArcadeButtons(curPlay, curNext, curPrev, exitToMain);
+    if (exitToMain) {
+      srvStats.activeView = "main";
+      inGameLobby = true;
+      lastRenderedView = "";
+      screenNeedUpdate = true;
+      publishDeviceStatus();
     }
-
-    if (curPrev == LOW) {
-      if (!gamePrevWasLow) {
-        gamePrevWasLow = true;
-        gamePrevDownAt = millis();
-        gamePrevHoldSent = false;
-        if (!gameOver && activeMiniGame == 2) {
-          snakeDir = (snakeDir + 3) % 4; // Turn left 90° immediately on Snake
-        }
-      } else if (!gamePrevHoldSent && millis() - gamePrevDownAt >= 700) {
-        gamePrevHoldSent = true;
-        triggerBuzz(80, false);
-        inViewMenu = true;
-        viewMenuIndex = VIEW_MENU_COUNT - 1;
-        viewMenuPage = viewMenuIndex / VIEW_ROWS_PER_PAGE;
-        lastRenderedView = "";
-        screenNeedUpdate = true;
-      }
-    } else {
-      dinoDuck = false;
-      gamePrevWasLow = false;
-    }
-    if (!inViewMenu) return;
+    return;
   }
 
   // 1. PLAY BUTTON (Short = Play/Pause / Select, Long >= 700ms = Cycle View)
@@ -4692,6 +4536,11 @@ void handleHardwareButtons() {
         addLog("VIEW", "Da chon man hinh: " + srvStats.activeView);
       } else if (srvStats.activeView == "calendar") {
         toggleCalendarSelectOrExit();
+      } else if (srvStats.activeView == "formulas") {
+        formulaTab = 1 - formulaTab;
+        formulaIdx = 0;
+        screenNeedUpdate = true;
+        triggerBuzz(30);
       } else {
         triggerBuzz(30);
         sendButtonAction("press_play");
@@ -4746,6 +4595,10 @@ void handleHardwareButtons() {
           cycleNextCountdown();
         } else if (srvStats.activeView == "calendar") {
           cycleNextCalendar();
+        } else if (srvStats.activeView == "formulas") {
+          formulaIdx++;
+          screenNeedUpdate = true;
+          triggerBuzz(20);
         } else {
           triggerBuzz(30);
           sendButtonAction("press_next");
@@ -4806,6 +4659,10 @@ void handleHardwareButtons() {
           cyclePrevCountdown();
         } else if (srvStats.activeView == "calendar") {
           cyclePrevCalendar();
+        } else if (srvStats.activeView == "formulas") {
+          formulaIdx = (formulaIdx + 11) % 12;
+          screenNeedUpdate = true;
+          triggerBuzz(20);
         } else {
           triggerBuzz(30);
           sendButtonAction("press_prev");
@@ -4849,17 +4706,18 @@ void setup() {
   delay(50);
 
   SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
-  tft = new Adafruit_ST7789(&SPI, TFT_CS, TFT_DC, TFT_RST);
+  hwTft = new Adafruit_ST7789(&SPI, TFT_CS, TFT_DC, TFT_RST);
+  tft = hwTft;
   prefs.begin("deskflow", false);
   customBootTitle = prefs.getString("boot_title", "DeskFlow Station");
   customBootSub = prefs.getString("boot_sub", "v" DESKFLOW_FW_VERSION);
   customBootBmp = prefs.getString("boot_bmp", "");
 
-  if (tft) {
-    tft->init(240, 320);
-    tft->setSPISpeed(80000000);
-    tft->invertDisplay(false);
-    tft->setRotation(0);
+  if (hwTft) {
+    hwTft->init(240, 320);
+    hwTft->setSPISpeed(80000000);
+    hwTft->invertDisplay(false);
+    hwTft->setRotation(0);
     drawCustomBootLogo();
   }
 
@@ -4897,7 +4755,7 @@ void setup() {
   ledRgbMode = prefs.getBool("led_rgb", false);
   ledGradientMode = prefs.getBool("led_grad", false);
   ledSpeed = prefs.getInt("led_spd", 50);
-  for (int gi = 0; gi < 3; gi++) {
+  for (int gi = 0; gi < ARCADE_GAME_COUNT; gi++) {
     gameHighScores[gi] = prefs.getInt(("game_hi_" + String(gi)).c_str(), 0);
   }
   ledPresetIndex = prefs.getInt("led_color_idx", 0);
@@ -5049,12 +4907,22 @@ void loop() {
     updateThemePalette();
   }
 
-  unsigned long refreshThreshold = (srvStats.activeView == "game") ? 33 : (isClockAnimationActive() ? 50 : 1000);
+  unsigned long refreshThreshold = (srvStats.activeView == "game" || srvStats.activeView == "matrix" || srvStats.activeView == "vinyl")
+                                     ? 33
+                                     : (isClockAnimationActive() ? 40 : 1000);
+
+  if (pendingScreenshotCapture) {
+    pendingScreenshotCapture = false;
+    captureAndUploadScreenshot();
+  }
+
+  // Timeout guard if pair code stayed loading via MQTT
+  if (inSettingsMenu && menuState == MENU_PAIR_DEVICE && pairCodeLoading && pairCodeValue.length() == 0 && (millis() - pairReqStartedAt > 7500)) {
+    pairCodeLoading = false;
+    pairFetchFailed = true;
+  }
 
   if (inSettingsMenu || inViewMenu) {
-    // While a menu is open, ignore background repaint requests and only redraw
-    // when the menu state itself changed. Telemetry/MQTT updates arrive about
-    // once a second and used to repaint the menu each time (visible flicker).
     screenNeedUpdate = false;
     String menuSignature = String(inSettingsMenu ? "S" : "V") + "|" +
                            String((int)menuState) + "|" + String(menuCurrentItem) + "|" +
@@ -5064,7 +4932,9 @@ void loop() {
                            String(ledBrightness) + "|" + String(stationEnglish ? 1 : 0) + "|" +
                            String(buzzerEnabled ? 1 : 0) + "|" + String(buzzerDurationSetting) + "|" +
                            darkModeSetting + "|" + String(spotifyVolumeKnown ? spotifyVolume : -1) + "|" +
-                           srvStats.activeView;
+                           srvStats.activeView + "|" +
+                           String(pairCodeLoading ? 1 : 0) + "|" + String(pairFetchFailed ? 1 : 0) + "|" +
+                           pairCodeValue + "|" + String(pairQrSize);
     if (menuSignature != lastMenuSignature) {
       lastMenuSignature = menuSignature;
       lastScreenDraw = millis();

@@ -607,7 +607,22 @@ data class MelodyPlayRequest(
     @SerialName("midi_base64") val midiBase64: String? = null,
     @SerialName("title") val title: String? = null,
     @SerialName("filename") val filename: String? = null,
-    @SerialName("notes") val notes: List<List<Int>>? = null
+    @SerialName("notes") val notes: List<List<Int>>? = null,
+    @SerialName("selected_tracks") val selectedTracks: List<Int>? = null
+)
+
+@Serializable
+data class MidiTrackDto(
+    @SerialName("index") val index: Int = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("note_count") val noteCount: Int = 0
+)
+
+@Serializable
+data class MidiInspectResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("tracks") val tracks: List<MidiTrackDto> = emptyList(),
+    @SerialName("suggested_lead") val suggestedLead: Int? = null
 )
 
 // --- Google Calendar Models ---
@@ -863,5 +878,85 @@ data class PublicStatusResponse(
     @SerialName("version") val version: String = "",
     @SerialName("weather") val weather: String = "",
     @SerialName("spotify_track") val spotifyTrack: String = ""
+)
+
+@Serializable
+data class ShakeDismissRequest(
+    @SerialName("shakes") val shakes: Int = 20
+)
+
+@Serializable
+data class SpotifyQueueItemDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("name") val name: String = "",
+    @SerialName("artist") val artist: String = "",
+    @SerialName("duration_ms") val durationMs: Long = 0L
+)
+
+@Serializable
+data class SpotifyQueueResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("queue") val queue: List<SpotifyQueueItemDto> = emptyList()
+)
+
+@Serializable
+data class SpotifyDeviceDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("name") val name: String = "",
+    @SerialName("type") val type: String = "Computer",
+    @SerialName("is_active") val isActive: Boolean = false,
+    @SerialName("volume_percent") val volumePercent: Int? = null
+)
+
+@Serializable
+data class SpotifyDevicesResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("devices") val devices: List<SpotifyDeviceDto> = emptyList()
+)
+
+@Serializable
+data class SpotifyTransferRequest(
+    @SerialName("device_id") val deviceId: String
+)
+
+@Serializable
+data class HolidayToggleRequest(
+    @SerialName("date") val date: String,
+    @SerialName("is_holiday") val isHoliday: Boolean? = null
+)
+
+@Serializable
+data class GithubSyncRequest(
+    @SerialName("username") val username: String
+)
+
+@Serializable
+data class LivePeriodDto(
+    @SerialName("label") val label: String = "",
+    @SerialName("current_subject") val currentSubject: String = "",
+    @SerialName("minutes_left") val minutesLeft: Int = 0,
+    @SerialName("dismissal_time") val dismissalTime: String = "",
+    @SerialName("minutes_to_dismissal") val minutesToDismissal: Int = 0
+)
+
+@Serializable
+data class SubjectStatDto(
+    @SerialName("subject") val subject: String = "",
+    @SerialName("periods") val periods: Int = 0,
+    @SerialName("hours") val hours: Float = 0f
+)
+
+@Serializable
+data class TimetableWeeklyStatsDto(
+    @SerialName("total_periods") val totalPeriods: Int = 0,
+    @SerialName("total_hours") val totalHours: Float = 0f,
+    @SerialName("subjects") val subjects: List<SubjectStatDto> = emptyList()
+)
+
+@Serializable
+data class TimetableStatsResponse(
+    @SerialName("success") val success: Boolean = true,
+    @SerialName("live") val live: LivePeriodDto? = null,
+    @SerialName("stats") val stats: TimetableWeeklyStatsDto? = null
 )
 

@@ -17,7 +17,7 @@ struct DeskFlowApp: App {
     init() {
         let args = CommandLine.arguments
         if args.contains("--version") {
-            print("Deskflow macOS (Swift + SwiftUI) v2.2.2")
+            print("Deskflow macOS (Swift + SwiftUI) v2.3.0")
             exit(0)
         }
         if args.contains("--run-tests") {
@@ -84,7 +84,10 @@ struct DeskFlowApp: App {
                     currentMinutes = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
                     // Keep the Focus Mode lock in sync if the session ends
                     // (timeout or unlocked from another device).
-                    Task { await apiClient.fetchFocusStatus() }
+                    Task {
+                        await apiClient.fetchFocusStatus()
+                        await apiClient.fetchMenuBarStatus()
+                    }
                 }
                 .onReceive(telemetryTimer) { _ in
                     Task {
@@ -108,6 +111,7 @@ struct DeskFlowApp: App {
                         exit(0)
                     }
                     await apiClient.refreshAll()
+                    await apiClient.fetchMenuBarStatus()
                 }
         }
         .commands {
@@ -121,6 +125,32 @@ struct DeskFlowApp: App {
                     Task { await apiClient.testHealth() }
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+            }
+        }
+
+        // (#191) macOS Top Menu Bar Live Status & Quick Controls
+        MenuBarExtra(apiClient.menuBarLiveLabel, systemImage: "sparkles.tv") {
+            Text(apiClient.menuBarLiveLabel)
+                .font(.headline)
+            Divider()
+            Button("Toggle 24-LED Ring") {
+                Task { await apiClient.quickMenuAction(path: "/api/app/control/led", body: ["action": "toggle"]) }
+            }
+            Button("ESP32 → TKB") {
+                Task { await apiClient.quickMenuAction(path: "/api/app/control/display/view", body: ["view": "tkb"]) }
+            }
+            Button("Focus 25m") {
+                Task { await apiClient.quickMenuAction(path: "/api/app/control/timer/start", body: ["duration": "25m", "note": "Menu Bar Focus"]) }
+            }
+            Divider()
+            Button("Refresh Now") {
+                Task {
+                    await apiClient.refreshAll()
+                    await apiClient.fetchMenuBarStatus()
+                }
+            }
+            Button("Quit DeskFlow") {
+                NSApplication.shared.terminate(nil)
             }
         }
     }

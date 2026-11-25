@@ -1,9 +1,17 @@
 package com.deskflow.app.ui.control
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.speech.tts.TextToSpeech
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -108,7 +116,8 @@ fun ShopeeRgbEffectsCard(
         "police" to AppStrings.t("Cảnh sát"),
         "sparkle" to AppStrings.t("Lấp lánh"),
         "fire" to AppStrings.t("Lửa trại"),
-        "strobe" to AppStrings.t("Nháy Sàn")
+        "strobe" to AppStrings.t("Nháy Sàn"),
+        "clock" to AppStrings.t("Đồng hồ 24 LED (#76)")
     )
 
     ElevatedCard(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
@@ -255,6 +264,7 @@ fun ShopeeRgbEffectsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MiniGamesAndBootLogoCard(
     repository: FocusRepository,
@@ -264,16 +274,21 @@ fun MiniGamesAndBootLogoCard(
     var selectedGame by remember { mutableIntStateOf(0) }
     var bootTitle by remember { mutableStateOf("DESKFLOW") }
     var bootSub by remember { mutableStateOf("24 LED STATION") }
+    var ghUser by remember { mutableStateOf("HenryYT13") }
 
     ElevatedCard(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.SportsEsports, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text(AppStrings.t("Mini-Games (#23) & Boot Logo (#28)"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(AppStrings.t("Arcade Hub 9 Games (#23,#58-#63)"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(0 to "🦖 Dino", 1 to "🐦 Flappy", 2 to "🐍 Snake").forEach { (mode, title) ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    0 to "🦖 Dino", 1 to "🐦 Flappy", 2 to "🐍 Snake",
+                    3 to "🧩 2048", 4 to "🧱 Tetris", 5 to "👾 Invaders",
+                    6 to "🏓 PingPong", 7 to "⚡ Reaction", 8 to "🎲 Lucky"
+                ).forEach { (mode, title) ->
                     FilterChip(
                         selected = selectedGame == mode,
                         onClick = {
@@ -284,9 +299,38 @@ fun MiniGamesAndBootLogoCard(
                                 onFeedback("ESP32 Game → $title")
                             }
                         },
-                        label = { Text(title) },
-                        modifier = Modifier.weight(1f)
+                        label = { Text(title, style = MaterialTheme.typography.labelSmall) }
                     )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            val r = repository.captureStationScreenshot()
+                            onFeedback(if (r is ApiResult.Success) AppStrings.t("Đã gửi lệnh chụp màn hình ESP32!") else AppStrings.t("Lỗi chụp màn hình"))
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(AppStrings.t("Chụp MH (#75)"))
+                }
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            repository.syncGithubStats(ghUser.trim())
+                            repository.switchDisplayView("github")
+                            onFeedback("GitHub @$ghUser -> ESP32")
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("GitHub (#57)")
                 }
             }
 
@@ -566,10 +610,34 @@ fun SavedMelodyAndMiniPianoCard(
     coroutineScope: CoroutineScope,
     onFeedback: (String) -> Unit
 ) {
+    val context = LocalContext.current
     var saved by remember { mutableStateOf<List<SavedMelodyItemDto>>(emptyList()) }
     var recording by remember { mutableStateOf(false) }
     var recordedNotes by remember { mutableStateOf<List<List<Int>>>(emptyList()) }
     var tuneName by remember { mutableStateOf("Android Tune") }
+    var midiInspect by remember { mutableStateOf<Triple<String, String, List<MidiTrackDto>>?>(null) }
+    var selectedTracks by remember { mutableStateOf<List<Int>>(emptyList()) }
+
+    val midiPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null && bytes.isNotEmpty()) {
+                    val fname = uri.lastPathSegment?.substringAfterLast('/') ?: "upload.mid"
+                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val res = repository.inspectMidiBytes(fname, bytes)
+                    if (res is ApiResult.Success && res.data.tracks.size > 1) {
+                        midiInspect = Triple(fname, b64, res.data.tracks)
+                        selectedTracks = listOfNotNull(res.data.suggestedLead ?: res.data.tracks.firstOrNull()?.index)
+                        onFeedback(AppStrings.t("Đã đọc ${res.data.tracks.size} tracks MIDI!"))
+                    } else {
+                        val playRes = repository.playCustomMidiTracks(b64, fname, fname, null)
+                        onFeedback(if (playRes is ApiResult.Success) "Playing $fname" else AppStrings.t("Lỗi đọc file .mid"))
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val r = repository.getMelodyLibrary()
@@ -583,12 +651,54 @@ fun SavedMelodyAndMiniPianoCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(AppStrings.t("Mini-Piano (#44) & Thư viện (#42)"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(AppStrings.t("Mini-Piano, .MID Picker (#112) & Thư viện"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { midiPicker.launch(arrayOf("audio/midi", "audio/x-midi", "*/*")) }) {
+                    Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Chọn .mid")
+                }
+                Spacer(Modifier.width(6.dp))
                 FilterChip(
                     selected = recording,
                     onClick = { recording = !recording },
-                    label = { Text(if (recording) "● Đang thu" else "Thu âm") }
+                    label = { Text(if (recording) "● Thu" else "Thu âm") }
                 )
+            }
+
+            midiInspect?.let { (fname, b64, tracks) ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("🎹 Multi-Track ($fname):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        tracks.forEach { tr ->
+                            val picked = selectedTracks.contains(tr.index)
+                            FilterChip(
+                                selected = picked,
+                                onClick = {
+                                    selectedTracks = if (picked) selectedTracks - tr.index else selectedTracks + tr.index
+                                },
+                                label = { Text("T${tr.index}: ${tr.name.ifBlank { "${tr.noteCount}n" }}", style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = selectedTracks.isNotEmpty(),
+                            onClick = {
+                                coroutineScope.launch {
+                                    repository.playCustomMidiTracks(b64, fname, fname, selectedTracks)
+                                    onFeedback("Playing $fname!")
+                                }
+                            }
+                        ) { Text("Phát trên ESP32") }
+                        TextButton(onClick = { midiInspect = null }) { Text("Đóng") }
+                    }
+                }
             }
 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -775,6 +885,82 @@ fun AiCopilotDialog(
                         Icon(Icons.Default.Send, contentDescription = null)
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * (#103) Android Accelerometer Shake Phone 20x Challenge to silence active alarm.
+ */
+@Composable
+fun ShakeAlarmDismissCard(
+    alarmActive: Boolean,
+    repository: FocusRepository,
+    coroutineScope: CoroutineScope,
+    onDismissed: (String) -> Unit
+) {
+    val context = LocalContext.current
+    var shakeCount by remember(alarmActive) { mutableIntStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+
+    DisposableEffect(alarmActive) {
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val accel = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        var lastShakeMs = 0L
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(ev: SensorEvent) {
+                if (!alarmActive || busy) return
+                val x = ev.values[0]
+                val y = ev.values[1]
+                val z = ev.values[2]
+                val g = kotlin.math.sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
+                val now = System.currentTimeMillis()
+                if (g > 1.85f && now - lastShakeMs > 180L) {
+                    lastShakeMs = now
+                    val next = shakeCount + 1
+                    shakeCount = next
+                    if (next >= 20 && !busy) {
+                        busy = true
+                        coroutineScope.launch {
+                            val r = repository.shakeDismissAlarm(next)
+                            busy = false
+                            if (r is ApiResult.Success) {
+                                shakeCount = 0
+                                onDismissed(AppStrings.t("📳 Đã lắc đủ 20 lần — Tắt báo thức thành công!"))
+                                repository.refreshAlarm()
+                            } else {
+                                onDismissed(AppStrings.t("Lỗi gửi lệnh tắt báo thức!"))
+                            }
+                        }
+                    }
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        if (alarmActive && accel != null) {
+            sm.registerListener(listener, accel, SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose { sm?.unregisterListener(listener) }
+    }
+
+    if (alarmActive) {
+        ElevatedCard(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = AppStrings.t("📳 Lắc điện thoại 20 lần để tắt chuông (#103)"),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                LinearProgressIndicator(
+                    progress = { (shakeCount / 20f).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
+                )
+                Text(
+                    text = "${shakeCount.coerceAtMost(20)} / 20 lần lắc mạnh",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace
+                )
             }
         }
     }

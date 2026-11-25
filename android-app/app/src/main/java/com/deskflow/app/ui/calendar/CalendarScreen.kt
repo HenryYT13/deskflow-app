@@ -400,6 +400,24 @@ fun CalendarScreen(
                     OutlinedButton(
                         enabled = !aiBusy,
                         onClick = {
+                            val todayIso = java.time.LocalDate.now().toString()
+                            scope.launch {
+                                val r = repository.toggleCalendarHoliday(todayIso)
+                                feedbackMsg = when (r) {
+                                    is ApiResult.Success -> AppStrings.t("Đã cập nhật Ngày nghỉ ($todayIso) — tự bỏ qua báo thức (#18)")
+                                    is ApiResult.Error -> r.message
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.EventBusy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(AppStrings.t("Đánh dấu Hôm nay Ngày nghỉ / Bỏ qua Báo thức (#18)"))
+                    }
+                    OutlinedButton(
+                        enabled = !aiBusy,
+                        onClick = {
                             aiBusy = true
                             scope.launch {
                                 val r = repository.aiSyncTkbToCalendar(0, true)
