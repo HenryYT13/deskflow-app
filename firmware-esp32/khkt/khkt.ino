@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.6"
+#define DESKFLOW_FW_VERSION "2.4.7"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -106,7 +106,7 @@ const int LED_PRESET_COUNT = 7;
 int ledPresetIndex = 0;
 int colorPage = 0;
 int buzzerCurrentItem = 0;
-const int MENU_BUZZER_ITEM_COUNT = 4;
+const int MENU_BUZZER_ITEM_COUNT = 5;
 
 // View Selector Menu State Machine
 bool inViewMenu = false;
@@ -1386,11 +1386,13 @@ String getAmPmSuffix() {
 }
 
 extern String lastMenuSignature;
+bool menuForceFullRedraw = true;
 
 void drawSettingsMenu() {
   static int lastDrawnState = -1;
   static int lastDrawnPage = -1;
-  bool fullClear = (lastMenuSignature.length() == 0) || (lastDrawnState != (int)menuState) || (lastDrawnPage != menuPage);
+  bool fullClear = menuForceFullRedraw || (lastDrawnState != (int)menuState) || (lastDrawnPage != menuPage);
+  menuForceFullRedraw = false;
   lastDrawnState = (int)menuState;
   lastDrawnPage = menuPage;
   if (fullClear) {
@@ -1589,11 +1591,11 @@ void drawSettingsMenu() {
     printCenteredText(tr("Giữ NEXT: Quay lại menu", "Hold NEXT: back to menu"), 304, 1, COL_MUTED, COL_BG);
 
   } else if (menuState == MENU_BUZZER_CONFIG) {
-    printCenteredText(tr("CẤU HÌNH CÒI CHÍP", "BUZZER CONFIG"), 48, 1, COL_CYAN, COL_BG);
+    printCenteredText(tr("CẤU HÌNH CÒI CHÍP", "BUZZER CONFIG"), 46, 1, COL_CYAN, COL_BG);
 
-    int startY = 68;
-    int cardH = 48;
-    int gap = 8;
+    int startY = 62;
+    int cardH = 40;
+    int gap = 5;
 
     for (int i = 0; i < MENU_BUZZER_ITEM_COUNT; i++) {
       int y = startY + i * (cardH + gap);
@@ -1612,22 +1614,27 @@ void drawSettingsMenu() {
 
       if (i == 0) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CÒI BÍP", "BUZZER"),
-                 buzzerEnabled ? tr("[BẬT]", "[ON]") : tr("[TẮT / MUTE]", "[OFF / MUTE]"));
-        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
-        drawUtf8Text(24, y + 28, tr("PLAY: Bật / tắt âm thanh", "PLAY: On / off sound"), 1, COL_MUTED, COL_CARD, 194);
+                 buzzerEnabled ? tr("[BẬT]", "[ON]") : tr("[TẮT]", "[OFF]"));
+        drawUtf8Text(22, y + 6, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 22, tr("PLAY: Bật / tắt âm thanh", "PLAY: On / off sound"), 1, COL_MUTED, COL_CARD, 194);
       } else if (i == 1) {
         snprintf(buf, sizeof(buf), "%s%s: %d ms", pfx.c_str(), tr("ĐỘ DÀI BEEP", "BEEP LENGTH"), buzzerDurationSetting);
-        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
-        drawUtf8Text(24, y + 28, tr("PLAY: Thay đổi độ dài bíp", "PLAY: Cycle beep length"), 1, COL_MUTED, COL_CARD, 194);
+        drawUtf8Text(22, y + 6, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 22, tr("PLAY: Đổi độ dài bíp", "PLAY: Cycle beep length"), 1, COL_MUTED, COL_CARD, 194);
       } else if (i == 2) {
-        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THỬ TIẾNG CÒI (TEST)", "TEST BUZZER"));
-        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
-        snprintf(buf, sizeof(buf), tr("PLAY: Phát âm thử %dHz", "PLAY: Test tone %dHz"), MORSE_TEST_FREQ);
-        drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 194);
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("BEEP DI CHUYỂN", "NAV BEEP"),
+                 navBeepEnabled ? tr("[BẬT]", "[ON]") : tr("[TẮT]", "[OFF]"));
+        drawUtf8Text(22, y + 6, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 22, tr("PLAY: Bật/tắt tiếng bấm nút", "PLAY: Toggle button beep"), 1, COL_MUTED, COL_CARD, 194);
       } else if (i == 3) {
+        snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THỬ TIẾNG CÒI (TEST)", "TEST BUZZER"));
+        drawUtf8Text(22, y + 6, String(buf), 1, titleCol, COL_CARD, 196);
+        snprintf(buf, sizeof(buf), tr("PLAY: Phát thử %dHz", "PLAY: Test %dHz"), MORSE_TEST_FREQ);
+        drawUtf8Text(24, y + 22, String(buf), 1, COL_MUTED, COL_CARD, 194);
+      } else if (i == 4) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("QUAY LẠI MENU CHÍNH", "BACK TO MAIN MENU"));
-        drawUtf8Text(22, y + 10, String(buf), 1, titleCol, COL_CARD, 196);
-        drawUtf8Text(24, y + 28, tr("Trở về danh sách cài đặt", "Return to the settings list"), 1, COL_MUTED, COL_CARD, 194);
+        drawUtf8Text(22, y + 6, String(buf), 1, titleCol, COL_CARD, 196);
+        drawUtf8Text(24, y + 22, tr("Trở về cài đặt chính", "Return to settings"), 1, COL_MUTED, COL_CARD, 194);
       }
     }
 
@@ -1687,7 +1694,8 @@ void drawViewMenu() {
   if (viewMenuPage >= pageCount) viewMenuPage = pageCount - 1;
   if (viewMenuPage < 0) viewMenuPage = 0;
 
-  bool fullClear = (lastMenuSignature.length() == 0) || (lastDrawnViewPage != viewMenuPage);
+  bool fullClear = menuForceFullRedraw || (lastDrawnViewPage != viewMenuPage);
+  menuForceFullRedraw = false;
   if (fullClear) {
     tft->fillScreen(COL_BG);
     // Header Box
@@ -2292,6 +2300,8 @@ void drawWakeupCheckView(bool viewChanged) {
 }
 
 void performOtaUpdate(const String& url, const String& ver) {
+  noTone(BUZZER_PIN);
+  isBuzzing = false;
   if (!url.length() || WiFi.status() != WL_CONNECTED) return;
   addLog("OTA", "Starting OTA -> " + ver + " (" + url + ")");
   if (mqtt.connected()) {
@@ -2680,7 +2690,9 @@ void drawPhysicalScreen() {
       lastWAqi = srvStats.weatherAqi;
       tft->fillRect(0, 26, 240, 268, COL_BG);
       drawWeatherWebIcon(120, 82);
-      printCenteredText(srvStats.weatherText, 134, 3, COL_AMBER, COL_BG);
+      String wTxt = srvStats.weatherText;
+      wTxt.replace("*", "°");
+      printVietnameseCentered(wTxt, 134, COL_AMBER, vnFont20);
       printCenteredText(srvStats.weatherCity, 168, 1, COL_MUTED, COL_BG);
 
       // Left Card: AQI (centered inside x=16..116)
@@ -4327,6 +4339,8 @@ void triggerPairCodeRequestFromMenu() {
 }
 
 void triggerSelfOtaFromMenu() {
+  noTone(BUZZER_PIN);
+  isBuzzing = false;
   if (WiFi.status() != WL_CONNECTED) {
     if (tft) {
       tft->fillScreen(COL_BG);
@@ -4424,7 +4438,6 @@ void handleMenuPlay() {
       triggerPairCodeRequestFromMenu();
       addLog("PAIR", "Requested Full Access pair code & QR from backend");
     } else if (menuCurrentItem == 8) {
-      triggerBuzz(45);
       triggerSelfOtaFromMenu();
     } else if (menuCurrentItem == 9) {
       inSettingsMenu = false;
@@ -4487,8 +4500,13 @@ void handleMenuPlay() {
       screenNeedUpdate = true;
       triggerBuzz(buzzerDurationSetting, true);
     } else if (buzzerCurrentItem == 2) {
-      triggerBuzzTone(buzzerDurationSetting, MORSE_TEST_FREQ);
+      navBeepEnabled = !navBeepEnabled;
+      prefs.putBool("nav_beep", navBeepEnabled);
+      screenNeedUpdate = true;
+      if (navBeepEnabled) triggerBuzz(35, true);
     } else if (buzzerCurrentItem == 3) {
+      triggerBuzzTone(buzzerDurationSetting, MORSE_TEST_FREQ);
+    } else if (buzzerCurrentItem == 4) {
       menuState = MENU_MAIN;
       screenNeedUpdate = true;
       triggerBuzz(35);
@@ -4887,6 +4905,7 @@ void setup() {
   }
   ledBrightness = prefs.getInt("led_bright", 100);
   buzzerEnabled = prefs.getBool("buzz_en", true);
+  navBeepEnabled = prefs.getBool("nav_beep", false);
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
   srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
   srvStats.lampColor2 = prefs.getString("lamp_col2", "#A855F7");
@@ -5071,12 +5090,13 @@ void loop() {
                            String(ledPresetIndex) + "|" + String(colorPage) + "|" + String(viewMenuIndex) + "|" +
                            String(viewMenuPage) + "|" + String(ledState ? 1 : 0) + "|" +
                            String(ledBrightness) + "|" + String(stationEnglish ? 1 : 0) + "|" +
-                           String(buzzerEnabled ? 1 : 0) + "|" + String(buzzerDurationSetting) + "|" +
+                           String(buzzerEnabled ? 1 : 0) + "|" + String(navBeepEnabled ? 1 : 0) + "|" + String(buzzerDurationSetting) + "|" +
                            darkModeSetting + "|" + String(spotifyVolumeKnown ? spotifyVolume : -1) + "|" +
                            srvStats.activeView + "|" +
                            String(pairCodeLoading ? 1 : 0) + "|" + String(pairFetchFailed ? 1 : 0) + "|" +
                            pairCodeValue + "|" + String(pairQrSize);
     if (menuSignature != lastMenuSignature) {
+      if (lastMenuSignature.length() == 0) menuForceFullRedraw = true;
       lastMenuSignature = menuSignature;
       lastScreenDraw = millis();
       drawPhysicalScreen();
