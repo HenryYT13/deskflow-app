@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.5"
+#define DESKFLOW_FW_VERSION "2.4.6"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -895,8 +895,10 @@ void initBuzzer() {
   digitalWrite(BUZZER_PIN, HIGH);
 }
 
+bool navBeepEnabled = false; // Keep navigation/button moves silent by default
+
 void triggerBuzz(unsigned long durationMs = 250, bool force = false) {
-  if (!buzzerEnabled && !force) return;
+  if ((!buzzerEnabled || !navBeepEnabled) && !force) return;
   isBuzzing = true;
   buzzStartTime = millis();
   buzzDuration = durationMs;
@@ -4014,7 +4016,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 
 void handleRoot() { server.send(200, "text/html", HTML_PAGE); }
 void handleApiBuzz() { 
-  triggerBuzz(250); 
+  triggerBuzz(250, true); 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", "Buzzed OK \n"); 
 }
@@ -4483,7 +4485,7 @@ void handleMenuPlay() {
       prefs.putUInt("buzz_dur", buzzerDurationSetting);
       publishHardwareSettingsUpdate();
       screenNeedUpdate = true;
-      triggerBuzz(buzzerDurationSetting);
+      triggerBuzz(buzzerDurationSetting, true);
     } else if (buzzerCurrentItem == 2) {
       triggerBuzzTone(buzzerDurationSetting, MORSE_TEST_FREQ);
     } else if (buzzerCurrentItem == 3) {
