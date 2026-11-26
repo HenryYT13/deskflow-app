@@ -2692,7 +2692,7 @@ void drawPhysicalScreen() {
       drawWeatherWebIcon(120, 82);
       String wTxt = srvStats.weatherText;
       wTxt.replace("*", "°");
-      printVietnameseCentered(wTxt, 134, COL_AMBER, vnFont20);
+      printVietnameseCentered(wTxt, 134, COL_AMBER, vnFont17);
       printCenteredText(srvStats.weatherCity, 168, 1, COL_MUTED, COL_BG);
 
       // Left Card: AQI (centered inside x=16..116)
