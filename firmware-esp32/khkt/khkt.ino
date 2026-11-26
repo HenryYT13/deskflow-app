@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.4"
+#define DESKFLOW_FW_VERSION "2.4.5"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -2671,23 +2671,33 @@ void drawPhysicalScreen() {
   }
   // 5. VIEW WEATHER (#69 AQI & UV)
   else if (srvStats.activeView == "weather") {
-    if (viewChanged) {
-      drawWeatherWebIcon(120, 88);
-      printCenteredText(srvStats.weatherText, 142, 3, COL_AMBER, COL_BG);
-      printCenteredText(srvStats.weatherCity, 178, 1, COL_MUTED, COL_BG);
+    static String lastWText = "";
+    static int lastWAqi = -1;
+    if (viewChanged || srvStats.weatherText != lastWText || srvStats.weatherAqi != lastWAqi) {
+      lastWText = srvStats.weatherText;
+      lastWAqi = srvStats.weatherAqi;
+      tft->fillRect(0, 26, 240, 268, COL_BG);
+      drawWeatherWebIcon(120, 82);
+      printCenteredText(srvStats.weatherText, 134, 3, COL_AMBER, COL_BG);
+      printCenteredText(srvStats.weatherCity, 168, 1, COL_MUTED, COL_BG);
 
-      tft->fillRoundRect(16, 200, 100, 52, 8, COL_CARD);
-      tft->drawRoundRect(16, 200, 100, 52, 8, COL_CYAN);
-      printCenteredText("AQI (" + String(srvStats.weatherAqi) + ")", 208, 1, COL_CYAN, COL_CARD);
-      tft->setCursor(28, 228); tft->setTextSize(1); tft->setTextColor(COL_WHITE, COL_CARD);
-      tft->print(srvStats.weatherAqiLabel);
+      // Left Card: AQI (centered inside x=16..116)
+      tft->fillRoundRect(16, 192, 100, 56, 8, COL_CARD);
+      tft->drawRoundRect(16, 192, 100, 56, 8, COL_CYAN);
+      drawUtf8Text(26, 202, "AQI: " + String(srvStats.weatherAqi), 1, COL_CYAN, COL_CARD, 84);
+      drawUtf8Text(24, 224, srvStats.weatherAqiLabel.length() ? srvStats.weatherAqiLabel : tr("Tốt", "Good"), 1, COL_WHITE, COL_CARD, 86);
 
-      tft->fillRoundRect(124, 200, 100, 52, 8, COL_CARD);
-      tft->drawRoundRect(124, 200, 100, 52, 8, COL_AMBER);
-      tft->setCursor(136, 208); tft->setTextSize(1); tft->setTextColor(COL_AMBER, COL_CARD);
-      tft->print("UV: " + String(srvStats.weatherUv, 1));
-      tft->setCursor(136, 228); tft->setTextColor(COL_WHITE, COL_CARD);
-      tft->print(srvStats.weatherUvLabel);
+      // Right Card: UV (centered inside x=124..224)
+      tft->fillRoundRect(124, 192, 100, 56, 8, COL_CARD);
+      tft->drawRoundRect(124, 192, 100, 56, 8, COL_AMBER);
+      drawUtf8Text(134, 202, "UV: " + String(srvStats.weatherUv, 1), 1, COL_AMBER, COL_CARD, 84);
+      drawUtf8Text(134, 224, srvStats.weatherUvLabel.length() ? srvStats.weatherUvLabel : tr("Thấp", "Low"), 1, COL_WHITE, COL_CARD, 84);
+
+      // (#24) AQI Advice banner
+      String advice = (srvStats.weatherAqi >= 4)
+        ? tr("Không khí kém — Nên đeo khẩu trang", "Poor air — Wear a mask")
+        : tr("Không khí ổn — Thoáng mát", "Air quality OK");
+      printCenteredText(advice, 266, 1, (srvStats.weatherAqi >= 4) ? COL_AMBER : COL_GREEN, COL_BG);
     }
   }
   // 6. VIEW LYRICS

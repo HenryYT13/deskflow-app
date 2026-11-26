@@ -8,7 +8,7 @@ OUT_DIR="$ROOT_DIR/artifacts/linux"
 BUILD_TMP="$(mktemp -d)"
 trap 'rm -rf "$BUILD_TMP"' EXIT
 
-VERSION="${1:-${VERSION:-2.4.4}}"
+VERSION="${1:-${VERSION:-2.4.5}}"
 VERSION="${VERSION#v}"
 mkdir -p "$OUT_DIR"
 
