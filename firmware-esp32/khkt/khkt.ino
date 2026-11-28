@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.7"
+#define DESKFLOW_FW_VERSION "2.4.8"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -81,11 +81,12 @@ enum MenuState {
   MENU_BUZZER_CONFIG = 2,
   MENU_VOLUME = 3,
   MENU_LED_COLOR = 4,
-  MENU_PAIR_DEVICE = 5
+  MENU_PAIR_DEVICE = 5,
+  MENU_LED_EFFECT = 6
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 10;
+const int MENU_MAIN_ITEM_COUNT = 11;
 String pairCodeValue = "";
 String pairQrBits = "";
 int pairQrSize = 0;
@@ -98,13 +99,21 @@ unsigned long pairReqStartedAt = 0;
 const int MENU_ROWS_PER_PAGE = 4;
 int menuPage = 0;
 
-// 7 built-in lamp colours, selectable from the hardware menu (GPIO 2 NeoPixel ring).
-const char* LED_PRESETS[] = {"#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF"};
-const char* LED_PRESET_NAMES[] = {"TRẮNG", "ĐỎ", "XANH LÁ", "XANH DƯƠNG", "VÀNG", "TÍM", "XANH NGỌC"};
-const char* LED_PRESET_NAMES_EN[] = {"WHITE", "RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN"};
-const int LED_PRESET_COUNT = 7;
+// 8 built-in lamp colours (including RGB rainbow), selectable from hardware menu.
+const char* LED_PRESETS[] = {"#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF", "RGB"};
+const char* LED_PRESET_NAMES[] = {"TRẮNG", "ĐỎ", "XANH LÁ", "XANH DƯƠNG", "VÀNG", "TÍM", "XANH NGỌC", "RGB CẦU VỒNG"};
+const char* LED_PRESET_NAMES_EN[] = {"WHITE", "RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "CYAN", "RGB RAINBOW"};
+const int LED_PRESET_COUNT = 8;
 int ledPresetIndex = 0;
 int colorPage = 0;
+
+// 8 LED effect modes selectable directly on ESP32
+const char* LED_EFFECT_IDS[] = {"solid", "rainbow", "breathing", "chase", "sparkle", "fire", "clock", "police"};
+const char* LED_EFFECT_NAMES[] = {"MÀU TĨNH", "RGB CẦU VỒNG", "NHỊP THỞ", "SAO BĂNG", "LẤP LÁNH", "LỬA TRẠI", "ĐỒNG HỒ 24", "CẢNH SÁT"};
+const char* LED_EFFECT_NAMES_EN[] = {"SOLID", "RGB RAINBOW", "BREATHING", "COMET CHASE", "SPARKLE", "CAMPFIRE", "CLOCK RING", "POLICE"};
+const int LED_EFFECT_COUNT = 8;
+int ledEffectIndex = 0;
+int effectPage = 0;
 int buzzerCurrentItem = 0;
 const int MENU_BUZZER_ITEM_COUNT = 5;
 
@@ -1439,20 +1448,25 @@ void drawSettingsMenu() {
         drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 1) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("MÀU ĐÈN", "LAMP COLOR"),
-                 stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]);
+                 (ledEffect == "rainbow") ? "RGB" : (stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
-        drawUtf8Text(24, y + 28, tr("PLAY: Chọn 7 màu có sẵn", "PLAY: Pick 1 of 7 presets"), 1, COL_MUTED, COL_CARD, 196);
+        drawUtf8Text(24, y + 28, tr("PLAY: Chọn 7 màu + RGB", "PLAY: Pick 7 colors + RGB"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 2) {
+        snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CHẾ ĐỘ MÀU", "COLOR MODE"),
+                 stationEnglish ? LED_EFFECT_NAMES_EN[ledEffectIndex] : LED_EFFECT_NAMES[ledEffectIndex]);
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("PLAY: Tĩnh, RGB, Nhịp thở...", "PLAY: Solid, RGB, Chase..."), 1, COL_MUTED, COL_CARD, 196);
+      } else if (i == 3) {
         snprintf(buf, sizeof(buf), "%s%s: %d%%", pfx.c_str(), tr("ĐỘ SÁNG LED", "LED BRIGHTNESS"), ledBrightness);
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("Chỉnh độ sáng vòng LED", "Adjust ring brightness (0-100%)"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 3) {
+      } else if (i == 4) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CÒI CHÍP", "BUZZER"),
                  buzzerEnabled ? tr("BẬT", "ON") : tr("TẮT (MUTE)", "OFF (MUTE)"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         snprintf(buf, sizeof(buf), tr("Độ dài beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
         drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 4) {
+      } else if (i == 5) {
         if (spotifyVolumeKnown) {
           snprintf(buf, sizeof(buf), "%s%s: %d%%", pfx.c_str(),
                    tr("ÂM LƯỢNG SPOTIFY", "SPOTIFY VOLUME"), spotifyVolume);
@@ -1462,7 +1476,7 @@ void drawSettingsMenu() {
         }
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Vào | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 5) {
+      } else if (i == 6) {
         String modeStr = tr("TẮT (LIGHT)", "OFF (LIGHT)");
         if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUÔN BẬT (DARK)", "ALWAYS (DARK)");
         else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LỊCH (AUTO)", "SCHEDULED");
@@ -1470,20 +1484,20 @@ void drawSettingsMenu() {
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         snprintf(buf, sizeof(buf), tr("Lịch: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
         drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 6) {
+      } else if (i == 7) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("NGÔN NGỮ", "LANGUAGE"),
                  stationEnglish ? "ENGLISH" : "TIẾNG VIỆT");
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Đổi VI <-> EN", "PLAY: Switch VI <-> EN"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 7) {
+      } else if (i == 8) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("LIÊN KẾT THIẾT BỊ", "PAIR NEW DEVICE"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("Hiện QR & Mã Full Access", "Show Full Access QR & Code"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 8) {
+      } else if (i == 9) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("CẬP NHẬT OTA", "OTA UPDATE"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Kiểm tra & Nạp mới", "PLAY: Check & Flash"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 9) {
+      } else if (i == 10) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THOÁT CÀI ĐẶT", "EXIT SETTINGS"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY hoặc giữ >>/<<", "PLAY or hold >>/<<"), 1, COL_MUTED, COL_CARD, 196);
@@ -1546,16 +1560,21 @@ void drawSettingsMenu() {
       int y = gridY + row * stepY;
       bool selected = (i == ledPresetIndex);
 
-      uint8_t r, g, b;
-      parseHexColor(LED_PRESETS[i], r, g, b);
-
       tft->fillRoundRect(x, y, cellW, cellH, 8, COL_CARD);
       tft->drawRoundRect(x, y, cellW, cellH, 8, selected ? COL_AMBER : COL_BORDER);
       if (selected) {
         tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 9, COL_AMBER);
       }
 
-      tft->fillCircle(x + cellW / 2, y + 32, 20, hwTft->color565(r, g, b));
+      if (String(LED_PRESETS[i]) == "RGB") {
+        tft->fillCircle(x + cellW / 2 - 7, y + 29, 12, 0xF800);
+        tft->fillCircle(x + cellW / 2 + 7, y + 29, 12, 0x07E0);
+        tft->fillCircle(x + cellW / 2, y + 37, 12, 0x001F);
+      } else {
+        uint8_t r, g, b;
+        parseHexColor(LED_PRESETS[i], r, g, b);
+        tft->fillCircle(x + cellW / 2, y + 32, 20, hwTft->color565(r, g, b));
+      }
 
       const char* name = stationEnglish ? LED_PRESET_NAMES_EN[i] : LED_PRESET_NAMES[i];
       uint16_t nameCol = selected ? COL_AMBER : COL_WHITE;
@@ -1563,6 +1582,41 @@ void drawSettingsMenu() {
       drawUtf8Text(x + max(4, (cellW - nameW) / 2), y + 60, String(name), 1, nameCol, COL_CARD, cellW - 8);
     }
 
+    tft->drawFastHLine(10, 296, 220, COL_BORDER);
+    printCenteredText(tr("PREV/NEXT: Chọn | PLAY: Áp dụng", "PREV/NEXT: Select | PLAY: Apply"), 304, 1, COL_MUTED, COL_BG);
+
+  } else if (menuState == MENU_LED_EFFECT) {
+    const int EFF_PER_PAGE = 4;
+    int effPages = (LED_EFFECT_COUNT + EFF_PER_PAGE - 1) / EFF_PER_PAGE;
+    if (effectPage >= effPages) effectPage = effPages - 1;
+    if (effectPage < 0) effectPage = 0;
+    int firstEff = effectPage * EFF_PER_PAGE;
+
+    String title = String(tr("CHẾ ĐỘ MÀU LED", "LED COLOR MODE")) + " (" +
+                   String(effectPage + 1) + "/" + String(effPages) + ")";
+    printCenteredText(title, 50, 1, COL_CYAN, COL_BG);
+
+    int startY = 74;
+    int cardH = 48;
+    int gap = 7;
+    for (int slot = 0; slot < EFF_PER_PAGE; slot++) {
+      int i = firstEff + slot;
+      if (i >= LED_EFFECT_COUNT) break;
+      int y = startY + slot * (cardH + gap);
+      bool selected = (i == ledEffectIndex);
+      bool active = (ledEffect == String(LED_EFFECT_IDS[i]));
+
+      tft->fillRoundRect(14, y, 212, cardH, 6, COL_CARD);
+      tft->drawRoundRect(14, y, 212, cardH, 6, selected ? COL_AMBER : (active ? COL_GREEN : COL_BORDER));
+      if (selected) tft->drawRoundRect(13, y - 1, 214, cardH + 2, 7, COL_AMBER);
+
+      String pfx = selected ? "> " : "  ";
+      String label = pfx + String(stationEnglish ? LED_EFFECT_NAMES_EN[i] : LED_EFFECT_NAMES[i]);
+      drawUtf8Text(22, y + 10, label, 1, selected ? COL_AMBER : (active ? COL_GREEN : COL_WHITE), COL_CARD, 196);
+      if (active) {
+        drawUtf8Text(26, y + 28, tr("[ĐANG CHẠY]", "[ACTIVE]"), 1, COL_GREEN, COL_CARD, 180);
+      }
+    }
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
     printCenteredText(tr("PREV/NEXT: Chọn | PLAY: Áp dụng", "PREV/NEXT: Select | PLAY: Apply"), 304, 1, COL_MUTED, COL_BG);
 
@@ -4396,26 +4450,29 @@ void handleMenuPlay() {
       triggerBuzz(35);
       addLog("LED", String("Menu toggle LED: ") + (ledState ? "ON" : "OFF"));
     } else if (menuCurrentItem == 1) {
-      // "MAU DEN": open the 7 preset colours (4 per page).
       menuState = MENU_LED_COLOR;
       colorPage = ledPresetIndex / 4;
       screenNeedUpdate = true;
       triggerBuzz(35);
     } else if (menuCurrentItem == 2) {
-      menuState = MENU_ADJUST_LED;
+      menuState = MENU_LED_EFFECT;
+      effectPage = ledEffectIndex / 4;
       screenNeedUpdate = true;
       triggerBuzz(35);
     } else if (menuCurrentItem == 3) {
+      menuState = MENU_ADJUST_LED;
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+    } else if (menuCurrentItem == 4) {
       menuState = MENU_BUZZER_CONFIG;
       buzzerCurrentItem = 0;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 4) {
+    } else if (menuCurrentItem == 5) {
       menuState = MENU_VOLUME;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 5) {
-      // Cycle Dark Mode: off -> always_on -> scheduled -> off
+    } else if (menuCurrentItem == 6) {
       if (darkModeSetting == "off") {
         darkModeSetting = "always_on";
       } else if (darkModeSetting == "always_on" || darkModeSetting == "always") {
@@ -4428,18 +4485,17 @@ void handleMenuPlay() {
       publishHardwareSettingsUpdate();
       screenNeedUpdate = true;
       triggerBuzz(45);
-    } else if (menuCurrentItem == 6) {
-      // Switch station language VI <-> EN and sync to server
+    } else if (menuCurrentItem == 7) {
       applyStationLanguage(!stationEnglish, true);
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
-    } else if (menuCurrentItem == 7) {
+    } else if (menuCurrentItem == 8) {
       menuState = MENU_PAIR_DEVICE;
       triggerPairCodeRequestFromMenu();
       addLog("PAIR", "Requested Full Access pair code & QR from backend");
-    } else if (menuCurrentItem == 8) {
-      triggerSelfOtaFromMenu();
     } else if (menuCurrentItem == 9) {
+      triggerSelfOtaFromMenu();
+    } else if (menuCurrentItem == 10) {
       inSettingsMenu = false;
       menuState = MENU_MAIN;
       lastRenderedView = "";
@@ -4448,10 +4504,17 @@ void handleMenuPlay() {
       addLog("MENU", "Thoat menu cai dat qua muc EXIT.");
     }
   } else if (menuState == MENU_LED_COLOR) {
-    // Apply the highlighted preset and STAY on the colour screen, so another
-    // colour can be tried immediately without reopening the menu.
-    srvStats.lampColor = LED_PRESETS[ledPresetIndex];
-    prefs.putString("lamp_col", srvStats.lampColor);
+    if (String(LED_PRESETS[ledPresetIndex]) == "RGB") {
+      ledEffect = "rainbow";
+      ledEffectIndex = 1;
+      prefs.putString("led_eff", "rainbow");
+    } else {
+      srvStats.lampColor = LED_PRESETS[ledPresetIndex];
+      ledEffect = "solid";
+      ledEffectIndex = 0;
+      prefs.putString("lamp_col", srvStats.lampColor);
+      prefs.putString("led_eff", "solid");
+    }
     prefs.putInt("led_color_idx", ledPresetIndex);
     ledState = true;
     ledBlinkMode = false;
@@ -4459,7 +4522,18 @@ void handleMenuPlay() {
     updateLampLed();
     screenNeedUpdate = true;
     triggerBuzz(45);
-    addLog("LED", "Preset color: " + srvStats.lampColor);
+    addLog("LED", "Preset color: " + String(LED_PRESETS[ledPresetIndex]));
+  } else if (menuState == MENU_LED_EFFECT) {
+    ledEffect = String(LED_EFFECT_IDS[ledEffectIndex]);
+    if (ledEffect == "rainbow") ledPresetIndex = 7;
+    prefs.putString("led_eff", ledEffect);
+    ledState = true;
+    ledBlinkMode = false;
+    prefs.putBool("led_state", true);
+    updateLampLed();
+    screenNeedUpdate = true;
+    triggerBuzz(45);
+    addLog("LED", "Color mode: " + ledEffect);
   } else if (menuState == MENU_ADJUST_LED) {
     prefs.putInt("led_bright", ledBrightness);
     ledState = ledBrightness > 0;
@@ -4541,6 +4615,11 @@ void handleMenuNext() {
     colorPage = ledPresetIndex / 4;
     screenNeedUpdate = true;
     triggerBuzz(20);
+  } else if (menuState == MENU_LED_EFFECT) {
+    ledEffectIndex = (ledEffectIndex + 1) % LED_EFFECT_COUNT;
+    effectPage = ledEffectIndex / 4;
+    screenNeedUpdate = true;
+    triggerBuzz(20);
   } else if (menuState == MENU_VOLUME) {
     spotifyVolumeKnown = true;
     spotifyVolume = min(100, spotifyVolume + 5);
@@ -4572,6 +4651,11 @@ void handleMenuPrev() {
   } else if (menuState == MENU_LED_COLOR) {
     ledPresetIndex = (ledPresetIndex - 1 + LED_PRESET_COUNT) % LED_PRESET_COUNT;
     colorPage = ledPresetIndex / 4;
+    screenNeedUpdate = true;
+    triggerBuzz(20);
+  } else if (menuState == MENU_LED_EFFECT) {
+    ledEffectIndex = (ledEffectIndex - 1 + LED_EFFECT_COUNT) % LED_EFFECT_COUNT;
+    effectPage = ledEffectIndex / 4;
     screenNeedUpdate = true;
     triggerBuzz(20);
   } else if (menuState == MENU_VOLUME) {
@@ -4906,6 +4990,10 @@ void setup() {
   ledBrightness = prefs.getInt("led_bright", 100);
   buzzerEnabled = prefs.getBool("buzz_en", true);
   navBeepEnabled = prefs.getBool("nav_beep", false);
+  ledEffect = prefs.getString("led_eff", "solid");
+  for (int ei = 0; ei < LED_EFFECT_COUNT; ei++) {
+    if (ledEffect == String(LED_EFFECT_IDS[ei])) { ledEffectIndex = ei; break; }
+  }
   buzzerDurationSetting = prefs.getUInt("buzz_dur", 40);
   srvStats.lampColor = prefs.getString("lamp_col", "#FFFFFF");
   srvStats.lampColor2 = prefs.getString("lamp_col2", "#A855F7");
@@ -5087,7 +5175,7 @@ void loop() {
     String menuSignature = String(inSettingsMenu ? "S" : "V") + "|" +
                            String((int)menuState) + "|" + String(menuCurrentItem) + "|" +
                            String(menuPage) + "|" + String(buzzerCurrentItem) + "|" +
-                           String(ledPresetIndex) + "|" + String(colorPage) + "|" + String(viewMenuIndex) + "|" +
+                           String(ledPresetIndex) + "|" + String(colorPage) + "|" + String(ledEffectIndex) + "|" + String(effectPage) + "|" + ledEffect + "|" + String(viewMenuIndex) + "|" +
                            String(viewMenuPage) + "|" + String(ledState ? 1 : 0) + "|" +
                            String(ledBrightness) + "|" + String(stationEnglish ? 1 : 0) + "|" +
                            String(buzzerEnabled ? 1 : 0) + "|" + String(navBeepEnabled ? 1 : 0) + "|" + String(buzzerDurationSetting) + "|" +
