@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.8"
+#define DESKFLOW_FW_VERSION "2.4.9"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -82,11 +82,14 @@ enum MenuState {
   MENU_VOLUME = 3,
   MENU_LED_COLOR = 4,
   MENU_PAIR_DEVICE = 5,
-  MENU_LED_EFFECT = 6
+  MENU_LED_EFFECT = 6,
+  MENU_LED_SPEED = 7,
+  MENU_LED_KELVIN = 8
 };
 MenuState menuState = MENU_MAIN;
 int menuCurrentItem = 0;
-const int MENU_MAIN_ITEM_COUNT = 11;
+const int MENU_MAIN_ITEM_COUNT = 13;
+int ledKelvin = 4500;
 String pairCodeValue = "";
 String pairQrBits = "";
 int pairQrSize = 0;
@@ -1432,9 +1435,7 @@ void drawSettingsMenu() {
 
       tft->fillRoundRect(12, y, 216, cardH, 6, COL_CARD);
       tft->drawRoundRect(12, y, 216, cardH, 6, bCol);
-      if (selected) {
-        tft->drawRoundRect(11, y - 1, 218, cardH + 2, 7, COL_AMBER);
-      }
+      tft->drawRoundRect(11, y - 1, 218, cardH + 2, 7, selected ? COL_AMBER : COL_BG);
 
       uint16_t titleCol = selected ? COL_AMBER : COL_WHITE;
       String pfx = selected ? "> " : "  ";
@@ -1461,12 +1462,20 @@ void drawSettingsMenu() {
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("Chỉnh độ sáng vòng LED", "Adjust ring brightness (0-100%)"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 4) {
+        snprintf(buf, sizeof(buf), "%s%s: %d%%", pfx.c_str(), tr("TỐC ĐỘ LED", "LED SPEED"), ledSpeed);
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("Slider tốc độ hiệu ứng (5-100%)", "Effect speed slider (5-100%)"), 1, COL_MUTED, COL_CARD, 196);
+      } else if (i == 5) {
+        snprintf(buf, sizeof(buf), "%s%s: %dK", pfx.c_str(), tr("NHIỆT ĐỘ MÀU", "COLOR TEMP"), ledKelvin);
+        drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
+        drawUtf8Text(24, y + 28, tr("Slider 2700K (Ấm) -> 6500K (Lạnh)", "Slider 2700K (Warm) -> 6500K"), 1, COL_MUTED, COL_CARD, 196);
+      } else if (i == 6) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("CÒI CHÍP", "BUZZER"),
                  buzzerEnabled ? tr("BẬT", "ON") : tr("TẮT (MUTE)", "OFF (MUTE)"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         snprintf(buf, sizeof(buf), tr("Độ dài beep: %d ms", "Beep length: %d ms"), buzzerDurationSetting);
         drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 5) {
+      } else if (i == 7) {
         if (spotifyVolumeKnown) {
           snprintf(buf, sizeof(buf), "%s%s: %d%%", pfx.c_str(),
                    tr("ÂM LƯỢNG SPOTIFY", "SPOTIFY VOLUME"), spotifyVolume);
@@ -1476,7 +1485,7 @@ void drawSettingsMenu() {
         }
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Vào | -/+ : 5%", "PLAY: Open | PREV/NEXT: 5%"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 6) {
+      } else if (i == 8) {
         String modeStr = tr("TẮT (LIGHT)", "OFF (LIGHT)");
         if (darkModeSetting == "always_on" || darkModeSetting == "always") modeStr = tr("LUÔN BẬT (DARK)", "ALWAYS (DARK)");
         else if (darkModeSetting == "scheduled" || darkModeSetting == "custom") modeStr = tr("THEO LỊCH (AUTO)", "SCHEDULED");
@@ -1484,20 +1493,20 @@ void drawSettingsMenu() {
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         snprintf(buf, sizeof(buf), tr("Lịch: %s - %s", "Schedule: %s - %s"), darkModeStart.c_str(), darkModeEnd.c_str());
         drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 7) {
+      } else if (i == 9) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("NGÔN NGỮ", "LANGUAGE"),
                  stationEnglish ? "ENGLISH" : "TIẾNG VIỆT");
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Đổi VI <-> EN", "PLAY: Switch VI <-> EN"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 8) {
+      } else if (i == 10) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("LIÊN KẾT THIẾT BỊ", "PAIR NEW DEVICE"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("Hiện QR & Mã Full Access", "Show Full Access QR & Code"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 9) {
+      } else if (i == 11) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("CẬP NHẬT OTA", "OTA UPDATE"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Kiểm tra & Nạp mới", "PLAY: Check & Flash"), 1, COL_MUTED, COL_CARD, 196);
-      } else if (i == 10) {
+      } else if (i == 12) {
         snprintf(buf, sizeof(buf), "%s%s", pfx.c_str(), tr("THOÁT CÀI ĐẶT", "EXIT SETTINGS"));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY hoặc giữ >>/<<", "PLAY or hold >>/<<"), 1, COL_MUTED, COL_CARD, 196);
@@ -1619,6 +1628,37 @@ void drawSettingsMenu() {
     }
     tft->drawFastHLine(10, 296, 220, COL_BORDER);
     printCenteredText(tr("PREV/NEXT: Chọn | PLAY: Áp dụng", "PREV/NEXT: Select | PLAY: Apply"), 304, 1, COL_MUTED, COL_BG);
+
+  } else if (menuState == MENU_LED_SPEED) {
+    printCenteredText(tr("TỐC ĐỘ HIỆU ỨNG LED (%)", "LED EFFECT SPEED (%)"), 52, 1, COL_CYAN, COL_BG);
+    tft->fillRoundRect(16, 75, 208, 195, 8, COL_CARD);
+    tft->drawRoundRect(16, 75, 208, 195, 8, COL_BORDER);
+    tft->setTextSize(4);
+    tft->setTextColor(COL_CYAN, COL_CARD);
+    String spdStr = String(ledSpeed) + "%";
+    int sw = (int)spdStr.length() * 24;
+    tft->setCursor((240 - sw) / 2, 110);
+    tft->print(spdStr);
+    drawProgressBarSmooth(28, 175, 184, 16, ledSpeed, COL_CYAN);
+    printCenteredText(tr("PREV: -5% | NEXT: +5%", "PREV: -5% | NEXT: +5%"), 210, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Nhấn PLAY để Lưu & Thoát", "Press PLAY to Save & Exit"), 235, 1, COL_AMBER, COL_CARD);
+    tft->drawFastHLine(10, 296, 220, COL_BORDER);
+
+  } else if (menuState == MENU_LED_KELVIN) {
+    printCenteredText(tr("NHIỆT ĐỘ MÀU KELVIN", "COLOR TEMP (KELVIN)"), 52, 1, COL_AMBER, COL_BG);
+    tft->fillRoundRect(16, 75, 208, 195, 8, COL_CARD);
+    tft->drawRoundRect(16, 75, 208, 195, 8, COL_BORDER);
+    tft->setTextSize(3);
+    tft->setTextColor(COL_AMBER, COL_CARD);
+    String kStr = String(ledKelvin) + "K";
+    int kw = (int)kStr.length() * 18;
+    tft->setCursor((240 - kw) / 2, 114);
+    tft->print(kStr);
+    int kPct = map(ledKelvin, 2700, 6500, 0, 100);
+    drawProgressBarSmooth(28, 175, 184, 16, kPct, COL_AMBER);
+    printCenteredText(tr("PREV: Ấm | NEXT: Lạnh", "PREV: Warm | NEXT: Cool"), 210, 1, COL_WHITE, COL_CARD);
+    printCenteredText(tr("Nhấn PLAY để Lưu & Thoát", "Press PLAY to Save & Exit"), 235, 1, COL_CYAN, COL_CARD);
+    tft->drawFastHLine(10, 296, 220, COL_BORDER);
 
   } else if (menuState == MENU_VOLUME) {
     printCenteredText(tr("ÂM LƯỢNG SPOTIFY (%)", "SPOTIFY VOLUME (%)"), 52, 1, COL_CYAN, COL_BG);
@@ -4464,15 +4504,23 @@ void handleMenuPlay() {
       screenNeedUpdate = true;
       triggerBuzz(35);
     } else if (menuCurrentItem == 4) {
+      menuState = MENU_LED_SPEED;
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+    } else if (menuCurrentItem == 5) {
+      menuState = MENU_LED_KELVIN;
+      screenNeedUpdate = true;
+      triggerBuzz(35);
+    } else if (menuCurrentItem == 6) {
       menuState = MENU_BUZZER_CONFIG;
       buzzerCurrentItem = 0;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 5) {
+    } else if (menuCurrentItem == 7) {
       menuState = MENU_VOLUME;
       screenNeedUpdate = true;
       triggerBuzz(35);
-    } else if (menuCurrentItem == 6) {
+    } else if (menuCurrentItem == 8) {
       if (darkModeSetting == "off") {
         darkModeSetting = "always_on";
       } else if (darkModeSetting == "always_on" || darkModeSetting == "always") {
@@ -4485,17 +4533,17 @@ void handleMenuPlay() {
       publishHardwareSettingsUpdate();
       screenNeedUpdate = true;
       triggerBuzz(45);
-    } else if (menuCurrentItem == 7) {
+    } else if (menuCurrentItem == 9) {
       applyStationLanguage(!stationEnglish, true);
       triggerBuzz(50);
       addLog("I18N", String("Station language: ") + (stationEnglish ? "EN" : "VI"));
-    } else if (menuCurrentItem == 8) {
+    } else if (menuCurrentItem == 10) {
       menuState = MENU_PAIR_DEVICE;
       triggerPairCodeRequestFromMenu();
       addLog("PAIR", "Requested Full Access pair code & QR from backend");
-    } else if (menuCurrentItem == 9) {
+    } else if (menuCurrentItem == 11) {
       triggerSelfOtaFromMenu();
-    } else if (menuCurrentItem == 10) {
+    } else if (menuCurrentItem == 12) {
       inSettingsMenu = false;
       menuState = MENU_MAIN;
       lastRenderedView = "";
@@ -4543,8 +4591,16 @@ void handleMenuPlay() {
     menuState = MENU_MAIN;
     screenNeedUpdate = true;
     triggerBuzz(50);
+  } else if (menuState == MENU_LED_SPEED) {
+    prefs.putInt("led_spd", ledSpeed);
+    menuState = MENU_MAIN;
+    screenNeedUpdate = true;
+    triggerBuzz(50);
+  } else if (menuState == MENU_LED_KELVIN) {
+    menuState = MENU_MAIN;
+    screenNeedUpdate = true;
+    triggerBuzz(50);
   } else if (menuState == MENU_VOLUME) {
-    // Give focus back to the main list; the volume is already persisted by the backend.
     menuState = MENU_MAIN;
     screenNeedUpdate = true;
     triggerBuzz(50);
@@ -4620,6 +4676,20 @@ void handleMenuNext() {
     effectPage = ledEffectIndex / 4;
     screenNeedUpdate = true;
     triggerBuzz(20);
+  } else if (menuState == MENU_LED_SPEED) {
+    ledSpeed = min(100, ledSpeed + 5);
+    screenNeedUpdate = true;
+  } else if (menuState == MENU_LED_KELVIN) {
+    ledKelvin = min(6500, ledKelvin + 200);
+    float t = (float)(ledKelvin - 2700) / 3800.0f;
+    uint8_t kr = 255, kg = (uint8_t)(165 + t * 80), kb = (uint8_t)(75 + t * 180);
+    char hexBuf[10];
+    snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", kr, kg, kb);
+    srvStats.lampColor = String(hexBuf);
+    ledEffect = "solid";
+    ledState = true;
+    updateLampLed();
+    screenNeedUpdate = true;
   } else if (menuState == MENU_VOLUME) {
     spotifyVolumeKnown = true;
     spotifyVolume = min(100, spotifyVolume + 5);
@@ -4658,6 +4728,20 @@ void handleMenuPrev() {
     effectPage = ledEffectIndex / 4;
     screenNeedUpdate = true;
     triggerBuzz(20);
+  } else if (menuState == MENU_LED_SPEED) {
+    ledSpeed = max(5, ledSpeed - 5);
+    screenNeedUpdate = true;
+  } else if (menuState == MENU_LED_KELVIN) {
+    ledKelvin = max(2700, ledKelvin - 200);
+    float t = (float)(ledKelvin - 2700) / 3800.0f;
+    uint8_t kr = 255, kg = (uint8_t)(165 + t * 80), kb = (uint8_t)(75 + t * 180);
+    char hexBuf[10];
+    snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", kr, kg, kb);
+    srvStats.lampColor = String(hexBuf);
+    ledEffect = "solid";
+    ledState = true;
+    updateLampLed();
+    screenNeedUpdate = true;
   } else if (menuState == MENU_VOLUME) {
     spotifyVolumeKnown = true;
     spotifyVolume = max(0, spotifyVolume - 5);
@@ -5177,7 +5261,7 @@ void loop() {
                            String(menuPage) + "|" + String(buzzerCurrentItem) + "|" +
                            String(ledPresetIndex) + "|" + String(colorPage) + "|" + String(ledEffectIndex) + "|" + String(effectPage) + "|" + ledEffect + "|" + String(viewMenuIndex) + "|" +
                            String(viewMenuPage) + "|" + String(ledState ? 1 : 0) + "|" +
-                           String(ledBrightness) + "|" + String(stationEnglish ? 1 : 0) + "|" +
+                           String(ledBrightness) + "|" + String(ledSpeed) + "|" + String(ledKelvin) + "|" + String(stationEnglish ? 1 : 0) + "|" +
                            String(buzzerEnabled ? 1 : 0) + "|" + String(navBeepEnabled ? 1 : 0) + "|" + String(buzzerDurationSetting) + "|" +
                            darkModeSetting + "|" + String(spotifyVolumeKnown ? spotifyVolume : -1) + "|" +
                            srvStats.activeView + "|" +
