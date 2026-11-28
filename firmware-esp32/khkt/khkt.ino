@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.9"
+#define DESKFLOW_FW_VERSION "2.4.10"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -1571,9 +1571,7 @@ void drawSettingsMenu() {
 
       tft->fillRoundRect(x, y, cellW, cellH, 8, COL_CARD);
       tft->drawRoundRect(x, y, cellW, cellH, 8, selected ? COL_AMBER : COL_BORDER);
-      if (selected) {
-        tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 9, COL_AMBER);
-      }
+      tft->drawRoundRect(x - 1, y - 1, cellW + 2, cellH + 2, 9, selected ? COL_AMBER : COL_BG);
 
       if (String(LED_PRESETS[i]) == "RGB") {
         tft->fillCircle(x + cellW / 2 - 7, y + 29, 12, 0xF800);
@@ -1617,7 +1615,7 @@ void drawSettingsMenu() {
 
       tft->fillRoundRect(14, y, 212, cardH, 6, COL_CARD);
       tft->drawRoundRect(14, y, 212, cardH, 6, selected ? COL_AMBER : (active ? COL_GREEN : COL_BORDER));
-      if (selected) tft->drawRoundRect(13, y - 1, 214, cardH + 2, 7, COL_AMBER);
+      tft->drawRoundRect(13, y - 1, 214, cardH + 2, 7, selected ? COL_AMBER : COL_BG);
 
       String pfx = selected ? "> " : "  ";
       String label = pfx + String(stationEnglish ? LED_EFFECT_NAMES_EN[i] : LED_EFFECT_NAMES[i]);
@@ -1698,9 +1696,7 @@ void drawSettingsMenu() {
 
       tft->fillRoundRect(14, y, 212, cardH, 6, COL_CARD);
       tft->drawRoundRect(14, y, 212, cardH, 6, bCol);
-      if (selected) {
-        tft->drawRoundRect(13, y - 1, 214, cardH + 2, 7, COL_AMBER);
-      }
+      tft->drawRoundRect(13, y - 1, 214, cardH + 2, 7, selected ? COL_AMBER : COL_BG);
 
       uint16_t titleCol = selected ? COL_AMBER : COL_WHITE;
       String pfx = selected ? "> " : "  ";
@@ -4555,11 +4551,15 @@ void handleMenuPlay() {
     if (String(LED_PRESETS[ledPresetIndex]) == "RGB") {
       ledEffect = "rainbow";
       ledEffectIndex = 1;
+      ledRgbMode = true;
+      ledGradientMode = false;
       prefs.putString("led_eff", "rainbow");
     } else {
       srvStats.lampColor = LED_PRESETS[ledPresetIndex];
       ledEffect = "solid";
       ledEffectIndex = 0;
+      ledRgbMode = false;
+      ledGradientMode = false;
       prefs.putString("lamp_col", srvStats.lampColor);
       prefs.putString("led_eff", "solid");
     }
@@ -4573,6 +4573,8 @@ void handleMenuPlay() {
     addLog("LED", "Preset color: " + String(LED_PRESETS[ledPresetIndex]));
   } else if (menuState == MENU_LED_EFFECT) {
     ledEffect = String(LED_EFFECT_IDS[ledEffectIndex]);
+    ledRgbMode = (ledEffect == "rainbow");
+    ledGradientMode = false;
     if (ledEffect == "rainbow") ledPresetIndex = 7;
     prefs.putString("led_eff", ledEffect);
     ledState = true;
@@ -4687,6 +4689,9 @@ void handleMenuNext() {
     snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", kr, kg, kb);
     srvStats.lampColor = String(hexBuf);
     ledEffect = "solid";
+    ledRgbMode = false;
+    ledGradientMode = false;
+    ledBlinkMode = false;
     ledState = true;
     updateLampLed();
     screenNeedUpdate = true;
@@ -4739,6 +4744,9 @@ void handleMenuPrev() {
     snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", kr, kg, kb);
     srvStats.lampColor = String(hexBuf);
     ledEffect = "solid";
+    ledRgbMode = false;
+    ledGradientMode = false;
+    ledBlinkMode = false;
     ledState = true;
     updateLampLed();
     screenNeedUpdate = true;
