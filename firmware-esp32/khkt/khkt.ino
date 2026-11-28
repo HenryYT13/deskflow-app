@@ -9,7 +9,7 @@
 #include <vector>
 #include <time.h>
 
-#define DESKFLOW_FW_VERSION "2.4.10"
+#define DESKFLOW_FW_VERSION "2.4.11"
 
 // Thanh ghi ngắt Brownout để chống crash khi tụt áp
 #include "soc/soc.h"
@@ -1449,7 +1449,7 @@ void drawSettingsMenu() {
         drawUtf8Text(24, y + 28, String(buf), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 1) {
         snprintf(buf, sizeof(buf), "%s%s: %s", pfx.c_str(), tr("MÀU ĐÈN", "LAMP COLOR"),
-                 (ledEffect == "rainbow") ? "RGB" : (stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]));
+                 ledRgbMode ? "RGB" : (stationEnglish ? LED_PRESET_NAMES_EN[ledPresetIndex] : LED_PRESET_NAMES[ledPresetIndex]));
         drawUtf8Text(20, y + 10, String(buf), 1, titleCol, COL_CARD, 200);
         drawUtf8Text(24, y + 28, tr("PLAY: Chọn 7 màu + RGB", "PLAY: Pick 7 colors + RGB"), 1, COL_MUTED, COL_CARD, 196);
       } else if (i == 2) {
@@ -4549,20 +4549,16 @@ void handleMenuPlay() {
     }
   } else if (menuState == MENU_LED_COLOR) {
     if (String(LED_PRESETS[ledPresetIndex]) == "RGB") {
-      ledEffect = "rainbow";
-      ledEffectIndex = 1;
       ledRgbMode = true;
       ledGradientMode = false;
-      prefs.putString("led_eff", "rainbow");
     } else {
       srvStats.lampColor = LED_PRESETS[ledPresetIndex];
-      ledEffect = "solid";
-      ledEffectIndex = 0;
       ledRgbMode = false;
       ledGradientMode = false;
       prefs.putString("lamp_col", srvStats.lampColor);
-      prefs.putString("led_eff", "solid");
     }
+    prefs.putBool("led_rgb", ledRgbMode);
+    prefs.putBool("led_grad", ledGradientMode);
     prefs.putInt("led_color_idx", ledPresetIndex);
     ledState = true;
     ledBlinkMode = false;
@@ -4570,20 +4566,28 @@ void handleMenuPlay() {
     updateLampLed();
     screenNeedUpdate = true;
     triggerBuzz(45);
-    addLog("LED", "Preset color: " + String(LED_PRESETS[ledPresetIndex]));
+    addLog("LED", "Preset color: " + String(LED_PRESETS[ledPresetIndex]) + " (eff=" + ledEffect + ")");
   } else if (menuState == MENU_LED_EFFECT) {
-    ledEffect = String(LED_EFFECT_IDS[ledEffectIndex]);
-    ledRgbMode = (ledEffect == "rainbow");
-    ledGradientMode = false;
-    if (ledEffect == "rainbow") ledPresetIndex = 7;
+    String chosenEff = String(LED_EFFECT_IDS[ledEffectIndex]);
+    if (chosenEff == "rainbow") {
+      ledEffect = "solid";
+      ledRgbMode = true;
+      ledGradientMode = false;
+      ledPresetIndex = 7;
+    } else {
+      ledEffect = chosenEff;
+      // Preserve current color (ledRgbMode, ledGradientMode, srvStats.lampColor)!
+    }
     prefs.putString("led_eff", ledEffect);
+    prefs.putBool("led_rgb", ledRgbMode);
+    prefs.putBool("led_grad", ledGradientMode);
     ledState = true;
     ledBlinkMode = false;
     prefs.putBool("led_state", true);
     updateLampLed();
     screenNeedUpdate = true;
     triggerBuzz(45);
-    addLog("LED", "Color mode: " + ledEffect);
+    addLog("LED", "Color mode: " + ledEffect + (ledRgbMode ? " + RGB" : ""));
   } else if (menuState == MENU_ADJUST_LED) {
     prefs.putInt("led_bright", ledBrightness);
     ledState = ledBrightness > 0;
@@ -4688,7 +4692,6 @@ void handleMenuNext() {
     char hexBuf[10];
     snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", kr, kg, kb);
     srvStats.lampColor = String(hexBuf);
-    ledEffect = "solid";
     ledRgbMode = false;
     ledGradientMode = false;
     ledBlinkMode = false;
@@ -4743,7 +4746,6 @@ void handleMenuPrev() {
     char hexBuf[10];
     snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", kr, kg, kb);
     srvStats.lampColor = String(hexBuf);
-    ledEffect = "solid";
     ledRgbMode = false;
     ledGradientMode = false;
     ledBlinkMode = false;
